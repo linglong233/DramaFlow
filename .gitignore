@@ -1,0 +1,14 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env.local
+.turbo
+apps/api/data
+apps/api/uploads
+apps/web/.next
+*.tsbuildinfo
+**/dev-db.json
+*.log
+AGENTS.md

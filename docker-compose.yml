@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  web:
+    image: node:24-bookworm
+    working_dir: /workspace
+    command: bash -lc "npm install && npm run dev:web"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/workspace
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    depends_on:
+      - api
+
+  api:
+    image: node:24-bookworm
+    working_dir: /workspace
+    command: bash -lc "npm install && npm run dev:api"
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./:/workspace
+    environment:
+      DATA_DIR: /workspace/apps/api/data
+      UPLOADS_DIR: /workspace/apps/api/uploads
+      STORAGE_DRIVER: local
+      LOCAL_STORAGE_PUBLIC_URL: http://localhost:4000/uploads
+      JWT_ACCESS_SECRET: replace-me
+      JWT_REFRESH_SECRET: replace-me-too
+
+  worker:
+    image: node:24-bookworm
+    working_dir: /workspace
+    command: bash -lc "npm install && npm run dev:worker"
+    volumes:
+      - ./:/workspace
+    environment:
+      API_URL: http://api:4000
+      DATA_DIR: /workspace/apps/api/data
+      UPLOADS_DIR: /workspace/apps/api/uploads
+      STORAGE_DRIVER: local
+      LOCAL_STORAGE_PUBLIC_URL: http://localhost:4000/uploads
+      OPENAI_COMPAT_BASE_URL: https://api.openai.com/v1
+      OPENAI_COMPAT_API_KEY: replace-me
+    depends_on:
+      - api
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+
+volumes:
+  minio-data:

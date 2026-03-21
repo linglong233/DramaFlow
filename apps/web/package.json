@@ -1,0 +1,17 @@
+{
+  "name": "@dramaflow/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && node scripts/fix-server-chunks.mjs",
+    "start": "node scripts/fix-server-chunks.mjs && next start",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dramaflow/shared": "file:../../packages/shared",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

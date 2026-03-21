@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  platform_super_admin
+  user
+}
+
+enum TeamRole {
+  tenant_owner
+  tenant_admin
+  member
+}
+
+enum ProjectRole {
+  project_admin
+  director
+  writer
+  artist
+  reviewer
+  viewer
+}
+
+enum ReviewPolicyMode {
+  inherit
+  required
+  bypass
+}
+
+enum DocumentType {
+  script
+  storyboard
+  image
+  video
+}
+
+enum VersionStatus {
+  draft
+  submitted
+  pending_review
+  approved
+  rejected
+}
+
+enum AnchorType {
+  document
+  scene
+  shot
+  asset
+}
+
+enum JobType {
+  script_generation
+  storyboard_generation
+  image_generation
+  video_generation
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+model User {
+  id           String         @id
+  email        String         @unique
+  displayName  String
+  passwordHash String
+  globalRole   GlobalRole
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+  teamMembers  TeamMember[]
+  projectMembers ProjectMember[]
+}
+
+model RefreshToken {
+  id        String   @id
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Team {
+  id                  String        @id
+  name                String
+  slug                String        @unique
+  defaultReviewPolicy ReviewPolicyMode
+  createdBy           String
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  members             TeamMember[]
+  projects            Project[]
+}
+
+model TeamMember {
+  id        String   @id
+  createdAt DateTime @default(now())
+  role      TeamRole
+  teamId    String
+  userId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id               String           @id
+  teamId           String
+  name             String
+  description      String
+  reviewPolicyMode ReviewPolicyMode
+  createdBy        String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  team             Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members          ProjectMember[]
+  documents        Document[]
+  jobs             Job[]
+  assets           Asset[]
+}
+
+model ProjectMember {
+  id        String      @id
+  createdAt DateTime    @default(now())
+  role      ProjectRole
+  projectId String
+  userId    String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id               String       @id
+  projectId        String
+  type             DocumentType
+  title            String
+  shotId           String?
+  currentVersionId String?
+  createdBy        String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions         Version[]
+}
+
+model Version {
+  id              String        @id
+  documentId      String
+  versionNumber   Int
+  status          VersionStatus
+  title           String
+  content         Json
+  metadata        Json
+  parentVersionId String?
+  createdBy       String
+  createdAt       DateTime      @default(now())
+  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  comments        Comment[]
+}
+
+model Comment {
+  id         String     @id
+  versionId  String
+  authorId   String
+  body       String
+  anchorType AnchorType
+  anchorId   String?
+  resolved   Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  version    Version    @relation(fields: [versionId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id        String    @id
+  type      JobType
+  status    JobStatus
+  projectId String
+  documentId String?
+  shotId    String?
+  input     Json
+  result    Json?
+  error     String?
+  createdBy String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id            String   @id
+  projectId     String
+  documentId    String?
+  versionId     String?
+  storageDriver String
+  storageKey    String
+  publicUrl     String?
+  mimeType      String
+  sizeInBytes   Int
+  createdBy     String
+  createdAt     DateTime @default(now())
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
