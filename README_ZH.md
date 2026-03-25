@@ -273,11 +273,15 @@ npm test
 - `OPENAI_COMPAT_BASE_URL`：兼容 OpenAI 风格接口的基础地址
 - `OPENAI_COMPAT_API_KEY`：文本生成 API Key
 - `OPENAI_TEXT_MODEL`：文本模型名称
+- `OPENAI_COMPAT_MOCK_FALLBACK`：真实 Provider 失败或返回不可解析结果时，是否自动回退到 mock 数据
 - `MEDIA_IMAGE_MODEL`：图片模型名称
 - `MEDIA_VIDEO_MODEL`：视频模型名称
 
-## 存储模式
+`OPENAI_COMPAT_BASE_URL` 要填写 API 根路径，而不是站点首页。当前 provider 会自动拼接 `/chat/completions`，所以兼容 OpenAI 的网关通常需要带上 `/v1` 后缀。
 
+如果你在联调真实网关，建议把 `OPENAI_COMPAT_MOCK_FALLBACK=false`，这样接口报错时不会被静默替换成 mock 剧本或分镜。
+
+## 存储模式
 ### 本地存储
 
 设置：
@@ -373,6 +377,10 @@ docker compose up --build
 - 分镜生成
 
 如果未配置真实 API Key，会回退到 mock 数据，方便本地联调。
+
+当前 provider 会请求 `{OPENAI_COMPAT_BASE_URL}/chat/completions`，携带 `response_format: { type: "json_object" }`，并且现在同时支持普通 JSON 响应和 `text/event-stream` 形式的流式聊天补全响应。
+
+如果你要复用这次验证通过的 `https://new-api.ms-egde.de5.net` 网关，请把 `OPENAI_COMPAT_BASE_URL` 设为 `https://new-api.ms-egde.de5.net/v1`。想先快速测通文本链路时，优先用 `moonshotai/kimi-k2-instruct`，不要直接沿用仓库默认的 `gpt-4.1-mini`；如果想看到真实报错而不是 mock 结果，再把 `OPENAI_COMPAT_MOCK_FALLBACK=false`。
 
 ### 图片生成
 

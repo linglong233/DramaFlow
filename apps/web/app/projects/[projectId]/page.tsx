@@ -1,4 +1,4 @@
-﻿import { NavigationShell } from "../../../components/navigation-shell";
+import { AppShell } from "../../../components/app-shell";
 import { ProjectWorkspace } from "../../../components/project-workspace";
 
 export default async function ProjectPage({
@@ -9,9 +9,8 @@ export default async function ProjectPage({
   const { projectId } = await params;
 
   return (
-    <NavigationShell>
+    <AppShell requireAuth>
       <ProjectWorkspace projectId={projectId} />
-    </NavigationShell>
+    </AppShell>
   );
 }
-

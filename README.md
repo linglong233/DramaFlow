@@ -273,8 +273,13 @@ Important values include:
 - `OPENAI_COMPAT_BASE_URL`: base URL for OpenAI-compatible text APIs
 - `OPENAI_COMPAT_API_KEY`: API key for text generation
 - `OPENAI_TEXT_MODEL`: text model name
+- `OPENAI_COMPAT_MOCK_FALLBACK`: whether script and storyboard generation should fall back to mock data when the live provider fails or returns unparseable output
 - `MEDIA_IMAGE_MODEL`: image model name
 - `MEDIA_VIDEO_MODEL`: video model name
+
+`OPENAI_COMPAT_BASE_URL` should point at the API root, not the website homepage. The provider appends `/chat/completions` automatically, so OpenAI-compatible gateways usually need a `/v1` suffix.
+
+When you are debugging a real gateway integration, set `OPENAI_COMPAT_MOCK_FALLBACK=false` so provider errors surface instead of being silently replaced with mock script or storyboard data.
 
 ## Storage Modes
 
@@ -373,6 +378,10 @@ Text generation is currently wired through an OpenAI-compatible provider abstrac
 - storyboard generation
 
 If no real API key is configured, it falls back to mock data for local development.
+
+The provider posts to `{OPENAI_COMPAT_BASE_URL}/chat/completions`, requests `response_format: { type: "json_object" }`, and now accepts both regular JSON responses and `text/event-stream` chat completion responses.
+
+For the validated `https://new-api.ms-egde.de5.net` gateway, use `https://new-api.ms-egde.de5.net/v1` as `OPENAI_COMPAT_BASE_URL`. For a quick smoke test, prefer `moonshotai/kimi-k2-instruct` instead of the repo default `gpt-4.1-mini`, and set `OPENAI_COMPAT_MOCK_FALLBACK=false` if you want real provider errors instead of mock output.
 
 ### Image generation
 

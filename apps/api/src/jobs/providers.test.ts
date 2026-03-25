@@ -4,28 +4,130 @@ import assert from "node:assert/strict";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { OpenAiCompatTextProvider } from "./text-generation.provider";
 
-test("text provider falls back to mock script content when no API key exists", async () => {
-  const provider = new OpenAiCompatTextProvider();
-  const script = await provider.generateScript({
-    title: "×·¹âÒ¹ĞĞ",
-    genre: "¶¼ÊĞĞüÒÉ",
-    premise: "µ¼ÑİÒªÔÚ×îºóÒ»Íí¾È»ØÁ÷²úÏîÄ¿",
-    episodeGoal: "´î½¨Ê×¼¯³åÍ»",
-    tone: "¿ËÖÆ¡¢½ôÕÅ",
-    audience: "ÄêÇá¶¼ÊĞ¹ÛÖÚ",
-  });
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+const baseScriptInput = {
+  title: "è¿½å…‰å¤œè¡Œ",
+  genre: "éƒ½å¸‚æ‚¬ç–‘",
+  premise: "å¯¼æ¼”è¦åœ¨æœ€åä¸€æ™šæ•‘å›æµäº§é¡¹ç›®",
+  episodeGoal: "æ­å»ºé¦–é›†å†²çª",
+  tone: "å…‹åˆ¶ã€ç´§å¼ ",
+  audience: "å¹´è½»éƒ½å¸‚è§‚ä¼—",
+};
 
-  assert.ok(script.logline.includes("×·¹âÒ¹ĞĞ"));
+test.afterEach(() => {
+  process.env = { ...originalEnv };
+  globalThis.fetch = originalFetch;
+});
+
+test("text provider falls back to mock script content when no API key exists", async () => {
+  delete process.env.OPENAI_COMPAT_API_KEY;
+
+  const provider = new OpenAiCompatTextProvider();
+  const script = await provider.generateScript(baseScriptInput);
+
+  assert.ok(script.logline.includes("è¿½å…‰å¤œè¡Œ"));
   assert.ok(script.scenes.length >= 1);
+});
+
+test("text provider parses standard JSON chat completion responses", async () => {
+  process.env.OPENAI_COMPAT_API_KEY = "test-key";
+  process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+  process.env.OPENAI_TEXT_MODEL = "moonshotai/kimi-k2-instruct";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(String(input), "https://example.test/v1/chat/completions");
+
+    const body = JSON.parse(String(init?.body)) as {
+      model: string;
+      stream: boolean;
+      response_format: { type: string };
+    };
+    assert.equal(body.model, "moonshotai/kimi-k2-instruct");
+    assert.equal(body.stream, false);
+    assert.equal(body.response_format.type, "json_object");
+
+    return new Response(JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              logline: "çœŸå®å‰§æœ¬",
+              premise: "çœŸå®å‰æ",
+              characters: [],
+              scenes: [],
+            }),
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const provider = new OpenAiCompatTextProvider();
+  const script = await provider.generateScript(baseScriptInput);
+
+  assert.equal(script.logline, "çœŸå®å‰§æœ¬");
+  assert.equal(script.premise, "çœŸå®å‰æ");
+  assert.equal(script.scenes.length, 0);
+});
+
+test("text provider parses SSE chat completion responses", async () => {
+  process.env.OPENAI_COMPAT_API_KEY = "test-key";
+  process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+  process.env.OPENAI_TEXT_MODEL = "gpt-5.4";
+
+  const sseBody = [
+    JSON.stringify({ id: "chunk-1", choices: [] }),
+    JSON.stringify({ id: "chunk-2", choices: [{ delta: { content: '{"logline":"SSE å‰§æœ¬",' } }] }),
+    JSON.stringify({ id: "chunk-3", choices: [{ delta: { content: '"premise":"æ¥è‡ªæµå¼è¿”å›",' } }] }),
+    JSON.stringify({ id: "chunk-4", choices: [{ delta: { content: '"characters":[],"scenes":[]}' } }] }),
+  ].map((payload) => `data: ${payload}`).concat("data: [DONE]").join("\n\n");
+
+  globalThis.fetch = (async () => {
+    return new Response(sseBody, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  }) as typeof fetch;
+
+  const provider = new OpenAiCompatTextProvider();
+  const script = await provider.generateScript(baseScriptInput);
+
+  assert.equal(script.logline, "SSE å‰§æœ¬");
+  assert.equal(script.premise, "æ¥è‡ªæµå¼è¿”å›");
+  assert.equal(script.characters.length, 0);
+});
+
+test("text provider throws when mock fallback is disabled and provider output is invalid", async () => {
+  process.env.OPENAI_COMPAT_API_KEY = "test-key";
+  process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+  process.env.OPENAI_COMPAT_MOCK_FALLBACK = "false";
+
+  globalThis.fetch = (async () => {
+    return new Response(JSON.stringify({ choices: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const provider = new OpenAiCompatTextProvider();
+
+  await assert.rejects(
+    provider.generateScript(baseScriptInput),
+    /response did not contain parseable JSON content/,
+  );
 });
 
 test("media provider mock image returns inline SVG payload", async () => {
   const provider = new OpenAiMediaProvider();
   const result = await provider.generateImage({
     shotId: "shot-1-1",
-    style: "µçÓ°¾çÕÕ",
+    style: "ç”µå½±å‰§ç…§",
     aspectRatio: "16:9",
-    prompt: "ÌìÌ¨ÉÏµÄ»ØÍ·¾µÍ·",
+    prompt: "å¤©å°ä¸Šçš„å›å¤´é•œå¤´",
   });
 
   assert.equal(result.provider.includes("image"), true);

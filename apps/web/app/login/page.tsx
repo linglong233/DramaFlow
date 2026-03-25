@@ -1,19 +1,24 @@
-﻿import { LoginPanel } from "../../components/login-panel";
+"use client";
+
+import { AppShell } from "../../components/app-shell";
+import { LoginPanel } from "../../components/login-panel";
+import { useI18n } from "../../lib/i18n";
 
 export default function LoginPage() {
+  const { t } = useI18n();
+
   return (
-    <main className="page-shell">
-      <section className="stack" style={{ marginTop: 48 }}>
-        <div className="panel" style={{ textAlign: "center" }}>
-          <span className="kicker">邮箱密码登录</span>
-          <h1 style={{ fontSize: 52, marginBottom: 12 }}>先把团队带进创作台</h1>
-          <p className="subhead" style={{ margin: "0 auto" }}>
-            登录后可以创建 Team、搭项目、提交版本、发起 AI 任务、进入平台和团队后台。
-          </p>
+    <AppShell variant="public">
+      <section className="auth-layout">
+        <div className="hero-panel hero-panel--auth">
+          <div className="hero-panel__body">
+            <span className="kicker">{t("login.kicker")}</span>
+            <h1 className="page-title">{t("login.title")}</h1>
+            <p className="page-description">{t("login.description")}</p>
+          </div>
         </div>
         <LoginPanel />
       </section>
-    </main>
+    </AppShell>
   );
 }
-

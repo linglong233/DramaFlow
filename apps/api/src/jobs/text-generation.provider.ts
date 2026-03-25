@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import type {
   GenerateScriptInput,
   GenerateStoryboardInput,
@@ -7,11 +7,29 @@ import type {
   TextGenerationProvider,
 } from "@dramaflow/shared";
 
+interface OpenAiCompatMessage {
+  content?: string | OpenAiCompatContentPart[];
+}
+
+interface OpenAiCompatChoice {
+  message?: OpenAiCompatMessage;
+  delta?: OpenAiCompatMessage;
+  text?: string;
+}
+
+interface OpenAiCompatResponse {
+  choices?: OpenAiCompatChoice[];
+}
+
+type OpenAiCompatContentPart = string | { text?: string };
+
 @Injectable()
 export class OpenAiCompatTextProvider implements TextGenerationProvider {
+  private readonly logger = new Logger(OpenAiCompatTextProvider.name);
   private readonly apiKey = process.env.OPENAI_COMPAT_API_KEY;
   private readonly baseUrl = (process.env.OPENAI_COMPAT_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
   private readonly model = process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini";
+  private readonly mockFallbackEnabled = (process.env.OPENAI_COMPAT_MOCK_FALLBACK ?? "true") !== "false";
 
   async generateScript(input: GenerateScriptInput): Promise<ScriptContent> {
     if (!this.apiKey || this.apiKey === "replace-me") {
@@ -29,38 +47,13 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
       `Audience: ${input.audience}`,
     ].join("\n");
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        temperature: 0.8,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You are a screenplay development assistant. Always return strict JSON.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
+    return this.generateStructuredPayload({
+      operation: "script generation",
+      prompt,
+      systemPrompt: "You are a screenplay development assistant. Always return strict JSON.",
+      temperature: 0.8,
+      mockFactory: () => this.mockScript(input),
     });
-
-    if (!response.ok) {
-      return this.mockScript(input);
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string }; text?: string }>;
-    };
-    const raw = data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text;
-    return this.parseJson<ScriptContent>(raw) ?? this.mockScript(input);
   }
 
   async generateStoryboard(
@@ -78,38 +71,150 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
       `Script JSON: ${JSON.stringify(input.script)}`,
     ].join("\n");
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        temperature: 0.7,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You are a storyboard supervisor. Always return strict JSON.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
+    return this.generateStructuredPayload({
+      operation: "storyboard generation",
+      prompt,
+      systemPrompt: "You are a storyboard supervisor. Always return strict JSON.",
+      temperature: 0.7,
+      mockFactory: () => this.mockStoryboard(input.script, input.cinematicStyle, input.shotDensity),
     });
+  }
 
-    if (!response.ok) {
-      return this.mockStoryboard(input.script, input.cinematicStyle, input.shotDensity);
+  private async generateStructuredPayload<T>(options: {
+    operation: string;
+    prompt: string;
+    systemPrompt: string;
+    temperature: number;
+    mockFactory: () => T;
+  }): Promise<T> {
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          temperature: options.temperature,
+          stream: false,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: options.systemPrompt,
+            },
+            {
+              role: "user",
+              content: options.prompt,
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return this.handleFailure(
+          options.operation,
+          `HTTP ${response.status}: ${await response.text()}`,
+          options.mockFactory,
+        );
+      }
+
+      const raw = await this.extractResponseContent(response);
+      const parsed = this.parseJson<T>(raw);
+      if (parsed) {
+        return parsed;
+      }
+
+      return this.handleFailure(
+        options.operation,
+        "response did not contain parseable JSON content",
+        options.mockFactory,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown provider error";
+      return this.handleFailure(options.operation, message, options.mockFactory);
+    }
+  }
+
+  private async extractResponseContent(response: Response) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("text/event-stream")) {
+      return this.extractSseContent(await response.text());
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string }; text?: string }>;
-    };
-    const raw = data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text;
-    return this.parseJson<StoryboardContent>(raw) ?? this.mockStoryboard(input.script, input.cinematicStyle, input.shotDensity);
+    const data = await response.json() as OpenAiCompatResponse;
+    return this.extractChoiceContent(data.choices);
+  }
+
+  private extractSseContent(raw: string) {
+    let content = "";
+
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) {
+        continue;
+      }
+
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") {
+        continue;
+      }
+
+      try {
+        const data = JSON.parse(payload) as OpenAiCompatResponse;
+        const chunk = this.extractChoiceContent(data.choices);
+        if (chunk) {
+          content += chunk;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return content || undefined;
+  }
+
+  private extractChoiceContent(choices?: OpenAiCompatChoice[]) {
+    for (const choice of choices ?? []) {
+      const content = this.normalizeContent(choice.message?.content)
+        ?? this.normalizeContent(choice.delta?.content)
+        ?? choice.text;
+
+      if (content) {
+        return content;
+      }
+    }
+
+    return undefined;
+  }
+
+  private normalizeContent(content?: string | OpenAiCompatContentPart[]) {
+    if (typeof content === "string") {
+      return content;
+    }
+
+    if (!Array.isArray(content)) {
+      return undefined;
+    }
+
+    const value = content.map((part) => {
+      if (typeof part === "string") {
+        return part;
+      }
+      return typeof part.text === "string" ? part.text : "";
+    }).join("");
+
+    return value || undefined;
+  }
+
+  private handleFailure<T>(operation: string, reason: string, mockFactory: () => T): T {
+    if (this.mockFallbackEnabled) {
+      this.logger.warn(`${operation} falling back to mock data: ${reason}`);
+      return mockFactory();
+    }
+
+    throw new Error(`OpenAI-compatible ${operation} failed: ${reason}`);
   }
 
   private parseJson<T>(raw?: string): T | undefined {
@@ -134,40 +239,40 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
 
   private mockScript(input: GenerateScriptInput): ScriptContent {
     return {
-      logline: `${input.genre}¶Ì¾ç¡¶${input.title}¡·½²ÊöÖ÷½ÇÔÚ${input.premise}ÖĞÍê³É${input.episodeGoal}µÄ¹ı³Ì¡£`,
+      logline: `${input.genre}çŸ­å‰§ã€Š${input.title}ã€‹è®²è¿°ä¸»è§’åœ¨${input.premise}ä¸­å®Œæˆ${input.episodeGoal}çš„è¿‡ç¨‹ã€‚`,
       premise: input.premise,
       characters: [
         {
-          name: "ÁÖÏÄ",
-          profile: `Àä¾²µÄµ¼ÑİĞÍÖ÷½Ç£¬ÕûÌåµ÷ĞÔÆ«${input.tone}`,
+          name: "æ—å¤",
+          profile: `å†·é™çš„å¯¼æ¼”å‹ä¸»è§’ï¼Œæ•´ä½“è°ƒæ€§å${input.tone}`,
         },
         {
-          name: "¹ËÑÔ",
-          profile: `ÍÆ¶¯Çé½ÚµÄ´îµµ½ÇÉ«£¬ÃæÏò${input.audience}¹ÛÖÚÌá¹©ÇéĞ÷×¥ÊÖ¡£`,
+          name: "é¡¾è¨€",
+          profile: `æ¨åŠ¨æƒ…èŠ‚çš„æ­æ¡£è§’è‰²ï¼Œé¢å‘${input.audience}è§‚ä¼—æä¾›æƒ…ç»ªæŠ“æ‰‹ã€‚`,
         },
       ],
       scenes: [
         {
           id: "scene-1",
-          heading: "ÄÚ¾° / ´´×÷ÊÒ / Ò¹",
-          synopsis: "Ö÷½Ç½Óµ½Ò»Ìõ¸Ä±äÏîÄ¿×ßÏòµÄÏûÏ¢¡£",
-          characters: ["ÁÖÏÄ", "¹ËÑÔ"],
+          heading: "å†…æ™¯ / åˆ›ä½œå®¤ / å¤œ",
+          synopsis: "ä¸»è§’æ¥åˆ°ä¸€æ¡æ”¹å˜é¡¹ç›®èµ°å‘çš„æ¶ˆæ¯ã€‚",
+          characters: ["æ—å¤", "é¡¾è¨€"],
           dialogue: [
-            { speaker: "ÁÖÏÄ", line: "Õâ´ÎÎÒÃÇ²»ÄÜÔÙ°´¾É°ì·¨ÅÄ¡£" },
-            { speaker: "¹ËÑÔ", line: "ÄÇ¾Í°Ñ·çÏÕÅÄ³ÉÁÁµã¡£" },
+            { speaker: "æ—å¤", line: "è¿™æ¬¡æˆ‘ä»¬ä¸èƒ½å†æŒ‰æ—§åŠæ³•æ‹ã€‚" },
+            { speaker: "é¡¾è¨€", line: "é‚£å°±æŠŠé£é™©æ‹æˆäº®ç‚¹ã€‚" },
           ],
-          directorNote: `¾µÍ·ÓïÑÔ±£³Ö${input.tone}£¬½Ú×àÍùÇ°¶¥¡£`,
+          directorNote: `é•œå¤´è¯­è¨€ä¿æŒ${input.tone}ï¼ŒèŠ‚å¥å¾€å‰é¡¶ã€‚`,
         },
         {
           id: "scene-2",
-          heading: "Íâ¾° / ³ÇÊĞÌìÌ¨ / Áè³¿",
-          synopsis: "Á½Î»½ÇÉ«ÔÚ¸ß´¦ÖØĞÂÈ·ÈÏÄ¿±êÓë¹ØÏµ¡£",
-          characters: ["ÁÖÏÄ", "¹ËÑÔ"],
+          heading: "å¤–æ™¯ / åŸå¸‚å¤©å° / å‡Œæ™¨",
+          synopsis: "ä¸¤ä½è§’è‰²åœ¨é«˜å¤„é‡æ–°ç¡®è®¤ç›®æ ‡ä¸å…³ç³»ã€‚",
+          characters: ["æ—å¤", "é¡¾è¨€"],
           dialogue: [
-            { speaker: "ÁÖÏÄ", line: "Èç¹û½ñÌì³ÉÁË£¬ÎÒÃÇ¾ÍÓĞÏÂÒ»¼¯¡£" },
-            { speaker: "¹ËÑÔ", line: "ÄÇ¾Í´ÓÕâÒ»¾µ¿ªÊ¼£¬±ğ»ØÍ·¡£" },
+            { speaker: "æ—å¤", line: "å¦‚æœä»Šå¤©æˆäº†ï¼Œæˆ‘ä»¬å°±æœ‰ä¸‹ä¸€é›†ã€‚" },
+            { speaker: "é¡¾è¨€", line: "é‚£å°±ä»è¿™ä¸€é•œå¼€å§‹ï¼Œåˆ«å›å¤´ã€‚" },
           ],
-          directorNote: "¼ÓÈë¸ß·´²îÒ¹¾°Óë·çÉù£¬ÖÆÔìÁÙ½ç¸Ğ¡£",
+          directorNote: "åŠ å…¥é«˜åå·®å¤œæ™¯ä¸é£å£°ï¼Œåˆ¶é€ ä¸´ç•Œæ„Ÿã€‚",
         },
       ],
     };
@@ -179,19 +284,19 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
         id: `shot-${sceneIndex + 1}-${shotIndex}`,
         sceneId: scene.id,
         shotLabel: `${sceneIndex + 1}-${shotIndex}`,
-        framing: shotIndex === 1 ? "´óÈ«¾°" : "½ü¾°",
-        cameraMove: shotIndex === 1 ? "»ºÂıÍÆ½ø" : "ÊÖ³ÖÇá»Î",
+        framing: shotIndex === 1 ? "å¤§å…¨æ™¯" : "è¿‘æ™¯",
+        cameraMove: shotIndex === 1 ? "ç¼“æ…¢æ¨è¿›" : "æ‰‹æŒè½»æ™ƒ",
         durationSeconds: shotDensity === "dense" ? 3 : 5,
-        visualDescription: `${scene.synopsis}£¬²ÉÓÃ${cinematicStyle}ÖÊ¸Ğ¡£`,
+        visualDescription: `${scene.synopsis}ï¼Œé‡‡ç”¨${cinematicStyle}è´¨æ„Ÿã€‚`,
         dialogue: scene.dialogue[shotIndex - 1]?.line,
-        soundDesign: shotIndex === 1 ? "»·¾³µ×ÔëÓëÔ¶´¦³µÁ÷" : "ºôÎüºÍÒÂÁÏÄ¦²ÁÉù",
+        soundDesign: shotIndex === 1 ? "ç¯å¢ƒåº•å™ªä¸è¿œå¤„è½¦æµ" : "å‘¼å¸å’Œè¡£æ–™æ‘©æ“¦å£°",
         imagePrompt: `${scene.heading} ${scene.synopsis} ${cinematicStyle} still frame`,
         videoPrompt: `${scene.heading} ${scene.synopsis} ${cinematicStyle} motion shot`,
       }));
     });
 
     return {
-      overview: `¸ù¾İ¾ç±¾Éú³ÉµÄ${cinematicStyle}·Ö¾µ£¬¹² ${shots.length} ¸ö¾µÍ·¡£`,
+      overview: `æ ¹æ®å‰§æœ¬ç”Ÿæˆçš„${cinematicStyle}åˆ†é•œï¼Œå…± ${shots.length} ä¸ªé•œå¤´ã€‚`,
       shots,
     };
   }

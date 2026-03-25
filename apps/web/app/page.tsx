@@ -1,52 +1,62 @@
-﻿import Link from "next/link";
+"use client";
+
+import Link from "next/link";
+
+import { AppShell } from "../components/app-shell";
+import { SectionCard } from "../components/section-card";
+import { useI18n } from "../lib/i18n";
 
 export default function HomePage() {
+  const { t } = useI18n();
+
   return (
-    <main className="page-shell">
-      <section className="hero">
-        <div className="panel">
-          <span className="kicker">导演工作流 x AI 协作台</span>
-          <h1 className="headline">把剧本、分镜、素材和审批放进同一个创作引擎。</h1>
-          <p className="subhead">
-            DramaFlow 面向导演与工作室，把短剧从想法到分镜、从讨论到版本、从镜头到素材产出的全过程沉到一个可协作、可审阅、可追溯的平台里。
-          </p>
-          <div className="cta-row">
-            <Link className="primary-btn" href="/login">
-              进入平台
-            </Link>
-            <Link className="secondary-btn" href="/dashboard">
-              查看工作台
-            </Link>
-          </div>
-        </div>
-        <div className="stack">
-          <div className="panel">
-            <div className="info-strip">
-              <div>
-                <div className="tag">AI 剧本</div>
-                <p>支持兼容 completions 风格文本模型，生成剧本初稿与分镜。</p>
-              </div>
-              <div>
-                <div className="tag">版本协作</div>
-                <p>每次提交都沉淀版本快照、讨论线程与审批状态。</p>
-              </div>
-              <div>
-                <div className="tag">双存储</div>
-                <p>生产走 S3，对开发和轻量部署保留本地磁盘实现。</p>
+    <AppShell variant="public">
+      <div className="stack stack--page">
+        <section className="hero hero--landing">
+          <SectionCard className="section-card--hero">
+            <div className="stack">
+              <span className="kicker">{t("home.kicker")}</span>
+              <h1 className="headline">{t("home.title")}</h1>
+              <p className="subhead">{t("home.description")}</p>
+              <div className="cta-row">
+                <Link className="primary-btn" href="/login">
+                  {t("home.primaryAction")}
+                </Link>
+                <Link className="secondary-btn" href="/dashboard">
+                  {t("home.secondaryAction")}
+                </Link>
               </div>
             </div>
+          </SectionCard>
+
+          <div className="stack">
+            <SectionCard>
+              <div className="info-strip">
+                <div className="info-card">
+                  <strong>{t("home.scriptTitle")}</strong>
+                  <p className="muted">{t("home.scriptDescription")}</p>
+                </div>
+                <div className="info-card">
+                  <strong>{t("home.versionTitle")}</strong>
+                  <p className="muted">{t("home.versionDescription")}</p>
+                </div>
+                <div className="info-card">
+                  <strong>{t("home.storageTitle")}</strong>
+                  <p className="muted">{t("home.storageDescription")}</p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title={t("home.includesTitle")}>
+              <div className="feature-list">
+                <span>{t("home.includesAuth")}</span>
+                <span>{t("home.includesGeneration")}</span>
+                <span>{t("home.includesReview")}</span>
+              </div>
+            </SectionCard>
           </div>
-          <div className="panel">
-            <h2>首版包含</h2>
-            <div className="stack muted">
-              <span>用户注册登录、团队/项目管理</span>
-              <span>剧本生成、分镜生成、生图、生视频任务</span>
-              <span>版本管理、多人评论、审核队列、管理后台</span>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
+        </section>
+      </div>
+    </AppShell>
   );
 }
-
