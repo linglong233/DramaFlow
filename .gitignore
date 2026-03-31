@@ -13,3 +13,6 @@ apps/web/.next
 *.log
 AGENTS.md
 .omx/
+.omc/
+.codex-run/
+.vscode/
