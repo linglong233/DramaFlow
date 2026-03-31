@@ -5,18 +5,33 @@ interface SectionCardProps {
   description?: string;
   children: ReactNode;
   className?: string;
+  variant?: "default" | "summary" | "utility";
+  actions?: ReactNode;
 }
 
-export function SectionCard({ title, description, children, className }: SectionCardProps) {
+export function SectionCard({
+  title,
+  description,
+  children,
+  className,
+  variant = "default",
+  actions,
+}: SectionCardProps) {
+  const baseClassName = `section-card section-card--${variant}`;
+  const resolvedClassName = className ? `${baseClassName} ${className}` : baseClassName;
+
   return (
-    <section className={className ? `section-card ${className}` : "section-card"}>
+    <section className={resolvedClassName}>
       {title || description ? (
         <div className="section-card__header">
-          {title ? <h2>{title}</h2> : null}
-          {description ? <p className="muted">{description}</p> : null}
+          <div>
+            {title ? <h2>{title}</h2> : null}
+            {description ? <p className="muted">{description}</p> : null}
+          </div>
+          {actions ? <div className="section-card__actions">{actions}</div> : null}
         </div>
       ) : null}
-      {children}
+      <div className="section-card__body">{children}</div>
     </section>
   );
 }

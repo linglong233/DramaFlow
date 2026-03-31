@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Post,
   UseGuards,
 } from "@nestjs/common";
@@ -12,7 +13,15 @@ import { AuthService } from "./auth.service";
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService) {
+    this.register = this.register.bind(this);
+    this.login = this.login.bind(this);
+    this.refresh = this.refresh.bind(this);
+    this.logout = this.logout.bind(this);
+    this.forgotPassword = this.forgotPassword.bind(this);
+    this.resetPassword = this.resetPassword.bind(this);
+    this.me = this.me.bind(this);
+  }
 
   @Post("register")
   register(

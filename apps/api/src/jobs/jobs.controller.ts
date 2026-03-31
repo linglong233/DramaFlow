@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Param,
   Post,
   UseGuards,
@@ -14,7 +15,13 @@ import { JobsService } from "./jobs.service";
 @Controller()
 @UseGuards(AuthGuard)
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(@Inject(JobsService) private readonly jobsService: JobsService) {
+    this.createScriptJob = this.createScriptJob.bind(this);
+    this.createStoryboardJob = this.createStoryboardJob.bind(this);
+    this.createImageJob = this.createImageJob.bind(this);
+    this.createVideoJob = this.createVideoJob.bind(this);
+    this.getJob = this.getJob.bind(this);
+  }
 
   @Post("projects/:id/script-jobs")
   createScriptJob(

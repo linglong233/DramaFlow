@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from "@nestjs/common";
+import { Controller, Get, Inject, Param, UseGuards } from "@nestjs/common";
 
 import { AuthGuard } from "../common/auth.guard";
 import { CurrentUser } from "../common/current-user.decorator";
@@ -7,7 +7,10 @@ import { AdminService } from "./admin.service";
 @Controller("admin")
 @UseGuards(AuthGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(@Inject(AdminService) private readonly adminService: AdminService) {
+    this.getPlatformOverview = this.getPlatformOverview.bind(this);
+    this.getTeamOverview = this.getTeamOverview.bind(this);
+  }
 
   @Get("platform/overview")
   getPlatformOverview(@CurrentUser() user: { id: string }) {

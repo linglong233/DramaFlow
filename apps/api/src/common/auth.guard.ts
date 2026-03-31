@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -11,8 +12,8 @@ import { DevDatabaseService } from "./dev-database.service";
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
-    private readonly jwtService: JwtService,
-    private readonly database: DevDatabaseService,
+    @Inject(JwtService) private readonly jwtService: JwtService,
+    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

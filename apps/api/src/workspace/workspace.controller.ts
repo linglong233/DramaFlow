@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -15,7 +16,23 @@ import { WorkspaceService } from "./workspace.service";
 @Controller()
 @UseGuards(AuthGuard)
 export class WorkspaceController {
-  constructor(private readonly workspaceService: WorkspaceService) {}
+  constructor(@Inject(WorkspaceService) private readonly workspaceService: WorkspaceService) {
+    this.listTeams = this.listTeams.bind(this);
+    this.createTeam = this.createTeam.bind(this);
+    this.addTeamMember = this.addTeamMember.bind(this);
+    this.listProjects = this.listProjects.bind(this);
+    this.createProject = this.createProject.bind(this);
+    this.getProject = this.getProject.bind(this);
+    this.updateReviewPolicy = this.updateReviewPolicy.bind(this);
+    this.inviteProjectMember = this.inviteProjectMember.bind(this);
+    this.listVersions = this.listVersions.bind(this);
+    this.createVersion = this.createVersion.bind(this);
+    this.submitVersion = this.submitVersion.bind(this);
+    this.approveVersion = this.approveVersion.bind(this);
+    this.rejectVersion = this.rejectVersion.bind(this);
+    this.listComments = this.listComments.bind(this);
+    this.addComment = this.addComment.bind(this);
+  }
 
   @Get("teams")
   listTeams(@CurrentUser() user: { id: string }) {
@@ -47,7 +64,7 @@ export class WorkspaceController {
   @Post("projects")
   createProject(
     @CurrentUser() user: { id: string },
-    @Body() body: { teamId: string; name: string; description?: string; reviewPolicyMode?: "inherit" | "required" | "bypass" },
+    @Body() body: { teamId?: string; name: string; description?: string; reviewPolicyMode?: "inherit" | "required" | "bypass" },
   ) {
     return this.workspaceService.createProject(user.id, body);
   }

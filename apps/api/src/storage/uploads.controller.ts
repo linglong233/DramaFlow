@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  Inject,
   Param,
   Post,
   Put,
@@ -17,7 +18,11 @@ import { StorageService } from "./storage.service";
 
 @Controller()
 export class UploadsController {
-  constructor(private readonly storageService: StorageService) {}
+  constructor(@Inject(StorageService) private readonly storageService: StorageService) {
+    this.createUploadTarget = this.createUploadTarget.bind(this);
+    this.directUpload = this.directUpload.bind(this);
+    this.getAssetUrl = this.getAssetUrl.bind(this);
+  }
 
   @Post("uploads")
   @UseGuards(AuthGuard)

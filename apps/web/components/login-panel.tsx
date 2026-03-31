@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { SessionPayload } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError, saveSession } from "../lib/api";
 import { useI18n } from "../lib/i18n";
-import { InlineFeedback } from "./inline-feedback";
 
 export function LoginPanel() {
   const router = useRouter();
@@ -19,19 +18,17 @@ export function LoginPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isRegister = useMemo(() => mode === "register", [mode]);
+  const isRegister = mode === "register";
 
   const authMutation = useMutation({
-    mutationFn: async () => {
-      return apiFetch<SessionPayload>(isRegister ? "/auth/register" : "/auth/login", {
-        method: "POST",
-        body: {
-          email,
-          password,
-          displayName: displayName || t("login.defaultDisplayName"),
-        },
-      });
-    },
+    mutationFn: async () => apiFetch<SessionPayload>(isRegister ? "/auth/register" : "/auth/login", {
+      method: "POST",
+      body: {
+        email,
+        password,
+        displayName: displayName || t("login.defaultDisplayName"),
+      },
+    }),
     onSuccess: (payload) => {
       saveSession(payload);
       setMessage(isRegister ? t("login.registerSuccess") : t("login.loginSuccess"));
@@ -46,64 +43,91 @@ export function LoginPanel() {
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setMessage(null);
+    setError(null);
     authMutation.mutate();
   }
 
   return (
-    <div className="panel panel--auth">
-      <div className="inline-actions inline-actions--equal">
-        <button className={mode === "login" ? "primary-btn" : "secondary-btn"} type="button" onClick={() => setMode("login")}>
-          {t("login.modeLogin")}
-        </button>
-        <button className={mode === "register" ? "primary-btn" : "secondary-btn"} type="button" onClick={() => setMode("register")}>
-          {t("login.modeRegister")}
-        </button>
+    <form onSubmit={handleSubmit}>
+      {isRegister && (
+        <div className="form-group">
+          <label className="form-label" htmlFor="displayName">
+            {t("login.displayNameLabel")}
+          </label>
+          <input
+            id="displayName"
+            className="input"
+            type="text"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            placeholder={t("login.displayNamePlaceholder")}
+          />
+        </div>
+      )}
+
+      <div className="form-group">
+        <label className="form-label" htmlFor="email">
+          {t("login.emailLabel")}
+        </label>
+        <input
+          id="email"
+          className="input"
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder={t("login.emailPlaceholder")}
+        />
       </div>
 
-      <form className="stack" onSubmit={handleSubmit}>
-        {isRegister ? (
-          <label>
-            {t("login.displayNameLabel")}
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder={t("login.displayNamePlaceholder")}
-            />
-          </label>
-        ) : null}
-
-        <label>
-          {t("login.emailLabel")}
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder={t("login.emailPlaceholder")}
-          />
-        </label>
-
-        <label>
+      <div className="form-group">
+        <label className="form-label" htmlFor="password">
           {t("login.passwordLabel")}
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder={t("login.passwordPlaceholder")}
-          />
         </label>
+        <input
+          id="password"
+          className="input"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder={t("login.passwordPlaceholder")}
+        />
+      </div>
 
-        <button className="primary-btn" type="submit" disabled={authMutation.isPending || !email.trim() || !password.trim()}>
-          {authMutation.isPending
-            ? t("common.submitting")
-            : isRegister
-              ? t("login.registerSubmit")
-              : t("login.loginSubmit")}
+      {message && <p style={{ color: "var(--success-text)", fontSize: "13px", marginTop: "8px" }}>{message}</p>}
+      {error && <p style={{ color: "var(--danger-text)", fontSize: "13px", marginTop: "8px" }}>{error}</p>}
+
+      <button
+        className="btn btn-primary"
+        type="submit"
+        style={{ width: "100%", marginTop: "16px" }}
+        disabled={authMutation.isPending || !email.trim() || !password.trim()}
+      >
+        {authMutation.isPending
+          ? t("common.submitting")
+          : isRegister
+            ? t("login.registerSubmit")
+            : t("login.loginSubmit")}
+      </button>
+
+      <p style={{ textAlign: "center", fontSize: "13px", color: "var(--text-secondary)", marginTop: "16px" }}>
+        {isRegister ? t("login.hasAccountPrompt") : t("login.noAccountPrompt")}{" "}
+        <button
+          type="button"
+          onClick={() => setMode(isRegister ? "login" : "register")}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--accent)",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: 500,
+            padding: 0,
+          }}
+        >
+          {isRegister ? t("login.modeLogin") : t("login.modeRegister")}
         </button>
-      </form>
-
-      <InlineFeedback message={message} error={error} />
-    </div>
+      </p>
+    </form>
   );
 }

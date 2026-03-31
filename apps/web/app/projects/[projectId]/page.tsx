@@ -1,16 +1,8 @@
-import { AppShell } from "../../../components/app-shell";
-import { ProjectWorkspace } from "../../../components/project-workspace";
+import { use } from "react";
+import { ProjectOverview } from "../../../components/project-overview";
 
-export default async function ProjectPage({
-  params,
-}: {
-  params: Promise<{ projectId: string }>;
-}) {
-  const { projectId } = await params;
+export default function ProjectPage(props: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = use(props.params);
 
-  return (
-    <AppShell requireAuth>
-      <ProjectWorkspace projectId={projectId} />
-    </AppShell>
-  );
+  return <ProjectOverview projectId={projectId} />;
 }

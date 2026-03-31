@@ -9,9 +9,9 @@ export function InlineFeedback({ message, error }: InlineFeedbackProps) {
   }
 
   return (
-    <div className="stack stack--tight">
-      {message ? <div className="notice">{message}</div> : null}
-      {error ? <div className="notice notice--error">{error}</div> : null}
+    <div className="stack stack-gap-2">
+      {message ? <div className="inline-feedback inline-feedback-success">{message}</div> : null}
+      {error ? <div className="inline-feedback inline-feedback-error">{error}</div> : null}
     </div>
   );
 }

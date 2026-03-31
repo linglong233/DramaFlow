@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -8,7 +9,7 @@ import { DevDatabaseService } from "../common/dev-database.service";
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly database: DevDatabaseService) {}
+  constructor(@Inject(DevDatabaseService) private readonly database: DevDatabaseService) {}
 
   async getPlatformOverview(userId: string) {
     const user = await this.database.query((db) => db.users.find((item) => item.id === userId));

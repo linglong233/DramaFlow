@@ -9,12 +9,9 @@ interface ErrorStateProps {
 export function ErrorState({ title, description, action }: ErrorStateProps) {
   return (
     <div className="error-state">
-      <div className="error-state__icon">!</div>
-      <div className="stack stack--tight">
-        <strong>{title}</strong>
-        <p>{description}</p>
-      </div>
-      {action ? <div>{action}</div> : null}
+      <div className="error-state-title">{title}</div>
+      {description && <div className="error-state-description">{description}</div>}
+      {action}
     </div>
   );
 }

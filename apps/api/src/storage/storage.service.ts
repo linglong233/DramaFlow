@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -14,9 +15,9 @@ import { S3StorageProvider } from "./s3-storage.provider";
 @Injectable()
 export class StorageService {
   constructor(
-    private readonly database: DevDatabaseService,
-    private readonly localStorage: LocalStorageProvider,
-    private readonly s3Storage: S3StorageProvider,
+    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(LocalStorageProvider) private readonly localStorage: LocalStorageProvider,
+    @Inject(S3StorageProvider) private readonly s3Storage: S3StorageProvider,
   ) {}
 
   async createUploadTarget(

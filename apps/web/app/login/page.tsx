@@ -1,24 +1,29 @@
 "use client";
 
-import { AppShell } from "../../components/app-shell";
-import { LoginPanel } from "../../components/login-panel";
 import { useI18n } from "../../lib/i18n";
+import { LoginPanel } from "../../components/login-panel";
+import { LanguageSwitcher } from "../../components/language-switcher";
 
 export default function LoginPage() {
   const { t } = useI18n();
 
   return (
-    <AppShell variant="public">
-      <section className="auth-layout">
-        <div className="hero-panel hero-panel--auth">
-          <div className="hero-panel__body">
-            <span className="kicker">{t("login.kicker")}</span>
-            <h1 className="page-title">{t("login.title")}</h1>
-            <p className="page-description">{t("login.description")}</p>
-          </div>
+    <div className="login-container" style={{ position: "relative", overflow: "hidden" }}>
+      {/* Background ambient light */}
+      <div style={{ position: "absolute", top: "-20%", left: "-10%", width: "50%", height: "50%", background: "radial-gradient(circle, rgba(56,189,248,0.15), transparent 70%)", filter: "blur(60px)", zIndex: 0 }} />
+      <div style={{ position: "absolute", bottom: "-20%", right: "-10%", width: "50%", height: "50%", background: "radial-gradient(circle, rgba(168,85,247,0.15), transparent 70%)", filter: "blur(60px)", zIndex: 0 }} />
+      
+      <div style={{ position: "absolute", top: 16, right: 16, zIndex: 10 }}>
+        <LanguageSwitcher style={{ width: "auto" }} />
+      </div>
+      
+      <div className="login-card glass-panel animate-fade-in" style={{ position: "relative", zIndex: 10, padding: "var(--space-8)" }}>
+        <div style={{ textAlign: "center", marginBottom: "var(--space-6)" }}>
+          <h1 className="login-title" style={{ margin: 0 }}>DramaFlow</h1>
+          <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginTop: "4px" }}>Director's Studio</p>
         </div>
         <LoginPanel />
-      </section>
-    </AppShell>
+      </div>
+    </div>
   );
 }

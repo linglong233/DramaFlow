@@ -1,10 +1,13 @@
-import { Controller, Get, Param, Post } from "@nestjs/common";
+import { Controller, Get, Inject, Param, Post } from "@nestjs/common";
 
 import { JobsService } from "./jobs.service";
 
 @Controller("internal/jobs")
 export class InternalJobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(@Inject(JobsService) private readonly jobsService: JobsService) {
+    this.claimNextJob = this.claimNextJob.bind(this);
+    this.processJob = this.processJob.bind(this);
+  }
 
   @Get("next")
   async claimNextJob() {

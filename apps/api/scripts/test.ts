@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import { createEmptyDatabase } from "../src/common/database.types";
 import { OpenAiMediaProvider } from "../src/jobs/media-generation.provider";
+import { InternalJobsController } from "../src/jobs/internal-jobs.controller";
 import { OpenAiCompatTextProvider } from "../src/jobs/text-generation.provider";
 
 const originalFetch = globalThis.fetch;
@@ -150,6 +151,29 @@ async function main() {
     );
   });
 
+  await runCase("internal jobs controller keeps service context bound", async () => {
+    const calls: string[] = [];
+    const controller = new InternalJobsController({
+      claimNextJob: async () => {
+        calls.push("claim");
+        return { id: "job_1", status: "queued" };
+      },
+      processJob: async (jobId: string) => {
+        calls.push(`process:${jobId}`);
+        return { id: jobId, status: "completed" };
+      },
+    } as never);
+
+    const detachedClaim = controller.claimNextJob;
+    const detachedProcess = controller.processJob;
+
+    const claimed = await detachedClaim();
+    const processed = await detachedProcess("job_1");
+
+    assert.deepEqual(claimed, { id: "job_1", status: "queued" });
+    assert.deepEqual(processed, { id: "job_1", status: "completed" });
+    assert.deepEqual(calls, ["claim", "process:job_1"]);
+  });
   await runCase("mock image generation", async () => {
     const mediaProvider = new OpenAiMediaProvider();
     const image = await mediaProvider.generateImage({

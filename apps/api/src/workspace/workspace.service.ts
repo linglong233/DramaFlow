@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -34,7 +35,7 @@ interface ActorContext {
 
 @Injectable()
 export class WorkspaceService {
-  constructor(private readonly database: DevDatabaseService) {}
+  constructor(@Inject(DevDatabaseService) private readonly database: DevDatabaseService) {}
 
   async listTeams(userId: string) {
     return this.database.query((db) => {
@@ -123,12 +124,21 @@ export class WorkspaceService {
 
   async createProject(
     userId: string,
-    input: { teamId: string; name: string; description?: string; reviewPolicyMode?: "inherit" | "required" | "bypass" },
+    input: { teamId?: string; name: string; description?: string; reviewPolicyMode?: "inherit" | "required" | "bypass" },
   ) {
-    await this.getActor(userId, undefined, input.teamId);
+    let teamId = input.teamId;
+    if (!teamId) {
+      const teams = await this.listTeams(userId);
+      if (teams.length === 0) {
+        throw new ForbiddenException("You must join a team before creating a project");
+      }
+      teamId = teams[0].id; // Fallback to their first team, e.g. their personal team
+    }
+
+    await this.getActor(userId, undefined, teamId);
 
     return this.database.mutate((db) => {
-      const teamMembership = db.teamMembers.find((member) => member.teamId === input.teamId && member.userId === userId);
+      const teamMembership = db.teamMembers.find((member) => member.teamId === teamId && member.userId === userId);
       if (!teamMembership) {
         throw new ForbiddenException("You must join the team before creating a project");
       }
@@ -136,7 +146,7 @@ export class WorkspaceService {
       const now = new Date().toISOString();
       const project = {
         id: createId("project"),
-        teamId: input.teamId,
+        teamId: teamId,
         name: input.name.trim(),
         description: input.description?.trim() ?? "",
         reviewPolicyMode: input.reviewPolicyMode ?? "inherit",
@@ -158,7 +168,7 @@ export class WorkspaceService {
           id: createId("doc"),
           projectId: project.id,
           type: "script",
-          title: "Ö÷¾ç±¾",
+          title: "ä¸»å‰§æœ¬",
           createdBy: userId,
           createdAt: now,
           updatedAt: now,
@@ -167,7 +177,7 @@ export class WorkspaceService {
           id: createId("doc"),
           projectId: project.id,
           type: "storyboard",
-          title: "×Ü·Ö¾µ",
+          title: "æ€»åˆ†é•œ",
           createdBy: userId,
           createdAt: now,
           updatedAt: now,

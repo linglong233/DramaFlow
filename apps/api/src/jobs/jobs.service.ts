@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -35,11 +36,11 @@ interface GeneratedMediaResult extends MediaContent {
 @Injectable()
 export class JobsService {
   constructor(
-    private readonly database: DevDatabaseService,
-    private readonly workspaceService: WorkspaceService,
-    private readonly storageService: StorageService,
-    private readonly textProvider: OpenAiCompatTextProvider,
-    private readonly mediaProvider: OpenAiMediaProvider,
+    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
+    @Inject(StorageService) private readonly storageService: StorageService,
+    @Inject(OpenAiCompatTextProvider) private readonly textProvider: OpenAiCompatTextProvider,
+    @Inject(OpenAiMediaProvider) private readonly mediaProvider: OpenAiMediaProvider,
   ) {}
 
   async createScriptJob(userId: string, projectId: string, input: GenerateScriptInput) {
@@ -146,12 +147,12 @@ export class JobsService {
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
       type: "script",
-      title: `${job.input.title} æÁ±æ`,
+      title: `${job.input.title} ÂâßÊú¨`,
       createdBy: job.createdBy,
     });
     const version = await this.workspaceService.createVersionForDocument({
       documentId: document.id,
-      title: `${job.input.title} - AI ≥ı∏Â`,
+      title: `${job.input.title} - AI ÂàùÁ®ø`,
       content,
       metadata: {
         sourceJobId: job.id,
@@ -184,12 +185,12 @@ export class JobsService {
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
       type: "storyboard",
-      title: "AI ∑÷æµ",
+      title: "AI ÂàÜÈïú",
       createdBy: job.createdBy,
     });
     const version = await this.workspaceService.createVersionForDocument({
       documentId: job.input.documentId || document.id,
-      title: "AI ∑÷æµ≥ı∏Â",
+      title: "AI ÂàÜÈïúÂàùÁ®ø",
       content,
       metadata: {
         sourceJobId: job.id,
@@ -216,13 +217,13 @@ export class JobsService {
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
       type: mediaType,
-      title: `${job.shotId} ${mediaType === "image" ? "≤ŒøºÕº" : "‘§—› ”∆µ"}`,
+      title: `${job.shotId} ${mediaType === "image" ? "ÂèÇËÄÉÂõæ" : "È¢ÑÊºîËßÜÈ¢ë"}`,
       createdBy: job.createdBy,
       shotId: job.shotId,
     });
     const version = await this.workspaceService.createVersionForDocument({
       documentId: document.id,
-      title: `${mediaType === "image" ? "AI ÕºœÒ" : "AI  ”∆µ"} ${job.shotId}`,
+      title: `${mediaType === "image" ? "AI ÂõæÂÉè" : "AI ËßÜÈ¢ë"} ${job.shotId}`,
       content: {
         prompt,
         assetId: assetReference.assetId,

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -35,8 +36,8 @@ interface ResetPasswordInput {
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly database: DevDatabaseService,
-    private readonly jwtService: JwtService,
+    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(JwtService) private readonly jwtService: JwtService,
   ) {}
 
   async register(input: RegisterInput) {
@@ -69,6 +70,25 @@ export class AuthService {
 
     await this.database.mutate((db) => {
       db.users.push(user);
+
+      const teamId = createId("team");
+      db.teams.push({
+        id: teamId,
+        name: `${displayName}的个人工作室`,
+        slug: teamId,
+        defaultReviewPolicy: "bypass",
+        createdBy: user.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      db.teamMembers.push({
+        id: createId("tm"),
+        teamId: teamId,
+        userId: user.id,
+        role: "tenant_owner",
+        createdAt: now,
+      });
     });
 
     return this.issueSession(user);
