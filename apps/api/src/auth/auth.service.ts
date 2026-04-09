@@ -8,9 +8,10 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import argon2 from "argon2";
 
-import type { UserRecord } from "@dramaflow/shared";
+import type { ImageGenerationConfig, LlmModelListResponse, LlmProviderConfig, UserRecord } from "@dramaflow/shared";
 
 import { DevDatabaseService } from "../common/dev-database.service";
+import { LlmProviderService } from "../common/llm-provider.service";
 import { createId } from "../common/id";
 
 interface RegisterInput {
@@ -38,6 +39,7 @@ export class AuthService {
   constructor(
     @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
     @Inject(JwtService) private readonly jwtService: JwtService,
+    @Inject(LlmProviderService) private readonly llmProviderService: LlmProviderService,
   ) {}
 
   async register(input: RegisterInput) {
@@ -47,6 +49,8 @@ export class AuthService {
     if (!email || !input.password || !displayName) {
       throw new BadRequestException("Email, password, and displayName are required");
     }
+
+    this.validatePasswordStrength(input.password);
 
     const existingUser = await this.database.query((db) =>
       db.users.find((user) => user.email === email),
@@ -190,14 +194,19 @@ export class AuthService {
       },
     );
 
+    const isDev = (process.env.NODE_ENV ?? "development") !== "production";
     return {
       ok: true,
-      message: "Development mode returns the reset token directly.",
-      token,
+      message: isDev
+        ? "Development mode returns the reset token directly."
+        : "If the account exists, a reset link has been sent.",
+      ...(isDev ? { token } : {}),
     };
   }
 
   async resetPassword(input: ResetPasswordInput) {
+    this.validatePasswordStrength(input.nextPassword);
+
     try {
       const payload = await this.jwtService.verifyAsync<{ sub: string; scope: string }>(input.token, {
         secret: process.env.JWT_ACCESS_SECRET ?? "dramaflow-access-secret",
@@ -218,7 +227,10 @@ export class AuthService {
       });
 
       return { ok: true };
-    } catch {
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       throw new UnauthorizedException("Reset token is invalid or expired");
     }
   }
@@ -235,6 +247,68 @@ export class AuthService {
     return this.toPublicUser(user);
   }
 
+  async updateProfile(userId: string, input: { displayName?: string; llmConfig?: LlmProviderConfig; imageGenerationConfig?: ImageGenerationConfig }) {
+    await this.database.mutate((db) => {
+      const user = db.users.find((item) => item.id === userId);
+      if (!user) {
+        throw new UnauthorizedException("User not found");
+      }
+
+      if (input.displayName !== undefined) {
+        user.displayName = input.displayName.trim();
+      }
+
+      if (input.llmConfig !== undefined) {
+        user.llmConfig = input.llmConfig;
+      }
+
+      if (input.imageGenerationConfig !== undefined) {
+        user.imageGenerationConfig = input.imageGenerationConfig;
+      }
+
+      user.updatedAt = new Date().toISOString();
+    });
+
+    return this.getProfile(userId);
+  }
+
+  async listAvailableModels(userId: string, draftConfig?: LlmProviderConfig): Promise<LlmModelListResponse> {
+    const user = await this.database.query((db) =>
+      db.users.find((item) => item.id === userId),
+    );
+
+    if (!user) {
+      throw new UnauthorizedException("User not found");
+    }
+
+    return {
+      models: await this.llmProviderService.listModels(
+        this.mergeLlmConfig(user.llmConfig, draftConfig),
+      ),
+    };
+  }
+
+  private mergeLlmConfig(
+    savedConfig?: LlmProviderConfig,
+    draftConfig?: LlmProviderConfig,
+  ): LlmProviderConfig | undefined {
+    if (!savedConfig && !draftConfig) {
+      return undefined;
+    }
+
+    return {
+      ...savedConfig,
+      ...draftConfig,
+      provider: draftConfig?.provider ?? savedConfig?.provider ?? "openai-completions",
+    };
+  }
+
+  private validatePasswordStrength(password: string) {
+    if (!password || password.length < 8) {
+      throw new BadRequestException("Password must be at least 8 characters long");
+    }
+  }
+
   private async issueSession(user: UserRecord) {
     const accessToken = await this.jwtService.signAsync(
       {
@@ -244,15 +318,26 @@ export class AuthService {
       },
       {
         secret: process.env.JWT_ACCESS_SECRET ?? "dramaflow-access-secret",
-        expiresIn: "12h",
+        expiresIn: "1h",
       },
     );
 
     const refreshToken = createId("refresh");
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 30).toISOString();
+    const maxRefreshTokensPerUser = 10;
 
     await this.database.mutate(async (db) => {
+      const userTokens = db.refreshTokens
+        .filter((item) => item.userId === user.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+      if (userTokens.length >= maxRefreshTokensPerUser) {
+        const removeCount = userTokens.length - maxRefreshTokensPerUser + 1;
+        const idsToRemove = new Set(userTokens.slice(0, removeCount).map((item) => item.id));
+        db.refreshTokens = db.refreshTokens.filter((item) => !idsToRemove.has(item.id));
+      }
+
       db.refreshTokens.push({
         id: createId("rt"),
         userId: user.id,
@@ -276,6 +361,8 @@ export class AuthService {
       email: user.email,
       displayName: user.displayName,
       globalRole: user.globalRole,
+      llmConfig: user.llmConfig,
+      imageGenerationConfig: user.imageGenerationConfig,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

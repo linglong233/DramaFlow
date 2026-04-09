@@ -10,8 +10,8 @@ export function InlineFeedback({ message, error }: InlineFeedbackProps) {
 
   return (
     <div className="stack stack-gap-2">
-      {message ? <div className="inline-feedback inline-feedback-success">{message}</div> : null}
-      {error ? <div className="inline-feedback inline-feedback-error">{error}</div> : null}
+      {message ? <div className="inline-feedback inline-feedback-success" role="status" aria-live="polite">{message}</div> : null}
+      {error ? <div className="inline-feedback inline-feedback-error" role="alert">{error}</div> : null}
     </div>
   );
 }

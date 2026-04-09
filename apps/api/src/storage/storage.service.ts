@@ -121,6 +121,44 @@ export class StorageService {
     };
   }
 
+  async getAssetBuffer(userId: string, assetId: string) {
+    const asset = await this.database.query((db) => db.assets.find((item) => item.id === assetId));
+    if (!asset) {
+      throw new NotFoundException("Asset not found");
+    }
+
+    await this.assertProjectReadable(userId, asset.projectId);
+    if (!asset.mimeType.startsWith("image/")) {
+      throw new BadRequestException("Only image assets can be used as generation references");
+    }
+
+    try {
+      const body = await this.getProvider(asset.storageDriver).readObject(asset.storageKey);
+      return {
+        asset,
+        body,
+        mimeType: asset.mimeType,
+      };
+    } catch (error) {
+      const assetUrl = asset.publicUrl;
+      if (assetUrl && /^https?:\/\//.test(assetUrl)) {
+        const response = await fetch(assetUrl);
+        if (!response.ok) {
+          throw new NotFoundException(`Asset content request failed with HTTP ${response.status}`);
+        }
+
+        return {
+          asset,
+          body: new Uint8Array(await response.arrayBuffer()),
+          mimeType: response.headers.get("content-type") ?? asset.mimeType,
+        };
+      }
+
+      const message = error instanceof Error ? error.message : "Unknown asset read error";
+      throw new NotFoundException(`Failed to read asset content: ${message}`);
+    }
+  }
+
   getDriver(): "local" | "s3" {
     return process.env.STORAGE_DRIVER === "s3" ? "s3" : "local";
   }

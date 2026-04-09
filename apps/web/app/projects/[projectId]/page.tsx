@@ -1,8 +1,6 @@
-import { use } from "react";
-import { ProjectOverview } from "../../../components/project-overview";
+import { redirect } from "next/navigation";
 
-export default function ProjectPage(props: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = use(props.params);
-
-  return <ProjectOverview projectId={projectId} />;
+export default async function ProjectPage(props: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await props.params;
+  redirect(`/projects/${projectId}/workspace`);
 }

@@ -1,12 +1,19 @@
 import type {
+  AuditConfigRecord,
+  AuditRecordEntry,
+  BatchJobGroupRecord,
   CommentRecord,
   DocumentRecord,
+  ExportRecord,
   JobRecord,
+  NotificationRecord,
   ProjectMemberRecord,
   ProjectRecord,
   RefreshTokenRecord,
+  TeamInviteLinkRecord,
   TeamMemberRecord,
   TeamRecord,
+  TimelineRecord,
   UploadAssetRecord,
   UserRecord,
   VersionRecord,
@@ -27,6 +34,7 @@ export interface DevDatabase {
   refreshTokens: RefreshTokenRecord[];
   teams: TeamRecord[];
   teamMembers: TeamMemberRecord[];
+  teamInviteLinks: TeamInviteLinkRecord[];
   projects: ProjectRecord[];
   projectMembers: ProjectMemberRecord[];
   projectInvites: ProjectInviteRecord[];
@@ -35,6 +43,12 @@ export interface DevDatabase {
   comments: CommentRecord[];
   jobs: JobRecord[];
   assets: UploadAssetRecord[];
+  notifications: NotificationRecord[];
+  auditConfigs: AuditConfigRecord[];
+  auditRecords: AuditRecordEntry[];
+  batchJobs: BatchJobGroupRecord[];
+  timelines: TimelineRecord[];
+  exports: ExportRecord[];
   updatedAt: string;
 }
 
@@ -44,6 +58,7 @@ export function createEmptyDatabase(): DevDatabase {
     refreshTokens: [],
     teams: [],
     teamMembers: [],
+    teamInviteLinks: [],
     projects: [],
     projectMembers: [],
     projectInvites: [],
@@ -52,6 +67,13 @@ export function createEmptyDatabase(): DevDatabase {
     comments: [],
     jobs: [],
     assets: [],
+    notifications: [],
+    auditConfigs: [],
+    auditRecords: [],
+    batchJobs: [],
+    timelines: [],
+    exports: [],
     updatedAt: new Date().toISOString(),
   };
 }
+

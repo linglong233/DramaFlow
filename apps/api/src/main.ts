@@ -6,9 +6,33 @@ import express from "express";
 
 import { AppModule } from "./app.module";
 
+function validateSecrets() {
+  const accessSecret = process.env.JWT_ACCESS_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  const unsafeValues = [undefined, "", "replace-me", "replace-me-too", "dramaflow-access-secret", "dramaflow-refresh-secret"];
+
+  if (process.env.NODE_ENV === "production") {
+    if (!accessSecret || unsafeValues.includes(accessSecret)) {
+      throw new Error("JWT_ACCESS_SECRET must be set to a secure value in production");
+    }
+    if (!refreshSecret || unsafeValues.includes(refreshSecret)) {
+      throw new Error("JWT_REFRESH_SECRET must be set to a secure value in production");
+    }
+  } else {
+    if (!accessSecret || unsafeValues.includes(accessSecret)) {
+      process.stdout.write("\n⚠️  WARNING: JWT_ACCESS_SECRET is using an unsafe default. Set it in .env for security.\n\n");
+    }
+  }
+}
+
 async function bootstrap() {
+  validateSecrets();
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  const allowedOrigin = process.env.APP_URL ?? "http://localhost:3000";
+  app.enableCors({
+    origin: allowedOrigin,
+    credentials: true,
+  });
   app.use("/uploads/direct", express.raw({ type: "*/*", limit: "100mb" }));
 
   const swaggerConfig = new DocumentBuilder()

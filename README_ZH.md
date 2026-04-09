@@ -1,122 +1,131 @@
-# DramaFlow 中文说明
+# DramaFlow
 
-DramaFlow 是一个面向导演与工作室的短剧生成平台，采用 TypeScript 全栈开发，包含前端工作台、后端 API、异步任务 Worker，以及跨端共享的领域模型与业务规则。
+DramaFlow 是一个面向导演与工作室的短剧工作流 TypeScript monorepo。当前仓库已经提供可运行的 `web + api + worker + shared` 组合，覆盖认证、协作、AI 辅助写作、媒体生成、审核与审计、TTS、时间线编排、通知与实时更新，以及双存储后端。
 
-当前仓库已经具备可运行的 monorepo 骨架，支持注册登录、团队与项目管理、剧本与分镜生成任务、图片与视频生成任务、版本管理、评论讨论、审核流，以及双存储抽象。
+## 项目概览
 
-## 功能特性
-
-- 用户注册、登录、刷新令牌、退出登录、忘记密码、重置密码
-- Team / Project 管理
-- 剧本、分镜、图片、视频四类文档模型
-- 版本评论讨论与基础审核流
-- OpenAI 兼容文本生成接入
-- 图片 / 视频媒体生成 Provider 抽象
-- 本地磁盘 / S3 兼容对象存储双实现
-- 平台后台、团队后台、导演工作台界面
-
-## 技术栈
-
-- 语言：TypeScript
 - Monorepo：`npm workspaces`
-- Node.js：`>= 24`
-- 前端：Next.js 15 + React 19
+- 前端：Next.js 15 + React 19 + App Router
 - 后端：NestJS 11
-- 共享类型：`@dramaflow/shared`
-- 认证：JWT + Refresh Token + `argon2`
-- 存储：
-  - 开发和轻量部署使用本地磁盘
-  - 生产风格部署使用 S3 兼容对象存储
-- 异步任务：轮询式 Worker
-- 目标生产数据模型：Prisma + PostgreSQL Schema
+- Worker：通过 API 内部接口领取任务的轮询型 Worker
+- 共享契约：`@dramaflow/shared`
+- 认证模型：JWT access token + 以 argon2 哈希保存的不透明 refresh token
+- 运行时持久化：`DevDatabaseService` 管理的 JSON 文件
+- 目标生产模型：面向 PostgreSQL 的 Prisma schema
+
+## 当前状态
+
+DramaFlow 目前已经达到“开发可用”，但还不是完整生产化实现。
+
+- 运行时数据访问仍然使用文件型 `DevDatabaseService`；Prisma 还没有接入真实运行路径。
+- 后台任务仍然使用简化的“轮询 Worker + API 内部接口”方案；Redis / BullMQ 是未来方向，不是当前依赖。
+- 项目工作区已经改为按需拆分加载：`GET /projects/:id` 只返回 summary，版本、任务、时间线、导出分别走独立接口刷新。
+- 实时更新已经通过 NestJS + Socket.IO gateway 提供，覆盖 `job.updated`、`review.updated`、`notification.created` 三类事件，同时保留轮询作为降级路径。
+- 文本、图片、视频、TTS 都可以接入已配置的 provider，但为了保证仓库在没有外部服务时也能跑通，仍然保留了 mock fallback 路径。
+- 视频导出现在会优先使用 FFmpeg；在显式允许的情况下，也可以回退为 mock 导出产物。
+
+## 架构说明
+
+### `apps/web`
+
+Next.js 前端目前包含：
+
+- 对外公开路由：首页、登录、忘记密码、重置密码、团队邀请接受、项目邀请接受
+- 受保护的 dashboard 路由：项目页、平台后台、团队后台、团队设置、个人设置、语言设置、通知页
+- 统一项目工作区 `/projects/[projectId]/workspace`，支持以下模式：
+  - `info`
+  - `document`
+  - `worldbible`
+  - `generate`
+  - `media`
+  - `tasks`
+  - `timeline`
+- 脚本与分镜的版本浏览、差异对比、恢复、手工编辑
+- 审核动作、线程化评论、审计支持、AI rewrite 工具
+- 基于 SSE 的 synopsis、script、storyboard、rewrite 流式生成
+- 单镜头与批量图片/视频生成、多候选媒体、显式采纳
+- 世界观角色、地点、风格指南、角色音色配置 UI，支持参考图上传和音色样例播放
+- 时间线自动组装、保存、导出提交，以及带 WebSocket 感知的轮询降级
+
+### `apps/api`
+
+NestJS API 目前包含：
+
+- `/health` 健康检查与 `/docs` Swagger 文档
+- 认证流程：注册、登录、刷新、登出、忘记密码、重置密码、个人资料更新、个人模型列表
+- 工作区流程：团队 CRUD、团队成员、团队邀请链接、项目 CRUD、项目邀请、项目邀请接受、项目成员、文档版本、线程化评论、审核流转、世界观 CRUD、审计配置、审计记录、时间线保存/自动组装、导出列表
+- 工作区数据拆分接口：summary、versions、jobs、timeline、exports
+- 任务类型包括：
+  - script generation
+  - synopsis generation
+  - storyboard generation
+  - rewrite
+  - image generation
+  - video generation
+  - TTS generation
+  - export jobs
+- 批量图片/视频任务，以及按场景批量 TTS 任务
+- prompt preview 接口
+- 通知接口与实时 websocket 事件
+- 直传上传目标与资源 URL 等存储接口
+
+### `apps/worker`
+
+Worker 目前故意保持轻量：
+
+- 轮询 `GET /internal/jobs/next`
+- 通过 `POST /internal/jobs/:id/process` 触发处理
+- 通过 `POST /internal/jobs/:id/retry` 触发重试
+- 真正的生成业务逻辑不在 Worker 内部，而是在 API 的 service 层执行
+
+### `packages/shared`
+
+共享包是整个仓库的契约层：
+
+- 领域类型与枚举
+- API 合同类型
+- Provider 接口
+- 审核、权限、任务管理、时间线、导出等业务规则
+
+## API 重点接口
+
+当前最关键的工作区接口如下：
+
+- `GET /projects/:id`：工作区 summary
+- `GET /projects/:id/versions`：版本数据
+- `GET /projects/:id/jobs`：任务列表
+- `GET /projects/:id/timeline`：时间线数据
+- `GET /projects/:id/exports`：导出列表
+- `POST /project-invites/:id/accept`：接受项目邀请
+- `POST /scenes/:id/batch-tts-jobs`：为场景内镜头批量创建 TTS 任务
+- WebSocket 事件：
+  - `job.updated`
+  - `review.updated`
+  - `notification.created`
 
 ## 仓库结构
 
 ```text
 .
-├─ apps
-│  ├─ api        # NestJS API
-│  ├─ web        # Next.js 前端工作台与后台
-│  └─ worker     # 异步任务消费端
-├─ packages
-│  └─ shared     # 共享领域模型、Provider 契约与业务规则
-├─ docker-compose.yml
-├─ package.json
-└─ tsconfig.base.json
+|-- apps
+|   |-- api
+|   |-- web
+|   `-- worker
+|-- packages
+|   `-- shared
+|-- scripts
+|-- README.md
+|-- README_ZH.md
+|-- package.json
+`-- tsconfig.base.json
 ```
-
-## 目录说明
-
-### `apps/web`
-
-前端项目，基于 Next.js App Router，目前包含：
-
-- 首页
-- 登录页
-- 导演工作台
-- 项目工作区
-- 平台后台
-- 团队后台
-
-### `apps/api`
-
-后端项目，基于 NestJS，按模块拆分为：
-
-- `auth`：用户认证
-- `workspace`：团队、项目、文档、版本、评论、审核流
-- `jobs`：剧本 / 分镜 / 图片 / 视频任务编排
-- `storage`：上传、资产 URL、本地 / S3 存储抽象
-- `admin`：平台与团队后台接口
-- `common`：开发态数据存储、鉴权 Guard、公共工具
-
-### `apps/worker`
-
-异步任务 Worker，负责：
-
-- 从 API 领取排队任务
-- 处理剧本生成、分镜生成、图片生成、视频生成任务
-- 将结果写回 API 数据层
-
-### `packages/shared`
-
-共享包，统一维护：
-
-- 领域类型
-- 枚举与状态模型
-- 权限 / 审核 / 状态流转规则
-- 文本与媒体 Provider 接口
-- 存储 Provider 接口
-
-## 当前实现状态
-
-这个仓库已经可以作为开发起点直接运行，但还不是完全生产化版本。
-
-### 已经实现的部分
-
-- Monorepo 工程结构
-- 前后端基础页面与接口
-- 基于文件的开发态数据存储
-- 文本 / 媒体任务模型与 Worker 流程
-- 本地 / S3 双存储抽象
-- Prisma 目标生产 Schema
-
-### 仍处于开发阶段的部分
-
-- 运行时持久化仍使用 `DevDatabaseService`，并非 Prisma 实际落库
-- Worker 仍是轮询模式，而不是 BullMQ / Redis 队列
-- 视频生成仍以 mock 结果为主，真实 Provider 接口位点已预留
-- 后台与工作台当前以核心流程和脚手架为主，尚未做完整生产级打磨
 
 ## 快速开始
 
-### 推荐启动方式
+### 环境要求
 
-当前本地最稳定的启动方式是：
-
-1. `build`
-2. `start`
-
-仓库里的 `dev` 脚本仍然保留，但在 Windows 环境下，当前版本的 `tsx watch` 和 `next dev` 运行时稳定性一般。想要完整测试业务流程时，优先使用 `build + start`。
+- Node.js `>=24`
+- npm
 
 ### 1. 安装依赖
 
@@ -124,25 +133,29 @@ DramaFlow 是一个面向导演与工作室的短剧生成平台，采用 TypeSc
 npm install
 ```
 
-如果你在 Windows PowerShell 下遇到执行策略拦截，请改用：
+如果 PowerShell 阻止 `npm.ps1`，请改用：
 
 ```powershell
 npm.cmd install
 ```
 
-### 2. 配置环境变量
-
-复制环境变量模板：
+### 2. 创建 `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Windows PowerShell 可使用：
+PowerShell：
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+至少请先设置以下安全相关变量：
+
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `INTERNAL_API_KEY`
 
 ### 3. 构建整个工作区
 
@@ -150,50 +163,11 @@ Copy-Item .env.example .env
 npm run build
 ```
 
-Windows PowerShell 可使用：
+### 4. 启动服务
 
-```powershell
-npm.cmd run build
-```
+推荐的本地验证路径：
 
-### 4. 分别在不同终端启动服务
-
-启动 API：
-
-```bash
-npm --workspace @dramaflow/api run start
-```
-
-启动前端：
-
-```bash
-npm --workspace @dramaflow/web run start
-```
-
-启动 Worker：
-
-```bash
-npm --workspace @dramaflow/worker run start
-```
-
-Windows PowerShell 可使用：
-
-```powershell
-npm.cmd --workspace @dramaflow/api run start
-npm.cmd --workspace @dramaflow/web run start
-npm.cmd --workspace @dramaflow/worker run start
-```
-
-### 5. 打开本地地址
-
-- Web：`http://localhost:3000`
-- 登录页：`http://localhost:3000/login`
-- API：`http://localhost:4000/health`
-- Swagger：`http://localhost:4000/docs`
-
-### 一键启动脚本
-
-如果你想直接一键拉起本地环境，可以使用仓库根目录下的脚本：
+- 使用根目录启动器。它会在 `.env` 缺失时自动复制模板、检查端口、执行全量构建、拉起 API / Web / Worker，并等待就绪。
 
 Windows：
 
@@ -207,224 +181,177 @@ macOS / Linux：
 bash ./start-all.sh
 ```
 
-这两个脚本会自动执行：
-
-- 如果 `.env` 不存在，则从 `.env.example` 复制一份
-- 当 `node_modules` 缺失时自动执行 `npm install`
-- 执行完整的 `npm run build`
-- 启动 API、Web 和 Worker
-
-行为差异：
-
-- `start-all.bat` 会分别打开三个独立终端窗口
-- `start-all.sh` 会占用当前终端，按 `Ctrl+C` 时同时停止三个服务
-
-## 常用命令
+也可以分别手动启动：
 
 ```bash
-# 构建整个 monorepo
-npm run build
-
-# 启动 API
 npm --workspace @dramaflow/api run start
-
-# 启动前端
 npm --workspace @dramaflow/web run start
-
-# 启动 Worker
 npm --workspace @dramaflow/worker run start
+```
 
-# 仅开发调试使用
+仓库也保留了开发态脚本：
+
+```bash
 npm run dev:api
 npm run dev:web
 npm run dev:worker
-
-# 全仓库类型检查
-npm run lint
-
-# 全仓库测试
-npm test
 ```
 
-## 本地运行说明
+### 5. 打开本地地址
 
-- 如果 PowerShell 提示 `npm.ps1` 无法执行，请改用 `npm.cmd`。
-- 当没有排队任务时，Worker 日志输出 `idle` 是正常现象。
-- 如果 `3000` 或 `4000` 端口已被占用，请先停止旧进程再重新启动。
-- 本地手工测试时，除非你正在验证对象存储链路，否则优先使用 `STORAGE_DRIVER=local`。
-- 一键启动的 shell 脚本会把日志写到 `api.log`、`web.log` 和 `worker.log`。
+- Web：`http://localhost:3000`
+- 登录页：`http://localhost:3000/login`
+- API health：`http://localhost:4000/health`
+- Swagger：`http://localhost:4000/docs`
 
-## 环境变量说明
+## 环境变量
 
-完整模板请看 [.env.example](./.env.example)。
+`.env.example` 已经覆盖了主应用、存储、OpenAI 兼容文本/媒体设置，以及 Google Gemini 图片默认项。但仍有少量运行时变量是代码层读取、未必已经写进模板，因此以下列表以当前代码为准。
 
-常用项包括：
+### 核心应用与认证
 
-- `APP_URL`：前端地址
-- `API_URL`：后端地址
-- `NEXT_PUBLIC_API_URL`：前端调用 API 的公开地址
-- `DATA_DIR`：开发态数据文件目录
+- `APP_URL`：API 用于 CORS 的前端域名
+- `API_URL`：Worker 与启动脚本使用的后端地址
+- `NEXT_PUBLIC_API_URL`：Web 前端使用的后端地址
+- `PORT`：直接启动服务时覆盖 API 或 Web 端口
+- `JWT_ACCESS_SECRET`：access token 签名密钥
+- `JWT_REFRESH_SECRET`：生产环境启动时要求的密钥
+- `INTERNAL_API_KEY`：Worker 调用 API 内部任务接口的共享密钥
+
+### 持久化与存储
+
+- `DATA_DIR`：`dev-db.json` 所在目录
 - `UPLOADS_DIR`：本地上传目录
-- `STORAGE_DRIVER`：存储驱动，可选 `local` / `s3`
-- `LOCAL_STORAGE_PUBLIC_URL`：本地文件公开访问地址
-- `JWT_ACCESS_SECRET`：访问令牌密钥
-- `JWT_REFRESH_SECRET`：刷新令牌密钥
-- `OPENAI_COMPAT_BASE_URL`：兼容 OpenAI 风格接口的基础地址
-- `OPENAI_COMPAT_API_KEY`：文本生成 API Key
-- `OPENAI_TEXT_MODEL`：文本模型名称
-- `OPENAI_COMPAT_MOCK_FALLBACK`：真实 Provider 失败或返回不可解析结果时，是否自动回退到 mock 数据
-- `MEDIA_IMAGE_MODEL`：图片模型名称
-- `MEDIA_VIDEO_MODEL`：视频模型名称
-
-`OPENAI_COMPAT_BASE_URL` 要填写 API 根路径，而不是站点首页。当前 provider 会自动拼接 `/chat/completions`，所以兼容 OpenAI 的网关通常需要带上 `/v1` 后缀。
-
-如果你在联调真实网关，建议把 `OPENAI_COMPAT_MOCK_FALLBACK=false`，这样接口报错时不会被静默替换成 mock 剧本或分镜。
-
-## 存储模式
-### 本地存储
-
-设置：
-
-```env
-STORAGE_DRIVER=local
-```
-
-此模式下，生成文件和上传资源会写入：
-
-- `apps/api/uploads`
-
-适合：
-
-- 本地开发
-- 轻量私有化部署
-- 调试上传与媒体生成链路
-
-### S3 兼容对象存储
-
-设置：
-
-```env
-STORAGE_DRIVER=s3
-```
-
-并配置：
-
+- `STORAGE_DRIVER`：`local` 或 `s3`
+- `LOCAL_STORAGE_PUBLIC_URL`：本地文件公开访问前缀
 - `S3_ENDPOINT`
 - `S3_REGION`
 - `S3_BUCKET`
 - `S3_ACCESS_KEY`
 - `S3_SECRET_KEY`
 
-适合：
+### 文本与媒体 Provider 配置
 
-- 生产环境
-- 多实例部署
-- 需要更强扩展性、备份能力与 CDN 集成的场景
+图片任务既可以走团队/个人图片配置对应的原生 Google Gemini 图片生成，也可以在未指定图片配置来源时退回旧的 OpenAI 兼容链路。
+
+- `OPENAI_COMPAT_BASE_URL`
+- `OPENAI_COMPAT_API_KEY`
+- `OPENAI_TEXT_MODEL`
+- `OPENAI_COMPAT_MOCK_FALLBACK`
+- `GOOGLE_IMAGE_API_KEY`
+- `GOOGLE_IMAGE_MODEL`
+- `GOOGLE_IMAGE_BASE_URL`
+- `MEDIA_IMAGE_MODEL`
+- `MEDIA_VIDEO_MODEL`
+
+### TTS
+
+这些变量会被 API 的 TTS 适配层读取，视你当前分支状态，可能还没有同步写入 `.env.example`：
+
+- `OPENAI_BASE_URL`
+- `OPENAI_API_KEY`
+- `OPENAI_TTS_MODEL`
+
+### 导出与 Worker 覆盖项
+
+这些也是运行时代码会读取、但未必已经写进 `.env.example` 的变量：
+
+- `FFMPEG_PATH`
+- `EXPORT_KEEP_TEMP`
+- `WORKER_POLL_INTERVAL_MS`
+- `DRAMAFLOW_START_INLINE`
+- `DRAMAFLOW_START_TIMEOUT_MS`
 
 ## Docker Compose
 
-仓库提供了基础的 `docker-compose.yml`，可用于快速拉起：
+仓库内提供了偏演示 / 开发用途的 `docker-compose.yml`，会启动：
 
 - Web
 - API
 - Worker
 - MinIO
 
-执行：
+运行方式：
 
 ```bash
 docker compose up --build
 ```
 
-说明：
+需要注意：
 
-- 当前 Compose 更偏开发与演示用途
-- 如果要用于正式环境，建议单独完善镜像构建、环境变量、数据库方案与队列基础设施
+- Compose 使用的是 `npm run dev:*`，定位是开发和演示，不是加固后的生产部署方案。
+- 当前提交的 Compose 仍然给 API 和 Worker 设置了 `STORAGE_DRIVER=local`，所以 MinIO 默认并不会成为实际存储后端。
+- 当前提交的 Compose 默认只透传了部分 Provider 配置。如果你希望 API 走真实 Provider 而不是 mock fallback，还需要把相关 Provider 变量一并注入 API 容器。
 
-## API 与数据层说明
+## 常用命令
 
-### 当前运行时数据层
+```bash
+# 构建全部包
+npm run build
 
-当前 API 在开发态通过 `apps/api/src/common/dev-database.service.ts` 读写 JSON 文件，因此无需真实数据库也能快速启动。
+# 分别启动服务
+npm --workspace @dramaflow/api run start
+npm --workspace @dramaflow/web run start
+npm --workspace @dramaflow/worker run start
 
-### 目标生产数据层
+# 开发模式
+npm run dev:api
+npm run dev:web
+npm run dev:worker
 
-`apps/api/prisma/schema.prisma` 定义了未来的 PostgreSQL / Prisma 数据模型，包括：
+# 工作区类型检查
+npm run lint
 
-- 用户
-- 团队
-- 项目
-- 文档
-- 版本
-- 评论
-- 任务
-- 资产
+# 工作区测试
+npm test
+```
 
-如果后续要继续生产化，推荐优先做：
+补充说明：
 
-1. 将 `DevDatabaseService` 替换为 Prisma Repository
-2. 将 Worker 从轮询迁移到 Redis / BullMQ
-3. 接入真实图片 / 视频 Provider
+- `npm run lint` 当前实际是分发到各 workspace 的 `tsc --noEmit`，并不是 ESLint 检查。
+- `npm test` 当前只会运行声明了 `test` 脚本的包，也就是 API 和 shared，不包含 web 与 worker。
 
-## AI 能力说明
+## 开发说明
 
-### 文本生成
+- 仓库内所有文件必须统一使用 UTF-8 无 BOM。
+- `packages/shared` 是跨端领域类型与业务规则的唯一真相源。
+- 保持 controller 轻量，把业务逻辑放在 service 中。
+- 保持 Next.js `page.tsx` 足够薄，把较重的 UI 逻辑下沉到 `components`。
+- 如果修改影响 API payload，必须同步更新 shared 合同、API 处理、前端调用方和 Worker 行为。
+- 如果修改影响审核逻辑、状态流转或权限判断，优先检查 `packages/shared/src/business-rules.ts`。
+- 只要更新 `README.md`，就必须同步更新 `README_ZH.md`。
 
-当前文本能力通过 OpenAI 兼容 Provider 抽象接入，可用于：
+## 建议阅读顺序
 
-- 剧本生成
-- 分镜生成
-
-如果未配置真实 API Key，会回退到 mock 数据，方便本地联调。
-
-当前 provider 会请求 `{OPENAI_COMPAT_BASE_URL}/chat/completions`，携带 `response_format: { type: "json_object" }`，并且现在同时支持普通 JSON 响应和 `text/event-stream` 形式的流式聊天补全响应。
-
-如果你要复用这次验证通过的 `https://new-api.ms-egde.de5.net` 网关，请把 `OPENAI_COMPAT_BASE_URL` 设为 `https://new-api.ms-egde.de5.net/v1`。想先快速测通文本链路时，优先用 `moonshotai/kimi-k2-instruct`，不要直接沿用仓库默认的 `gpt-4.1-mini`；如果想看到真实报错而不是 mock 结果，再把 `OPENAI_COMPAT_MOCK_FALLBACK=false`。
-
-### 图片生成
-
-当前图片生成支持：
-
-- 真实接口接入位点
-- 未配置时生成 mock SVG 结果
-
-### 视频生成
-
-当前视频生成默认使用 mock manifest 结果，主要用于先打通工作流和版本链路。
-
-## 推荐阅读顺序
-
-如果你准备继续开发，建议先看：
+如果你要继续开发这个仓库，建议按下面顺序进入代码：
 
 1. `README.md`
 2. `README_ZH.md`
 3. `package.json`
-4. `packages/shared/src/domain.ts`
-5. `packages/shared/src/business-rules.ts`
-6. `apps/api/src/workspace/workspace.service.ts`
-7. `apps/api/src/jobs/jobs.service.ts`
-8. `apps/web/components/project-workspace.tsx`
-9. `apps/web/lib/api.ts`
+4. `tsconfig.base.json`
+5. `packages/shared/src/domain.ts`
+6. `packages/shared/src/business-rules.ts`
+7. `apps/api/src/workspace/workspace.service.ts`
+8. `apps/api/src/jobs/jobs.service.ts`
+9. `apps/web/components/unified-workspace.tsx`
+10. `apps/web/lib/api.ts`
 
-## 开发约定
+## 官方参考
 
-- 仓库内所有文件必须使用 UTF-8 编码且无 BOM
-- 新增跨端模型时，优先放到 `packages/shared`
-- 保持 controller 轻量，把业务逻辑放在 service
-- 保持 Next.js page 文件轻量，复杂 UI 下沉到 `components`
-- 修改权限、审核、版本状态流转时，优先检查 shared 规则层
-- 更新 `README.md` 时必须同步更新 `README_ZH.md`，反之亦然
+这次更新项目文档时，以下上游资料最有帮助：
 
-## 后续建议
-
-如果你想把这个项目继续推进到可上线状态，优先级最高的方向是：
-
-1. Prisma + PostgreSQL 运行时落地
-2. Redis / BullMQ 队列基础设施
-3. 更完整的成员与邀请流程
-4. 真实上传链路与媒体生成生产管线
-5. 更细化的后台工具与审计日志
+- Next.js App Router：<https://nextjs.org/docs/app>
+- React 19：<https://react.dev/blog/2024/12/05/react-19>
+- NestJS 文档：<https://docs.nestjs.com>
+- NestJS WebSocket gateways：<https://docs.nestjs.com/websockets/gateways>
+- Socket.IO client options 与 auth：<https://socket.io/docs/v4/client-options/>
+- npm workspaces：<https://docs.npmjs.com/cli/using-npm/workspaces/>
+- Prisma schema 概览：<https://www.prisma.io/docs/orm/prisma-schema/overview>
+- Google Gemini 图片生成：<https://ai.google.dev/gemini-api/docs/image-generation>
+- Google Gemini OpenAI 兼容层：<https://ai.google.dev/gemini-api/docs/openai>
+- OpenAI 图片生成：<https://developers.openai.com/api/docs/guides/image-generation>
+- OpenAI 文本转语音：<https://developers.openai.com/api/docs/guides/text-to-speech>
 
 ## License
 
-当前仓库尚未单独声明 License。如果后续计划开源或商用分发，请补充明确的许可文件。
+当前仓库尚未声明独立 license。若后续要开源或商业分发，请先补充明确的许可证文件。

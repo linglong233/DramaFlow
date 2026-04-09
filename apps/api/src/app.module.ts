@@ -8,6 +8,8 @@ import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { CommonModule } from "./common/common.module";
 import { JobsModule } from "./jobs/jobs.module";
+import { NotificationModule } from "./notifications/notification.module";
+import { RealtimeModule } from "./realtime/realtime.module";
 import { StorageModule } from "./storage/storage.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 
@@ -28,7 +30,9 @@ const uploadsDir = process.env.UPLOADS_DIR ?? "apps/api/uploads";
     WorkspaceModule,
     JobsModule,
     StorageModule,
+    RealtimeModule,
     AdminModule,
+    NotificationModule,
   ],
   controllers: [AppController],
 })

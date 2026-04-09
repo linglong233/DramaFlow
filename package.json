@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "node scripts/build-workspace.mjs",
     "dev:api": "npm --workspace @dramaflow/api run start:dev",
     "dev:web": "npm --workspace @dramaflow/web run dev",
     "dev:worker": "npm --workspace @dramaflow/worker run dev",

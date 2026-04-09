@@ -1,7 +1,6 @@
-import { use } from "react";
-import { ProjectDrafts } from "../../../../components/project-drafts";
+import { redirect } from "next/navigation";
 
-export default function ProjectDraftsPage(props: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = use(props.params);
-  return <ProjectDrafts projectId={projectId} />;
+export default async function ProjectDraftsPage(props: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await props.params;
+  redirect(`/projects/${projectId}/workspace?mode=document`);
 }

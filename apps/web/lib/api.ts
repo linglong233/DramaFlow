@@ -213,3 +213,105 @@ export function formatApiError(
 
   return t(fallbackKey, fallbackParams);
 }
+
+// ===== SSE Streaming =====
+
+export interface StreamChunk {
+  type: "chunk" | "done" | "error";
+  content?: string;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
+export async function* apiStreamFetch(
+  path: string,
+  init: ApiFetchInit = {},
+): AsyncGenerator<StreamChunk> {
+  const session = readSession();
+  const headers = new Headers(init.headers ?? {});
+
+  if (!headers.has("content-type") && isSerializableBody(init.body)) {
+    headers.set("content-type", "application/json");
+  }
+
+  if (session?.accessToken) {
+    headers.set("authorization", `Bearer ${session.accessToken}`);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      headers,
+      body: isSerializableBody(init.body) ? JSON.stringify(init.body) : init.body,
+    });
+  } catch (error) {
+    yield { type: "error", error: error instanceof Error ? error.message : "Network error" };
+    return;
+  }
+
+  if (!response.ok) {
+    const details = await response.text();
+    const extracted = extractMessage(response.status, details);
+
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      clearSession();
+      redirectToLogin();
+    }
+
+    yield { type: "error", error: extracted.message || `HTTP ${response.status}` };
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    yield { type: "error", error: "Response body is not readable" };
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+
+        try {
+          const parsed = JSON.parse(payload) as StreamChunk;
+          yield parsed;
+        } catch {
+          // skip unparseable events
+        }
+      }
+    }
+
+    // Process remaining buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith("data:")) {
+        const payload = trimmed.slice(5).trim();
+        if (payload && payload !== "[DONE]") {
+          try {
+            yield JSON.parse(payload) as StreamChunk;
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}

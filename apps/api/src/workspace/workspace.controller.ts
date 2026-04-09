@@ -1,42 +1,40 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Inject,
   Param,
   Patch,
   Post,
+  Put,
+  Query,
   UseGuards,
 } from "@nestjs/common";
+import type { AuditContentType, DocumentType, ExportFormat, ProjectRole, TimelineTrackRecord } from "@dramaflow/shared";
 
 import { CurrentUser } from "../common/current-user.decorator";
 import { AuthGuard } from "../common/auth.guard";
+import { AuditService } from "./audit.service";
 import { WorkspaceService } from "./workspace.service";
 
 @Controller()
 @UseGuards(AuthGuard)
 export class WorkspaceController {
-  constructor(@Inject(WorkspaceService) private readonly workspaceService: WorkspaceService) {
-    this.listTeams = this.listTeams.bind(this);
-    this.createTeam = this.createTeam.bind(this);
-    this.addTeamMember = this.addTeamMember.bind(this);
-    this.listProjects = this.listProjects.bind(this);
-    this.createProject = this.createProject.bind(this);
-    this.getProject = this.getProject.bind(this);
-    this.updateReviewPolicy = this.updateReviewPolicy.bind(this);
-    this.inviteProjectMember = this.inviteProjectMember.bind(this);
-    this.listVersions = this.listVersions.bind(this);
-    this.createVersion = this.createVersion.bind(this);
-    this.submitVersion = this.submitVersion.bind(this);
-    this.approveVersion = this.approveVersion.bind(this);
-    this.rejectVersion = this.rejectVersion.bind(this);
-    this.listComments = this.listComments.bind(this);
-    this.addComment = this.addComment.bind(this);
-  }
+  constructor(
+    @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
+    @Inject(AuditService) private readonly auditService: AuditService,
+  ) {}
 
   @Get("teams")
   listTeams(@CurrentUser() user: { id: string }) {
     return this.workspaceService.listTeams(user.id);
+  }
+
+  @Get("teams/:id")
+  getTeam(@CurrentUser() user: { id: string }, @Param("id") teamId: string) {
+    return this.workspaceService.getTeam(user.id, teamId);
   }
 
   @Post("teams")
@@ -45,6 +43,34 @@ export class WorkspaceController {
     @Body() body: { name: string; slug?: string; defaultReviewPolicy?: "required" | "bypass" },
   ) {
     return this.workspaceService.createTeam(user.id, body);
+  }
+
+  @Patch("teams/:id")
+  updateTeam(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+    @Body() body: { name: string; defaultReviewPolicy: "required" | "bypass"; llmConfig?: import("@dramaflow/shared").LlmProviderConfig; imageGenerationConfig?: import("@dramaflow/shared").ImageGenerationConfig },
+  ) {
+    return this.workspaceService.updateTeam(user.id, teamId, body);
+  }
+
+  @Delete("teams/:id")
+  @HttpCode(204)
+  deleteTeam(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+  ) {
+    return this.workspaceService.deleteTeam(user.id, teamId);
+  }
+
+  @Post("teams/:id/llm-models")
+  @HttpCode(200)
+  listTeamLlmModels(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+    @Body() body?: { llmConfig?: import("@dramaflow/shared").LlmProviderConfig },
+  ) {
+    return this.workspaceService.listTeamLlmModels(user.id, teamId, body?.llmConfig);
   }
 
   @Post("teams/:id/members")
@@ -56,6 +82,69 @@ export class WorkspaceController {
     return this.workspaceService.addTeamMember(user.id, teamId, body);
   }
 
+  @Delete("teams/:teamId/members/:memberId")
+  @HttpCode(204)
+  removeTeamMember(
+    @CurrentUser() user: { id: string },
+    @Param("teamId") teamId: string,
+    @Param("memberId") memberId: string,
+  ) {
+    return this.workspaceService.removeTeamMember(user.id, teamId, memberId);
+  }
+
+  @Patch("teams/:teamId/members/:memberId")
+  updateTeamMemberRole(
+    @CurrentUser() user: { id: string },
+    @Param("teamId") teamId: string,
+    @Param("memberId") memberId: string,
+    @Body() body: { role: "tenant_owner" | "tenant_admin" | "member" },
+  ) {
+    return this.workspaceService.updateTeamMemberRole(user.id, teamId, memberId, body.role);
+  }
+
+  @Post("teams/:id/invite-links")
+  createTeamInviteLink(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+    @Body() body: { role: "tenant_owner" | "tenant_admin" | "member"; maxUses?: number; expiresInHours?: number },
+  ) {
+    return this.workspaceService.createTeamInviteLink(user.id, teamId, body);
+  }
+
+  @Get("teams/:id/invite-links")
+  listTeamInviteLinks(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+  ) {
+    return this.workspaceService.listTeamInviteLinks(user.id, teamId);
+  }
+
+  @Delete("teams/:teamId/invite-links/:linkId")
+  @HttpCode(204)
+  revokeTeamInviteLink(
+    @CurrentUser() user: { id: string },
+    @Param("teamId") teamId: string,
+    @Param("linkId") linkId: string,
+  ) {
+    return this.workspaceService.revokeTeamInviteLink(user.id, teamId, linkId);
+  }
+
+  @Get("invite-links/:token")
+  getInviteLinkInfo(
+    @CurrentUser() user: { id: string },
+    @Param("token") token: string,
+  ) {
+    return this.workspaceService.getTeamInviteLinkInfo(token);
+  }
+
+  @Post("invite-links/:token/accept")
+  acceptInviteLink(
+    @CurrentUser() user: { id: string },
+    @Param("token") token: string,
+  ) {
+    return this.workspaceService.acceptTeamInviteLink(user.id, token);
+  }
+
   @Get("projects")
   listProjects(@CurrentUser() user: { id: string }) {
     return this.workspaceService.listProjects(user.id);
@@ -64,7 +153,7 @@ export class WorkspaceController {
   @Post("projects")
   createProject(
     @CurrentUser() user: { id: string },
-    @Body() body: { teamId?: string; name: string; description?: string; reviewPolicyMode?: "inherit" | "required" | "bypass" },
+    @Body() body: { teamId?: string; name: string; description?: string; genre?: string; coverUrl?: string; status?: import("@dramaflow/shared").ProjectStatus; reviewPolicyMode?: "inherit" | "required" | "bypass" },
   ) {
     return this.workspaceService.createProject(user.id, body);
   }
@@ -72,6 +161,21 @@ export class WorkspaceController {
   @Get("projects/:id")
   getProject(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
     return this.workspaceService.getProject(user.id, projectId);
+  }
+
+  @Get("projects/:id/versions")
+  listProjectVersions(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
+    return this.workspaceService.listProjectVersions(user.id, projectId);
+  }
+
+  @Get("project-invites/pending")
+  listPendingProjectInvites(@CurrentUser() user: { id: string }) {
+    return this.workspaceService.listPendingProjectInvites(user.id);
+  }
+
+  @Post("project-invites/:id/accept")
+  acceptProjectInvite(@CurrentUser() user: { id: string }, @Param("id") inviteId: string) {
+    return this.workspaceService.acceptProjectInvite(user.id, inviteId);
   }
 
   @Patch("projects/:id/review-policy")
@@ -83,6 +187,24 @@ export class WorkspaceController {
     return this.workspaceService.updateProjectReviewPolicy(user.id, projectId, body.reviewPolicyMode);
   }
 
+  @Patch("projects/:id")
+  updateProject(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { name?: string; description?: string; genre?: string; coverUrl?: string; status?: import("@dramaflow/shared").ProjectStatus; reviewPolicyMode?: "inherit" | "required" | "bypass" },
+  ) {
+    return this.workspaceService.updateProject(user.id, projectId, body);
+  }
+
+  @Delete("projects/:id")
+  @HttpCode(204)
+  deleteProject(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+  ) {
+    return this.workspaceService.deleteProject(user.id, projectId);
+  }
+
   @Post("projects/:id/invites")
   inviteProjectMember(
     @CurrentUser() user: { id: string },
@@ -92,9 +214,27 @@ export class WorkspaceController {
     return this.workspaceService.inviteProjectMember(user.id, projectId, body);
   }
 
+  @Post("projects/:id/members")
+  addProjectMember(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { email: string; role: "project_admin" | "director" | "writer" | "artist" | "reviewer" | "viewer" },
+  ) {
+    return this.workspaceService.addProjectMember(user.id, projectId, body);
+  }
+
   @Get("documents/:id/versions")
   listVersions(@CurrentUser() user: { id: string }, @Param("id") documentId: string) {
     return this.workspaceService.listVersions(user.id, documentId);
+  }
+
+  @Post("documents/:id/adopt-version")
+  adoptVersion(
+    @CurrentUser() user: { id: string },
+    @Param("id") documentId: string,
+    @Body() body: { versionId: string },
+  ) {
+    return this.workspaceService.adoptDocumentVersion(user.id, documentId, body.versionId);
   }
 
   @Post("documents/:id/versions")
@@ -112,13 +252,26 @@ export class WorkspaceController {
   }
 
   @Post("versions/:id/approve")
-  approveVersion(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
-    return this.workspaceService.approveVersion(user.id, versionId);
+  approveVersion(
+    @CurrentUser() user: { id: string },
+    @Param("id") versionId: string,
+    @Body() body?: { comment?: string },
+  ) {
+    return this.workspaceService.approveVersion(user.id, versionId, body?.comment);
   }
 
   @Post("versions/:id/reject")
-  rejectVersion(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
-    return this.workspaceService.rejectVersion(user.id, versionId);
+  rejectVersion(
+    @CurrentUser() user: { id: string },
+    @Param("id") versionId: string,
+    @Body() body?: { comment?: string },
+  ) {
+    return this.workspaceService.rejectVersion(user.id, versionId, body?.comment);
+  }
+
+  @Post("versions/:id/restore")
+  restoreVersion(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
+    return this.workspaceService.restoreVersion(user.id, versionId);
   }
 
   @Get("versions/:id/comments")
@@ -130,8 +283,171 @@ export class WorkspaceController {
   addComment(
     @CurrentUser() user: { id: string },
     @Param("id") versionId: string,
-    @Body() body: { body: string; anchorType: "document" | "scene" | "shot" | "asset"; anchorId?: string },
+    @Body() body: { body: string; parentId?: string; anchorType: "document" | "scene" | "shot" | "asset"; anchorId?: string },
   ) {
     return this.workspaceService.addComment(user.id, versionId, body);
+  }
+
+  @Get("projects/:id/world-bible")
+  getWorldBible(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
+    return this.workspaceService.getWorldBible(user.id, projectId);
+  }
+
+  @Patch("projects/:id/world-bible")
+  updateWorldBible(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { characters?: unknown[]; locations?: unknown[]; styleGuide?: unknown },
+  ) {
+    return this.workspaceService.updateWorldBible(user.id, projectId, body as import("@dramaflow/shared").WorldBibleContent);
+  }
+
+  @Post("projects/:id/world-bible/characters")
+  addCharacter(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { name: string; appearance: string; personality?: string; tags?: string[]; referenceImages?: string[]; costumes?: Record<string, string> },
+  ) {
+    return this.workspaceService.addCharacter(user.id, projectId, body);
+  }
+
+  @Patch("projects/:projectId/world-bible/characters/:characterId")
+  updateCharacter(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("characterId") characterId: string,
+    @Body() body: { name?: string; appearance?: string; personality?: string; tags?: string[]; referenceImages?: string[]; costumes?: Record<string, string> },
+  ) {
+    return this.workspaceService.updateCharacter(user.id, projectId, characterId, body);
+  }
+
+  @Delete("projects/:projectId/world-bible/characters/:characterId")
+  @HttpCode(204)
+  deleteCharacter(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("characterId") characterId: string,
+  ) {
+    return this.workspaceService.deleteCharacter(user.id, projectId, characterId);
+  }
+
+  @Post("projects/:id/world-bible/locations")
+  addLocation(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { name: string; description: string; lighting?: string; timeOfDay?: string; referenceImages?: string[] },
+  ) {
+    return this.workspaceService.addLocation(user.id, projectId, body);
+  }
+
+  @Patch("projects/:projectId/world-bible/locations/:locationId")
+  updateLocation(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("locationId") locationId: string,
+    @Body() body: { name?: string; description?: string; lighting?: string; timeOfDay?: string; referenceImages?: string[] },
+  ) {
+    return this.workspaceService.updateLocation(user.id, projectId, locationId, body);
+  }
+
+  @Delete("projects/:projectId/world-bible/locations/:locationId")
+  @HttpCode(204)
+  deleteLocation(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("locationId") locationId: string,
+  ) {
+    return this.workspaceService.deleteLocation(user.id, projectId, locationId);
+  }
+
+  @Patch("projects/:id/world-bible/style-guide")
+  updateStyleGuide(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { visualStyle: string; colorPalette?: string; compositionNote?: string; negativePrompt?: string; referenceImages?: string[] },
+  ) {
+    return this.workspaceService.updateStyleGuide(user.id, projectId, body);
+  }
+
+  // ===== Audit Config =====
+
+  @Get("projects/:id/audit-configs")
+  getAuditConfigs(
+    @Param("id") projectId: string,
+  ) {
+    return this.auditService.getAuditConfigs(projectId);
+  }
+
+  @Patch("projects/:id/audit-configs/:contentType")
+  upsertAuditConfig(
+    @Param("id") projectId: string,
+    @Param("contentType") contentType: AuditContentType,
+    @Body() body: { reviewRequired: boolean; autoApproveRoles?: ProjectRole[] },
+  ) {
+    return this.auditService.upsertAuditConfig(projectId, contentType, body);
+  }
+
+  @Get("projects/:id/audit-records")
+  listAuditRecords(
+    @Param("id") projectId: string,
+    @Query("type") type?: DocumentType,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.auditService.listAuditRecords(projectId, {
+      type,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
+
+  @Get("versions/:id/audit-records")
+  getVersionAuditRecords(
+    @Param("id") versionId: string,
+  ) {
+    return this.auditService.getAuditRecordsForVersion(versionId);
+  }
+
+  // ===== Timeline =====
+
+  @Get("projects/:id/timeline")
+  getTimeline(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
+    return this.workspaceService.getTimeline(user.id, projectId);
+  }
+
+  @Put("projects/:id/timeline")
+  saveTimeline(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { duration: number; fps: number; resolution: string; tracks: TimelineTrackRecord[] },
+  ) {
+    return this.workspaceService.saveTimeline(user.id, projectId, body);
+  }
+
+  @Post("projects/:id/timeline/auto-assemble")
+  autoAssembleTimeline(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+  ) {
+    return this.workspaceService.autoAssembleTimeline(user.id, projectId);
+  }
+
+  // ===== Voice Config =====
+
+  @Patch("projects/:projectId/world-bible/characters/:characterId/voice")
+  updateCharacterVoice(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("characterId") characterId: string,
+    @Body() body: { ttsProvider: string; voiceId: string; voiceName: string; settings?: { speed?: number; emotion?: string; volume?: number } },
+  ) {
+    return this.workspaceService.updateCharacterVoice(user.id, projectId, characterId, body);
+  }
+
+  // ===== Exports =====
+
+  @Get("projects/:id/exports")
+  listExports(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
+    return this.workspaceService.listExports(user.id, projectId);
   }
 }

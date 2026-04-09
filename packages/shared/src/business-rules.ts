@@ -1,5 +1,7 @@
 import type {
   AccessContext,
+  AuditConfigRecord,
+  AuditContentType,
   ProjectRole,
   ReviewPolicyMode,
   TeamRole,
@@ -53,10 +55,71 @@ export function canManageTenant(context: AccessContext): boolean {
   return context.globalRole === "platform_super_admin" || context.teamRoles.some((role) => TEAM_ADMIN_ROLES.includes(role));
 }
 
+export function canRemoveTeamMember(context: AccessContext, targetRole: TeamRole): boolean {
+  if (context.globalRole === "platform_super_admin") {
+    return true;
+  }
+  if (targetRole === "tenant_owner") {
+    return false;
+  }
+  return context.teamRoles.some((role) => TEAM_ADMIN_ROLES.includes(role));
+}
+
+export function canChangeTeamMemberRole(context: AccessContext, currentRole: TeamRole, newRole: TeamRole): boolean {
+  if (context.globalRole === "platform_super_admin") {
+    return true;
+  }
+  if (currentRole === "tenant_owner" || newRole === "tenant_owner") {
+    return context.teamRoles.includes("tenant_owner");
+  }
+  return context.teamRoles.some((role) => TEAM_ADMIN_ROLES.includes(role));
+}
+
 export function canEditProject(context: AccessContext): boolean {
   return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => PROJECT_EDITOR_ROLES.includes(role));
 }
 
 export function canReviewProject(context: AccessContext): boolean {
   return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => PROJECT_REVIEW_ROLES.includes(role));
+}
+
+export function resolveContentReviewRequired(
+  teamDefaultPolicy: Exclude<ReviewPolicyMode, "inherit">,
+  projectPolicy: ReviewPolicyMode,
+  auditConfigs: AuditConfigRecord[],
+  contentType: AuditContentType,
+): boolean {
+  const config = auditConfigs.find((c) => c.contentType === contentType);
+  if (config) {
+    return config.reviewRequired;
+  }
+  return resolveReviewRequired(teamDefaultPolicy, projectPolicy);
+}
+
+export function canAutoApprove(
+  auditConfigs: AuditConfigRecord[],
+  contentType: AuditContentType,
+  userRoles: ProjectRole[],
+): boolean {
+  const config = auditConfigs.find((c) => c.contentType === contentType);
+  if (!config || config.autoApproveRoles.length === 0) {
+    return false;
+  }
+  return userRoles.some((role) => config.autoApproveRoles.includes(role));
+}
+
+const JOB_MANAGEMENT_ROLES: ProjectRole[] = ["project_admin", "director"];
+
+export function canManageJobs(context: AccessContext): boolean {
+  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => JOB_MANAGEMENT_ROLES.includes(role));
+}
+
+const TIMELINE_EDITOR_ROLES: ProjectRole[] = ["project_admin", "director"];
+
+export function canEditTimeline(context: AccessContext): boolean {
+  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => TIMELINE_EDITOR_ROLES.includes(role));
+}
+
+export function canExportProject(context: AccessContext): boolean {
+  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => TIMELINE_EDITOR_ROLES.includes(role));
 }

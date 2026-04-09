@@ -18,11 +18,7 @@ import { StorageService } from "./storage.service";
 
 @Controller()
 export class UploadsController {
-  constructor(@Inject(StorageService) private readonly storageService: StorageService) {
-    this.createUploadTarget = this.createUploadTarget.bind(this);
-    this.directUpload = this.directUpload.bind(this);
-    this.getAssetUrl = this.getAssetUrl.bind(this);
-  }
+  constructor(@Inject(StorageService) private readonly storageService: StorageService) {}
 
   @Post("uploads")
   @UseGuards(AuthGuard)
@@ -34,12 +30,17 @@ export class UploadsController {
   }
 
   @Put("uploads/direct/:key")
+  @UseGuards(AuthGuard)
   async directUpload(
     @Param("key") key: string,
     @Headers("content-type") contentType: string,
     @Req() request: Request & { body: Buffer },
   ) {
-    return this.storageService.finalizeDirectUpload(decodeURIComponent(key), contentType ?? "application/octet-stream", request.body);
+    const decodedKey = decodeURIComponent(key);
+    if (decodedKey.includes("..") || decodedKey.startsWith("/")) {
+      throw new (await import("@nestjs/common")).BadRequestException("Invalid upload key");
+    }
+    return this.storageService.finalizeDirectUpload(decodedKey, contentType ?? "application/octet-stream", request.body);
   }
 
   @Get("assets/:id/url")

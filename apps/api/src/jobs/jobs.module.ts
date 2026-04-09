@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module";
 import { CommonModule } from "../common/common.module";
+import { NotificationModule } from "../notifications/notification.module";
+import { RealtimeModule } from "../realtime/realtime.module";
 import { StorageModule } from "../storage/storage.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import { InternalJobsController } from "./internal-jobs.controller";
@@ -9,11 +11,15 @@ import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { OpenAiCompatTextProvider } from "./text-generation.provider";
+import { PromptBuilderService } from "./prompt-builder.service";
+import { TTSProviderService } from "./tts.provider";
+import { ExportService } from "./export.service";
+import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 
 @Module({
-  imports: [CommonModule, AuthModule, WorkspaceModule, StorageModule],
+  imports: [CommonModule, AuthModule, WorkspaceModule, StorageModule, NotificationModule, RealtimeModule],
   controllers: [JobsController, InternalJobsController],
-  providers: [JobsService, OpenAiCompatTextProvider, OpenAiMediaProvider],
-  exports: [JobsService],
+  providers: [JobsService, OpenAiCompatTextProvider, OpenAiMediaProvider, GoogleGeminiImageProvider, PromptBuilderService, TTSProviderService, ExportService],
+  exports: [JobsService, PromptBuilderService],
 })
 export class JobsModule {}

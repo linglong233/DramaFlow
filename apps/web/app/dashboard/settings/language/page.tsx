@@ -8,9 +8,9 @@ export default function DashboardLanguageSettingsPage() {
   const { t } = useI18n();
   return (
     <>
-      <PageHeader kicker="Preferences" title={t("nav.language") || "Language Settings"} description="Manage your preferred language for the interface." />
+      <PageHeader kicker={t("settingsPages.language.kicker")} title={t("nav.language")} description={t("settingsPages.language.description")} />
       <div className="card card-sm">
-        <h3 className="heading-6" style={{ marginBottom: "16px" }}>Select Language</h3>
+        <h3 className="heading-6" style={{ marginBottom: "16px" }}>{t("settingsPages.language.selectorTitle")}</h3>
         <LanguageSwitcher />
       </div>
     </>

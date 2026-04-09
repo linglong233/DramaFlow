@@ -28,6 +28,10 @@ export class LocalStorageProvider implements StorageProvider {
     return `${this.publicBaseUrl}/${key}`;
   }
 
+  async readObject(key: string): Promise<Uint8Array> {
+    return readFile(this.resolvePath(key));
+  }
+
   async deleteObject(key: string): Promise<void> {
     await rm(this.resolvePath(key), { force: true });
   }
@@ -54,10 +58,6 @@ export class LocalStorageProvider implements StorageProvider {
       },
       publicUrl: await this.getObjectUrl(input.key),
     };
-  }
-
-  async readObject(key: string): Promise<string> {
-    return readFile(this.resolvePath(key), "utf-8");
   }
 
   private resolvePath(key: string) {

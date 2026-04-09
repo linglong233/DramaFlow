@@ -1,123 +1,131 @@
 # DramaFlow
 
-DramaFlow is a short-drama generation platform for directors and studios, built with a full TypeScript stack. It includes a frontend workspace, backend API, async job worker, and shared cross-stack domain models and business rules.
+DramaFlow is a TypeScript monorepo for a director- and studio-facing short-drama workflow. The repository currently ships a runnable `web + api + worker + shared` stack for authentication, collaboration, AI-assisted writing, media generation, review and audit flows, TTS, timeline assembly, notifications, realtime updates, and dual storage backends.
 
-The repository already contains a runnable monorepo scaffold with authentication, team and project management, script and storyboard generation jobs, image and video generation jobs, version management, threaded discussion, review flow, and dual storage abstraction.
+## Overview
 
-## Features
-
-- User registration, login, token refresh, logout, forgot password, and password reset
-- Team / Project management
-- Four document domains: script, storyboard, image, and video
-- Immutable version snapshots with full history access
-- Version discussion threads and basic review workflow
-- OpenAI-compatible text generation integration
-- Media generation provider abstraction for images and videos
-- Dual storage implementation: local disk and S3-compatible object storage
-- Platform admin, team admin, and director workspace UI
-
-## Tech Stack
-
-- Language: TypeScript
 - Monorepo: `npm workspaces`
-- Node.js: `>= 24`
-- Frontend: Next.js 15 + React 19
+- Frontend: Next.js 15 + React 19 + App Router
 - Backend: NestJS 11
-- Shared types: `@dramaflow/shared`
-- Auth: JWT + Refresh Token + `argon2`
-- Storage:
-  - Local disk for development and lightweight deployments
-  - S3-compatible object storage for production-style deployments
-- Async jobs: polling-based worker
-- Target production data model: Prisma + PostgreSQL schema
+- Worker: polling worker that claims jobs from the API through internal endpoints
+- Shared contracts: `@dramaflow/shared`
+- Auth model: JWT access token + opaque refresh token stored as an argon2 hash
+- Runtime persistence: JSON files via `DevDatabaseService`
+- Target production model: Prisma schema for PostgreSQL
 
-## Repository Structure
+## Current State
 
-```text
-.
-├─ apps
-│  ├─ api        # NestJS API
-│  ├─ web        # Next.js frontend workspace and admin dashboards
-│  └─ worker     # Async job consumer
-├─ packages
-│  └─ shared     # Shared domain models, provider contracts, and business rules
-├─ docker-compose.yml
-├─ package.json
-└─ tsconfig.base.json
-```
+DramaFlow is development-ready, but it is not fully productionized yet.
 
-## Directory Guide
+- Runtime data access still uses the file-backed `DevDatabaseService`; Prisma is not wired into the live code path yet.
+- Background jobs still use the simplified polling worker + internal API flow; Redis / BullMQ is a future direction, not a current dependency.
+- The project workspace now uses split data loading: `GET /projects/:id` returns summary data, while versions, jobs, timeline, and exports refresh through dedicated endpoints.
+- Realtime delivery is available through a NestJS + Socket.IO gateway for `job.updated`, `review.updated`, and `notification.created`, with polling kept as the fallback path.
+- Text generation, image generation, video generation, and TTS can talk to configured providers, but mock fallback paths are still intentionally preserved so the product can run without external services.
+- Video export now uses FFmpeg when available and can fall back to a mock export artifact when explicitly allowed.
+
+## Architecture
 
 ### `apps/web`
 
-The frontend app built with Next.js App Router. It currently includes:
+The Next.js frontend includes:
 
-- Landing page
-- Login page
-- Director dashboard
-- Project workspace
-- Platform admin dashboard
-- Team admin dashboard
+- public routes for landing, login, forgot password, reset password, team invite acceptance, and project invite acceptance
+- protected dashboard routes for projects, platform admin, team admin, team settings, profile settings, language settings, and notifications
+- a unified project workspace at `/projects/[projectId]/workspace` with these modes:
+  - `info`
+  - `document`
+  - `worldbible`
+  - `generate`
+  - `media`
+  - `tasks`
+  - `timeline`
+- document version browsing, diffing, restore, and manual editing for script and storyboard content
+- review actions, threaded comments, audit support, and AI rewrite tools
+- SSE-based synopsis, script, storyboard, and rewrite generation
+- per-shot and batch image/video creation, media candidates, and explicit candidate adoption
+- world-bible character, location, style-guide, and character voice configuration UI with reference uploads and voice sample playback
+- timeline auto-assembly, save, export submission, and websocket-aware polling fallback
 
 ### `apps/api`
 
-The backend app built with NestJS, split into focused modules:
+The NestJS API includes:
 
-- `auth`: user authentication
-- `workspace`: teams, projects, documents, versions, comments, review flow
-- `jobs`: script / storyboard / image / video job orchestration
-- `storage`: uploads, asset URLs, local / S3 storage abstraction
-- `admin`: platform and team admin endpoints
-- `common`: development data store, auth guard, shared utilities
+- `/health` and Swagger docs at `/docs`
+- auth flows for register, login, refresh, logout, forgot password, reset password, profile updates, and per-user model listing
+- workspace flows for team CRUD, team members, team invite links, project CRUD, project invites, project invite acceptance, project members, document versions, threaded comments, review transitions, world-bible CRUD, audit configs, audit records, timeline save/auto-assemble, and export listing
+- dedicated workspace data endpoints for summary, versions, jobs, timeline, and exports
+- jobs for:
+  - script generation
+  - synopsis generation
+  - storyboard generation
+  - rewrite
+  - image generation
+  - video generation
+  - TTS generation
+  - export jobs
+- batch image/video jobs and scene-level batch TTS jobs
+- prompt preview endpoints
+- notifications APIs and realtime websocket events
+- storage APIs for direct upload targets and asset URLs
 
 ### `apps/worker`
 
-The async worker responsible for:
+The worker is intentionally lightweight:
 
-- claiming queued jobs from the API
-- processing script, storyboard, image, and video generation jobs
-- writing results back through the API data layer
+- it polls `GET /internal/jobs/next`
+- it triggers processing through `POST /internal/jobs/:id/process`
+- it retries through `POST /internal/jobs/:id/retry`
+- it does not contain generation business logic itself; execution remains in the API service layer
 
 ### `packages/shared`
 
-The shared package that centralizes:
+The shared package is the contract layer across the stack:
 
-- domain types
-- enums and status models
-- permission / review / transition rules
-- text and media provider interfaces
-- storage provider interfaces
+- domain types and enums
+- API contract types
+- provider interfaces
+- review, permission, job-management, timeline, and export business rules
 
-## Current Implementation Status
+## API Highlights
 
-This repository is already runnable as a development starting point, but it is not fully productionized yet.
+These are the most important workspace-facing surfaces right now:
 
-### What is already implemented
+- `GET /projects/:id`: workspace summary only
+- `GET /projects/:id/versions`: document versions payload
+- `GET /projects/:id/jobs`: task list payload
+- `GET /projects/:id/timeline`: timeline payload
+- `GET /projects/:id/exports`: export list payload
+- `POST /project-invites/:id/accept`: accept a pending project invite
+- `POST /scenes/:id/batch-tts-jobs`: generate TTS jobs for the shots in a scene
+- websocket events:
+  - `job.updated`
+  - `review.updated`
+  - `notification.created`
 
-- Monorepo project structure
-- Base frontend and backend flows
-- File-backed development data store
-- Text / media job model and worker flow
-- Local / S3 dual storage abstraction
-- Prisma production target schema
+## Repository Layout
 
-### What is still development-stage
-
-- Runtime persistence still uses `DevDatabaseService`, not live Prisma-backed storage
-- The worker is still polling-based, not BullMQ / Redis-based
-- Video generation is still mock-first, with the real provider integration point reserved
-- Admin panels and workspaces currently focus on core flows and scaffolding, not polished production UX
+```text
+.
+|-- apps
+|   |-- api
+|   |-- web
+|   `-- worker
+|-- packages
+|   `-- shared
+|-- scripts
+|-- README.md
+|-- README_ZH.md
+|-- package.json
+`-- tsconfig.base.json
+```
 
 ## Quick Start
 
-### Recommended startup mode
+### Requirements
 
-At the moment, the most reliable local startup flow is:
-
-1. `build`
-2. `start`
-
-The `dev` scripts still exist, but on Windows they can be unstable because of the current `tsx watch` / `next dev` runtime behavior. Use `build + start` when you want to test the product flow end to end.
+- Node.js `>=24`
+- npm
 
 ### 1. Install dependencies
 
@@ -125,25 +133,29 @@ The `dev` scripts still exist, but on Windows they can be unstable because of th
 npm install
 ```
 
-On Windows PowerShell, use `npm.cmd` if `npm` is blocked by execution policy:
+If PowerShell blocks `npm.ps1`, use:
 
 ```powershell
 npm.cmd install
 ```
 
-### 2. Configure environment variables
-
-Copy the environment template:
+### 2. Create `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-On Windows PowerShell:
+PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+At minimum, set secure values for:
+
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `INTERNAL_API_KEY`
 
 ### 3. Build the workspace
 
@@ -151,50 +163,11 @@ Copy-Item .env.example .env
 npm run build
 ```
 
-On Windows PowerShell:
+### 4. Start the services
 
-```powershell
-npm.cmd run build
-```
+Recommended local validation path:
 
-### 4. Start the services in separate terminals
-
-Start the API:
-
-```bash
-npm --workspace @dramaflow/api run start
-```
-
-Start the frontend:
-
-```bash
-npm --workspace @dramaflow/web run start
-```
-
-Start the worker:
-
-```bash
-npm --workspace @dramaflow/worker run start
-```
-
-On Windows PowerShell:
-
-```powershell
-npm.cmd --workspace @dramaflow/api run start
-npm.cmd --workspace @dramaflow/web run start
-npm.cmd --workspace @dramaflow/worker run start
-```
-
-### 5. Open the local URLs
-
-- Web: `http://localhost:3000`
-- Login: `http://localhost:3000/login`
-- API: `http://localhost:4000/health`
-- Swagger: `http://localhost:4000/docs`
-
-### One-click startup scripts
-
-If you want a one-click local startup flow, use the scripts in the repository root:
+- use the root launcher, which copies `.env` if missing, checks ports, builds the workspace, launches API/Web/Worker, and waits for readiness
 
 Windows:
 
@@ -208,124 +181,90 @@ macOS / Linux:
 bash ./start-all.sh
 ```
 
-What the scripts do:
-
-- copy `.env.example` to `.env` if `.env` does not exist yet
-- run `npm install` automatically when `node_modules` is missing
-- run a full `npm run build`
-- start API, Web, and Worker
-
-Behavior difference:
-
-- `start-all.bat` opens three separate terminal windows
-- `start-all.sh` keeps the current terminal attached and stops all three services when you press `Ctrl+C`
-
-## Common Commands
+Or start each service manually:
 
 ```bash
-# Build the whole monorepo
-npm run build
-
-# Start the API
 npm --workspace @dramaflow/api run start
-
-# Start the frontend
 npm --workspace @dramaflow/web run start
-
-# Start the worker
 npm --workspace @dramaflow/worker run start
+```
 
-# Development-only commands
+Development scripts also exist:
+
+```bash
 npm run dev:api
 npm run dev:web
 npm run dev:worker
-
-# Run type checks across the monorepo
-npm run lint
-
-# Run tests across the monorepo
-npm test
 ```
 
-## Local Run Notes
+### 5. Open the local URLs
 
-- If PowerShell reports that `npm.ps1` cannot run, use `npm.cmd` instead of `npm`.
-- The worker should log `idle` when there are no queued jobs. That is normal.
-- If `3000` or `4000` is already occupied, stop the old process before starting the services again.
-- For local manual testing, prefer `STORAGE_DRIVER=local` unless you are explicitly validating the S3-compatible mode.
-- The one-click shell script writes logs to `api.log`, `web.log`, and `worker.log`.
+- Web: `http://localhost:3000`
+- Login: `http://localhost:3000/login`
+- API health: `http://localhost:4000/health`
+- Swagger: `http://localhost:4000/docs`
 
 ## Environment Variables
 
-See [.env.example](./.env.example) for the full template.
+`.env.example` covers the main app, storage, OpenAI-compatible text/media settings, and Google Gemini image defaults. A few runtime variables are still code-level only, so treat the list below as the authoritative overview.
 
-Important values include:
+### Core app and auth
 
-- `APP_URL`: frontend URL
-- `API_URL`: backend URL
-- `NEXT_PUBLIC_API_URL`: public API URL used by the frontend
-- `DATA_DIR`: development data file directory
-- `UPLOADS_DIR`: local upload directory
-- `STORAGE_DRIVER`: storage driver, `local` or `s3`
-- `LOCAL_STORAGE_PUBLIC_URL`: public URL base for local file access
-- `JWT_ACCESS_SECRET`: access token secret
-- `JWT_REFRESH_SECRET`: refresh token secret
-- `OPENAI_COMPAT_BASE_URL`: base URL for OpenAI-compatible text APIs
-- `OPENAI_COMPAT_API_KEY`: API key for text generation
-- `OPENAI_TEXT_MODEL`: text model name
-- `OPENAI_COMPAT_MOCK_FALLBACK`: whether script and storyboard generation should fall back to mock data when the live provider fails or returns unparseable output
-- `MEDIA_IMAGE_MODEL`: image model name
-- `MEDIA_VIDEO_MODEL`: video model name
+- `APP_URL`: frontend origin used by the API for CORS
+- `API_URL`: backend origin used by the worker and startup scripts
+- `NEXT_PUBLIC_API_URL`: backend origin used by the web app
+- `PORT`: API or Web port override when starting services directly
+- `JWT_ACCESS_SECRET`: access-token signing secret
+- `JWT_REFRESH_SECRET`: startup-time production safety requirement
+- `INTERNAL_API_KEY`: shared secret for worker-to-API internal job endpoints
 
-`OPENAI_COMPAT_BASE_URL` should point at the API root, not the website homepage. The provider appends `/chat/completions` automatically, so OpenAI-compatible gateways usually need a `/v1` suffix.
+### Persistence and storage
 
-When you are debugging a real gateway integration, set `OPENAI_COMPAT_MOCK_FALLBACK=false` so provider errors surface instead of being silently replaced with mock script or storyboard data.
-
-## Storage Modes
-
-### Local storage
-
-Set:
-
-```env
-STORAGE_DRIVER=local
-```
-
-In this mode, generated assets and uploads are written to:
-
-- `apps/api/uploads`
-
-Best for:
-
-- local development
-- lightweight private deployment
-- upload and media pipeline debugging
-
-### S3-compatible object storage
-
-Set:
-
-```env
-STORAGE_DRIVER=s3
-```
-
-And configure:
-
+- `DATA_DIR`: directory for `dev-db.json`
+- `UPLOADS_DIR`: local uploads directory
+- `STORAGE_DRIVER`: `local` or `s3`
+- `LOCAL_STORAGE_PUBLIC_URL`: public base URL for locally served files
 - `S3_ENDPOINT`
 - `S3_REGION`
 - `S3_BUCKET`
 - `S3_ACCESS_KEY`
 - `S3_SECRET_KEY`
 
-Best for:
+### Text and media generation providers
 
-- production environments
-- multi-instance deployments
-- scenarios that need stronger scalability, backup, and CDN integration
+Image jobs can use either native Google Gemini image generation through the dedicated team/personal image config, or the legacy OpenAI-compatible fallback path when no explicit image config source is selected.
+
+- `OPENAI_COMPAT_BASE_URL`
+- `OPENAI_COMPAT_API_KEY`
+- `OPENAI_TEXT_MODEL`
+- `OPENAI_COMPAT_MOCK_FALLBACK`
+- `GOOGLE_IMAGE_API_KEY`
+- `GOOGLE_IMAGE_MODEL`
+- `GOOGLE_IMAGE_BASE_URL`
+- `MEDIA_IMAGE_MODEL`
+- `MEDIA_VIDEO_MODEL`
+
+### TTS
+
+These are used by the API TTS adapter and may still need to be added to `.env.example` depending on your local branch state:
+
+- `OPENAI_BASE_URL`
+- `OPENAI_API_KEY`
+- `OPENAI_TTS_MODEL`
+
+### Export and worker overrides
+
+These are also code-level runtime variables that may not yet be listed in `.env.example`:
+
+- `FFMPEG_PATH`
+- `EXPORT_KEEP_TEMP`
+- `WORKER_POLL_INTERVAL_MS`
+- `DRAMAFLOW_START_INLINE`
+- `DRAMAFLOW_START_TIMEOUT_MS`
 
 ## Docker Compose
 
-The repository includes a basic `docker-compose.yml` for quickly bringing up:
+The repository includes a demo-oriented `docker-compose.yml` that starts:
 
 - Web
 - API
@@ -338,95 +277,81 @@ Run:
 docker compose up --build
 ```
 
+Important caveats:
+
+- Compose uses `npm run dev:*`, so it is aimed at development and demos, not hardened production deployment.
+- The checked-in Compose file still sets `STORAGE_DRIVER=local` for API and worker, so MinIO is not the active storage backend by default.
+- The checked-in Compose file passes only part of the provider configuration through by default. If you want live provider execution instead of mock fallback, pass the relevant provider variables to the API container as well.
+
+## Common Commands
+
+```bash
+# Build all packages
+npm run build
+
+# Start individual services
+npm --workspace @dramaflow/api run start
+npm --workspace @dramaflow/web run start
+npm --workspace @dramaflow/worker run start
+
+# Development mode
+npm run dev:api
+npm run dev:web
+npm run dev:worker
+
+# Workspace type checks
+npm run lint
+
+# Workspace tests
+npm test
+```
+
 Notes:
 
-- The current Compose setup is aimed more at development and demos
-- For production use, you should separately harden image builds, environment setup, database strategy, and queue infrastructure
+- `npm run lint` currently fans out to workspace `tsc --noEmit` scripts; it is not an ESLint pass.
+- `npm test` currently runs only packages that define a `test` script, which means API and shared, not web or worker.
 
-## API and Data Layer Notes
+## Development Notes
 
-### Runtime data layer
-
-In development mode, the API currently reads and writes JSON files via `apps/api/src/common/dev-database.service.ts`, so the project can boot quickly without a real database.
-
-### Target production data layer
-
-`apps/api/prisma/schema.prisma` defines the intended PostgreSQL / Prisma model, including:
-
-- users
-- teams
-- projects
-- documents
-- versions
-- comments
-- jobs
-- assets
-
-If you want to continue productionizing the project, the next recommended steps are:
-
-1. replace `DevDatabaseService` with Prisma-backed repositories
-2. move the worker from polling to Redis / BullMQ
-3. integrate real image / video providers
-
-## AI Capability Notes
-
-### Text generation
-
-Text generation is currently wired through an OpenAI-compatible provider abstraction for:
-
-- script generation
-- storyboard generation
-
-If no real API key is configured, it falls back to mock data for local development.
-
-The provider posts to `{OPENAI_COMPAT_BASE_URL}/chat/completions`, requests `response_format: { type: "json_object" }`, and now accepts both regular JSON responses and `text/event-stream` chat completion responses.
-
-For the validated `https://new-api.ms-egde.de5.net` gateway, use `https://new-api.ms-egde.de5.net/v1` as `OPENAI_COMPAT_BASE_URL`. For a quick smoke test, prefer `moonshotai/kimi-k2-instruct` instead of the repo default `gpt-4.1-mini`, and set `OPENAI_COMPAT_MOCK_FALLBACK=false` if you want real provider errors instead of mock output.
-
-### Image generation
-
-Image generation currently supports:
-
-- a real provider integration point
-- mock SVG output when no live provider is configured
-
-### Video generation
-
-Video generation currently defaults to a mock manifest result so the end-to-end workflow can be exercised before a real provider is connected.
+- All repository files must use UTF-8 without BOM.
+- `packages/shared` is the source of truth for cross-stack domain types and business rules.
+- Keep controllers thin and business logic in services.
+- Keep Next.js `page.tsx` files light and move heavier UI logic into `components`.
+- If a change affects API payloads, update shared contracts, API handlers, frontend callers, and worker behavior together.
+- If a change affects review logic, status transitions, or permissions, inspect `packages/shared/src/business-rules.ts` first.
+- If you update `README.md`, update `README_ZH.md` in the same change.
 
 ## Suggested Reading Order
 
-If you plan to continue development, start with:
+If you are onboarding to the codebase, start here:
 
 1. `README.md`
 2. `README_ZH.md`
 3. `package.json`
-4. `packages/shared/src/domain.ts`
-5. `packages/shared/src/business-rules.ts`
-6. `apps/api/src/workspace/workspace.service.ts`
-7. `apps/api/src/jobs/jobs.service.ts`
-8. `apps/web/components/project-workspace.tsx`
-9. `apps/web/lib/api.ts`
+4. `tsconfig.base.json`
+5. `packages/shared/src/domain.ts`
+6. `packages/shared/src/business-rules.ts`
+7. `apps/api/src/workspace/workspace.service.ts`
+8. `apps/api/src/jobs/jobs.service.ts`
+9. `apps/web/components/unified-workspace.tsx`
+10. `apps/web/lib/api.ts`
 
-## Development Conventions
+## Official References
 
-- All repository files must use UTF-8 encoding without BOM
-- Add new cross-stack models to `packages/shared` first
-- Keep controllers thin and business logic in services
-- Keep Next.js page files light; move complex UI into `components`
-- When changing permission, review, or version-transition logic, inspect the shared rules layer first
-- When updating `README.md`, update `README_ZH.md` in the same change, and vice versa
+These were the most useful upstream references for verifying framework terminology and current provider guidance while updating the project documentation:
 
-## Recommended Next Steps
-
-If you want to move this project toward a production-ready state, the highest-value next steps are:
-
-1. real Prisma + PostgreSQL runtime integration
-2. Redis / BullMQ queue infrastructure
-3. fuller membership and invite flows
-4. real upload and media-generation production pipelines
-5. more detailed admin tools and audit logging
+- Next.js App Router: <https://nextjs.org/docs/app>
+- React 19: <https://react.dev/blog/2024/12/05/react-19>
+- NestJS docs: <https://docs.nestjs.com>
+- NestJS WebSocket gateways: <https://docs.nestjs.com/websockets/gateways>
+- Socket.IO client options and auth: <https://socket.io/docs/v4/client-options/>
+- npm workspaces: <https://docs.npmjs.com/cli/using-npm/workspaces/>
+- Prisma schema overview: <https://www.prisma.io/docs/orm/prisma-schema/overview>
+- Google Gemini image generation: <https://ai.google.dev/gemini-api/docs/image-generation>
+- Google Gemini OpenAI compatibility: <https://ai.google.dev/gemini-api/docs/openai>
+- OpenAI image generation: <https://developers.openai.com/api/docs/guides/image-generation>
+- OpenAI text-to-speech: <https://developers.openai.com/api/docs/guides/text-to-speech>
 
 ## License
 
-This repository does not currently declare a standalone license. If you plan to open-source or commercially distribute it, add an explicit license file.
+This repository does not currently declare a standalone license. Add an explicit license file before open-sourcing or distributing it commercially.

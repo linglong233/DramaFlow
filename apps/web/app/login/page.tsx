@@ -20,7 +20,7 @@ export default function LoginPage() {
       <div className="login-card glass-panel animate-fade-in" style={{ position: "relative", zIndex: 10, padding: "var(--space-8)" }}>
         <div style={{ textAlign: "center", marginBottom: "var(--space-6)" }}>
           <h1 className="login-title" style={{ margin: 0 }}>DramaFlow</h1>
-          <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginTop: "4px" }}>Director's Studio</p>
+          <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginTop: "4px" }}>{t("login.brandSubtitle")}</p>
         </div>
         <LoginPanel />
       </div>

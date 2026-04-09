@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useI18n } from "../lib/i18n";
+import { useSession } from "../lib/use-session";
 import { LanguageSwitcher } from "../components/language-switcher";
 
 export default function HomePage() {
   const { t } = useI18n();
+  const { session, ready } = useSession();
+  const isLoggedIn = ready && !!session;
 
   return (
     <div className="login-container" style={{ position: "relative", overflow: "hidden", minHeight: "100vh" }}>
@@ -15,6 +18,7 @@ export default function HomePage() {
       
       <main className="app-main animate-fade-in" style={{ margin: 0, position: "relative", zIndex: 10, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         <header className="glass-panel" style={{
+            position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
             display: "flex", alignItems: "center", padding: "0 24px",
             height: "72px", justifyContent: "space-between", margin: "16px", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.05)"
           }}
@@ -22,8 +26,19 @@ export default function HomePage() {
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <span className="app-sidebar-logo-mark" style={{ letterSpacing: "2px", fontWeight: 800, fontSize: "16px" }}>DRAMAFLOW</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <LanguageSwitcher style={{ width: "auto" }} />
+            {ready && (
+              isLoggedIn ? (
+                <Link href="/dashboard" className="btn btn-primary" style={{ height: "36px", padding: "0 16px", fontSize: "13px", borderRadius: "18px" }}>
+                  {t("common.openWorkspace")}
+                </Link>
+              ) : (
+                <Link href="/login" className="btn btn-primary" style={{ height: "36px", padding: "0 16px", fontSize: "13px", borderRadius: "18px" }}>
+                  {t("common.signIn")}
+                </Link>
+              )
+            )}
           </div>
         </header>
 
@@ -35,8 +50,8 @@ export default function HomePage() {
             {t("home.description")}
           </p>
           <div className="landing-cta" style={{ marginTop: "32px" }}>
-            <Link href="/login" className="btn btn-primary" style={{ height: "48px", padding: "0 32px", fontSize: "16px", borderRadius: "24px" }}>
-              {t("home.primaryAction")}
+            <Link href={isLoggedIn ? "/dashboard" : "/login"} className="btn btn-primary" style={{ height: "48px", padding: "0 32px", fontSize: "16px", borderRadius: "24px" }}>
+              {isLoggedIn ? t("common.openWorkspace") : t("home.primaryAction")}
             </Link>
           </div>
         </div>
@@ -44,3 +59,4 @@ export default function HomePage() {
     </div>
   );
 }
+

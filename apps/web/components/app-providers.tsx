@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { type Locale, I18nProvider } from "../lib/i18n";
 import { QueryProvider } from "./query-provider";
+import { RealtimeProvider } from "./realtime-provider";
 
 export function AppProviders({
   children,
@@ -14,7 +15,7 @@ export function AppProviders({
 }) {
   return (
     <I18nProvider initialLocale={initialLocale}>
-      <QueryProvider>{children}</QueryProvider>
+      <QueryProvider><RealtimeProvider>{children}</RealtimeProvider></QueryProvider>
     </I18nProvider>
   );
 }

@@ -3,10 +3,11 @@ import { JwtModule } from "@nestjs/jwt";
 
 import { AuthGuard } from "./auth.guard";
 import { DevDatabaseService } from "./dev-database.service";
+import { LlmProviderService } from "./llm-provider.service";
 
 @Module({
   imports: [JwtModule.register({})],
-  providers: [DevDatabaseService, AuthGuard],
-  exports: [DevDatabaseService, AuthGuard, JwtModule],
+  providers: [DevDatabaseService, AuthGuard, LlmProviderService],
+  exports: [DevDatabaseService, AuthGuard, JwtModule, LlmProviderService],
 })
 export class CommonModule {}

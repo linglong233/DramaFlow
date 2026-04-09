@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import {
   CopyObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -51,6 +52,35 @@ export class S3StorageProvider implements StorageProvider {
     }
 
     return `https://${this.bucket}.s3.amazonaws.com/${key}`;
+  }
+
+  async readObject(key: string): Promise<Uint8Array> {
+    const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const body = response.Body;
+    if (!body) {
+      return new Uint8Array();
+    }
+
+    if (body instanceof Uint8Array) {
+      return body;
+    }
+
+    if (typeof (body as { transformToByteArray?: () => Promise<Uint8Array> }).transformToByteArray === "function") {
+      return (body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+    }
+
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of body as AsyncIterable<Uint8Array | Buffer | string>) {
+      if (typeof chunk === "string") {
+        chunks.push(Buffer.from(chunk));
+      } else if (chunk instanceof Uint8Array) {
+        chunks.push(chunk);
+      } else {
+        chunks.push(Buffer.from(chunk));
+      }
+    }
+
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   }
 
   async deleteObject(key: string): Promise<void> {

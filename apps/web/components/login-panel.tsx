@@ -1,15 +1,19 @@
 "use client";
 
+import type { Route } from "next";
+import Link from "next/link";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { SessionPayload } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError, saveSession } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 
 export function LoginPanel() {
+  const forgotPasswordRoute = "/forgot-password" as Route;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useI18n();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -33,7 +37,8 @@ export function LoginPanel() {
       saveSession(payload);
       setMessage(isRegister ? t("login.registerSuccess") : t("login.loginSuccess"));
       setError(null);
-      router.push("/dashboard");
+      const returnUrl = searchParams.get("returnUrl");
+      router.push((returnUrl || "/dashboard") as Route);
     },
     onError: (submitError) => {
       setMessage(null);
@@ -49,7 +54,7 @@ export function LoginPanel() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="stack stack-gap-4">
       {isRegister && (
         <div className="form-group">
           <label className="form-label" htmlFor="displayName">
@@ -77,6 +82,7 @@ export function LoginPanel() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder={t("login.emailPlaceholder")}
+          autoComplete="email"
         />
       </div>
 
@@ -91,16 +97,17 @@ export function LoginPanel() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder={t("login.passwordPlaceholder")}
+          autoComplete={isRegister ? "new-password" : "current-password"}
         />
       </div>
 
-      {message && <p style={{ color: "var(--success-text)", fontSize: "13px", marginTop: "8px" }}>{message}</p>}
-      {error && <p style={{ color: "var(--danger-text)", fontSize: "13px", marginTop: "8px" }}>{error}</p>}
+      {message ? <p style={{ color: "var(--success-text)", fontSize: "13px" }} role="status">{message}</p> : null}
+      {error ? <p style={{ color: "var(--danger-text)", fontSize: "13px" }} role="alert">{error}</p> : null}
 
       <button
         className="btn btn-primary"
         type="submit"
-        style={{ width: "100%", marginTop: "16px" }}
+        style={{ width: "100%" }}
         disabled={authMutation.isPending || !email.trim() || !password.trim()}
       >
         {authMutation.isPending
@@ -110,7 +117,13 @@ export function LoginPanel() {
             : t("login.loginSubmit")}
       </button>
 
-      <p style={{ textAlign: "center", fontSize: "13px", color: "var(--text-secondary)", marginTop: "16px" }}>
+      {!isRegister ? (
+        <Link href={forgotPasswordRoute} style={{ fontSize: "13px", color: "var(--accent)", textAlign: "center" }}>
+          {t("login.forgotPasswordAction")}
+        </Link>
+      ) : null}
+
+      <p style={{ textAlign: "center", fontSize: "13px", color: "var(--text-secondary)" }}>
         {isRegister ? t("login.hasAccountPrompt") : t("login.noAccountPrompt")}{" "}
         <button
           type="button"

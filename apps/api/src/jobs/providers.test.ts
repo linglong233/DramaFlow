@@ -1,18 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { OpenAiCompatTextProvider } from "./text-generation.provider";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const baseScriptInput = {
-  title: "追光夜行",
-  genre: "都市悬疑",
-  premise: "导演要在最后一晚救回流产项目",
-  episodeGoal: "搭建首集冲突",
-  tone: "克制、紧张",
-  audience: "年轻都市观众",
+  title: "Edge of Dawn",
+  genre: "Urban Suspense",
+  premise: "A director must rescue a collapsing production in one night.",
+  episodeGoal: "Establish the central conflict.",
+  tone: "Controlled and tense",
+  audience: "Young urban viewers",
 };
 
 test.afterEach(() => {
@@ -26,7 +27,7 @@ test("text provider falls back to mock script content when no API key exists", a
   const provider = new OpenAiCompatTextProvider();
   const script = await provider.generateScript(baseScriptInput);
 
-  assert.ok(script.logline.includes("追光夜行"));
+  assert.ok(script.logline.includes("Edge of Dawn"));
   assert.ok(script.scenes.length >= 1);
 });
 
@@ -52,8 +53,8 @@ test("text provider parses standard JSON chat completion responses", async () =>
         {
           message: {
             content: JSON.stringify({
-              logline: "真实剧本",
-              premise: "真实前提",
+              logline: "Real script",
+              premise: "Real premise",
               characters: [],
               scenes: [],
             }),
@@ -69,24 +70,27 @@ test("text provider parses standard JSON chat completion responses", async () =>
   const provider = new OpenAiCompatTextProvider();
   const script = await provider.generateScript(baseScriptInput);
 
-  assert.equal(script.logline, "真实剧本");
-  assert.equal(script.premise, "真实前提");
+  assert.equal(script.logline, "Real script");
+  assert.equal(script.premise, "Real premise");
   assert.equal(script.scenes.length, 0);
 });
 
-test("text provider parses SSE chat completion responses", async () => {
+test("text provider enables streaming when config requests it", async () => {
   process.env.OPENAI_COMPAT_API_KEY = "test-key";
   process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
   process.env.OPENAI_TEXT_MODEL = "gpt-5.4";
 
   const sseBody = [
     JSON.stringify({ id: "chunk-1", choices: [] }),
-    JSON.stringify({ id: "chunk-2", choices: [{ delta: { content: '{"logline":"SSE 剧本",' } }] }),
-    JSON.stringify({ id: "chunk-3", choices: [{ delta: { content: '"premise":"来自流式返回",' } }] }),
+    JSON.stringify({ id: "chunk-2", choices: [{ delta: { content: '{"logline":"SSE script",' } }] }),
+    JSON.stringify({ id: "chunk-3", choices: [{ delta: { content: '"premise":"From a stream",' } }] }),
     JSON.stringify({ id: "chunk-4", choices: [{ delta: { content: '"characters":[],"scenes":[]}' } }] }),
   ].map((payload) => `data: ${payload}`).concat("data: [DONE]").join("\n\n");
 
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { stream: boolean };
+    assert.equal(body.stream, true);
+
     return new Response(sseBody, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -94,10 +98,13 @@ test("text provider parses SSE chat completion responses", async () => {
   }) as typeof fetch;
 
   const provider = new OpenAiCompatTextProvider();
-  const script = await provider.generateScript(baseScriptInput);
+  const script = await provider.generateScript(baseScriptInput, {
+    provider: "openai-completions",
+    stream: true,
+  });
 
-  assert.equal(script.logline, "SSE 剧本");
-  assert.equal(script.premise, "来自流式返回");
+  assert.equal(script.logline, "SSE script");
+  assert.equal(script.premise, "From a stream");
   assert.equal(script.characters.length, 0);
 });
 
@@ -125,11 +132,162 @@ test("media provider mock image returns inline SVG payload", async () => {
   const provider = new OpenAiMediaProvider();
   const result = await provider.generateImage({
     shotId: "shot-1-1",
-    style: "电影剧照",
+    style: "Cinematic still",
     aspectRatio: "16:9",
-    prompt: "天台上的回头镜头",
+    prompt: "A reveal on a rooftop at night",
   });
 
   assert.equal(result.provider.includes("image"), true);
   assert.equal(result.mimeType.startsWith("image"), true);
+});
+
+test("google provider sends a text-only generateContent request for text-to-image", async () => {
+  process.env.GOOGLE_IMAGE_API_KEY = "google-image-key";
+  process.env.GOOGLE_IMAGE_MODEL = "gemini-3.1-flash-image-preview";
+  process.env.GOOGLE_IMAGE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+  let capturedUrl = "";
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    capturedUrl = String(input);
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                inlineData: {
+                  data: Buffer.from("image-bytes").toString("base64"),
+                  mimeType: "image/png",
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const provider = new GoogleGeminiImageProvider();
+  const result = await provider.generateImage({
+    shotId: "shot-1",
+    style: "cinematic",
+    aspectRatio: "16:9",
+    prompt: "A rainy rooftop confession",
+  });
+
+  assert.equal(capturedUrl, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=google-image-key");
+  assert.equal(result.model, "gemini-3.1-flash-image-preview");
+  assert.equal(result.fileExtension, "png");
+  assert.equal(Buffer.from(result.inlineBody as Uint8Array).toString(), "image-bytes");
+
+  const body = capturedBody as {
+    contents: Array<{ parts: Array<{ text?: string }> }>;
+    generationConfig: {
+      responseModalities: string[];
+      imageConfig: { aspectRatio: string; imageSize: string };
+    };
+  };
+  assert.equal(body.contents[0].parts.length, 1);
+  assert.equal(body.contents[0].parts[0].text, "A rainy rooftop confession");
+  assert.deepEqual(body.generationConfig.responseModalities, ["TEXT", "IMAGE"]);
+  assert.equal(body.generationConfig.imageConfig.aspectRatio, "16:9");
+  assert.equal(body.generationConfig.imageConfig.imageSize, "1K");
+});
+
+test("google provider includes inline reference image data for edit requests", async () => {
+  process.env.GOOGLE_IMAGE_API_KEY = "google-image-key";
+
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                inlineData: {
+                  data: Buffer.from("edited-image").toString("base64"),
+                  mimeType: "image/png",
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const provider = new GoogleGeminiImageProvider();
+  await provider.generateImage({
+    shotId: "shot-2",
+    style: "cinematic",
+    aspectRatio: "9:16",
+    prompt: "Refine the costume silhouette",
+    referenceImageAssetId: "asset-ref",
+    referenceImage: {
+      body: Uint8Array.from([1, 2, 3, 4]),
+      mimeType: "image/png",
+    },
+  });
+
+  const body = capturedBody as {
+    contents: Array<{ parts: Array<{ text?: string; inline_data?: { mime_type?: string; data?: string } }> }>;
+  };
+  assert.equal(body.contents[0].parts.length, 2);
+  assert.equal(body.contents[0].parts[0].text, "Refine the costume silhouette");
+  assert.equal(body.contents[0].parts[1].inline_data?.mime_type, "image/png");
+  assert.equal(body.contents[0].parts[1].inline_data?.data, Buffer.from([1, 2, 3, 4]).toString("base64"));
+});
+
+test("google provider throws a clear error when no API key is available", async () => {
+  delete process.env.GOOGLE_IMAGE_API_KEY;
+  delete process.env.GOOGLE_IMAGE_BASE_URL;
+  delete process.env.GOOGLE_IMAGE_MODEL;
+
+  const provider = new GoogleGeminiImageProvider();
+  await assert.rejects(
+    provider.generateImage({
+      shotId: "shot-3",
+      style: "cinematic",
+      aspectRatio: "1:1",
+      prompt: "A close-up portrait",
+    }, {
+      provider: "google-gemini",
+      model: "gemini-3.1-flash-image-preview",
+    }),
+    /Google image API key is required/,
+  );
+});
+
+test("google provider throws when the response does not contain inline image data", async () => {
+  process.env.GOOGLE_IMAGE_API_KEY = "google-image-key";
+
+  globalThis.fetch = (async () => {
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "no image" }] } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const provider = new GoogleGeminiImageProvider();
+  await assert.rejects(
+    provider.generateImage({
+      shotId: "shot-4",
+      style: "cinematic",
+      aspectRatio: "4:3",
+      prompt: "A crowded control room",
+    }),
+    /did not include image data/,
+  );
 });

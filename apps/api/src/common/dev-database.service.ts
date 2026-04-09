@@ -15,6 +15,7 @@ export class DevDatabaseService implements OnModuleInit {
   }
 
   async query<T>(reader: (db: DevDatabase) => T | Promise<T>): Promise<T> {
+    await this.writeChain;
     await this.ensureReady();
     const db = await this.read();
     return reader(db);
@@ -52,11 +53,7 @@ export class DevDatabaseService implements OnModuleInit {
   private async read(): Promise<DevDatabase> {
     const raw = await readFile(this.getDataFilePath(), "utf-8");
     const db = JSON.parse(raw) as DevDatabase;
-    const { normalized, changed } = this.normalize(db);
-
-    if (changed) {
-      await this.write(normalized);
-    }
+    const { normalized } = this.normalize(db);
 
     return normalized;
   }
@@ -67,6 +64,21 @@ export class DevDatabaseService implements OnModuleInit {
 
   private normalize(db: DevDatabase): { normalized: DevDatabase; changed: boolean } {
     let changed = false;
+
+    const arrayFields: (keyof DevDatabase)[] = [
+      "users", "refreshTokens", "teams", "teamMembers", "teamInviteLinks",
+      "projects", "projectMembers", "projectInvites",
+      "documents", "versions", "comments", "jobs", "assets",
+      "notifications", "auditConfigs", "auditRecords", "batchJobs",
+      "timelines", "exports",
+    ];
+
+    for (const field of arrayFields) {
+      if (!Array.isArray(db[field])) {
+        (db as unknown as Record<string, unknown>)[field] = [];
+        changed = true;
+      }
+    }
 
     for (const document of db.documents) {
       const nextTitle = this.normalizeDocumentTitle(document.type, document.title);
@@ -94,6 +106,10 @@ export class DevDatabaseService implements OnModuleInit {
 
     if (type === "storyboard") {
       return "\u603b\u5206\u955c";
+    }
+
+    if (type === "world_bible") {
+      return "\u4e16\u754c\u89c2\u8bbe\u5b9a";
     }
 
     return title;

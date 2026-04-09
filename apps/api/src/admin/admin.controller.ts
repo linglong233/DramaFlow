@@ -7,10 +7,7 @@ import { AdminService } from "./admin.service";
 @Controller("admin")
 @UseGuards(AuthGuard)
 export class AdminController {
-  constructor(@Inject(AdminService) private readonly adminService: AdminService) {
-    this.getPlatformOverview = this.getPlatformOverview.bind(this);
-    this.getTeamOverview = this.getTeamOverview.bind(this);
-  }
+  constructor(@Inject(AdminService) private readonly adminService: AdminService) {}
 
   @Get("platform/overview")
   getPlatformOverview(@CurrentUser() user: { id: string }) {
@@ -20,5 +17,10 @@ export class AdminController {
   @Get("teams/:id/overview")
   getTeamOverview(@CurrentUser() user: { id: string }, @Param("id") teamId: string) {
     return this.adminService.getTeamOverview(user.id, teamId);
+  }
+
+  @Get("teams/:id/settings")
+  getTeamSettings(@CurrentUser() user: { id: string }, @Param("id") teamId: string) {
+    return this.adminService.getTeamSettings(user.id, teamId);
   }
 }

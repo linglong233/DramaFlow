@@ -2,14 +2,18 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import type { TeamSummary } from "@dramaflow/shared";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-import { clearSession } from "../../lib/api";
+import { apiFetch, clearSession } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
+import { queryKeys } from "../../lib/query-keys";
 import { useSession } from "../../lib/use-session";
 import { ConfirmAction } from "../confirm-action";
 import { LanguageSwitcher } from "../language-switcher";
+import { NotificationBell } from "../notification-bell";
 
 type NavItemType = "link" | "section";
 
@@ -25,14 +29,20 @@ interface SidebarLayoutProps {
   children: ReactNode;
   variant: "dashboard" | "project";
   projectId?: string;
+  flush?: boolean;
 }
 
-export function SidebarLayout({ children, variant, projectId }: SidebarLayoutProps) {
+export function SidebarLayout({ children, variant, projectId, flush }: SidebarLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { session } = useSession();
   const { t } = useI18n();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const teamsQuery = useQuery({
+    queryKey: queryKeys.teams,
+    queryFn: () => apiFetch<TeamSummary[]>("/teams"),
+    enabled: variant === "dashboard" && Boolean(session),
+  });
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["workspace", "team", "project-core"]));
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -84,46 +94,61 @@ export function SidebarLayout({ children, variant, projectId }: SidebarLayoutPro
     };
   }, [drawerOpen]);
 
+  const hasTeamAdminAccess = session?.user.globalRole === "platform_super_admin"
+    || (teamsQuery.data ?? []).some((team) => team.canManage);
+
   const dashboardNav: NavItem[] = [
     {
       id: "workspace",
       type: "section",
       label: t("nav.workspace"),
       children: [
-        { id: "overview", type: "link", label: t("nav.overview"), href: "/dashboard" },
-        { id: "projects", type: "link", label: t("nav.projects"), href: "/dashboard/projects" },
+        { id: "overview", type: "link", label: t("nav.projects"), href: "/dashboard" },
       ],
     },
-    {
-      id: "team",
-      type: "section",
-      label: t("nav.team"),
-      children: [
-        { id: "team-members", type: "link", label: t("nav.teamMembers"), href: "/dashboard/team" },
-        { id: "team-settings", type: "link", label: t("nav.teamSettings"), href: "/dashboard/team/settings" },
-      ],
-    },
+    ...(hasTeamAdminAccess
+      ? [{
+          id: "team",
+          type: "section" as const,
+          label: t("nav.team"),
+          children: [
+            { id: "team-members", type: "link" as const, label: t("nav.teamMembers"), href: "/dashboard/team" },
+            { id: "team-settings", type: "link" as const, label: t("nav.teamSettings"), href: "/dashboard/team/settings" },
+          ],
+        }]
+      : []),
+    ...(session?.user.globalRole === "platform_super_admin"
+      ? [{
+          id: "platform",
+          type: "section" as const,
+          label: t("nav.platformAdmin"),
+          children: [
+            { id: "platform-overview", type: "link" as const, label: t("nav.platformAdmin"), href: "/dashboard/platform" },
+          ],
+        }]
+      : []),
     {
       id: "settings",
       type: "section",
       label: t("nav.settings"),
       children: [
+        { id: "profile-settings", type: "link", label: t("nav.profileSettings"), href: "/dashboard/settings/profile" },
         { id: "language-settings", type: "link", label: t("nav.language"), href: "/dashboard/settings/language" },
       ],
     },
   ];
 
   const projectNav: NavItem[] = projectId ? [
+    { id: "back", type: "link", label: t("nav.backToProjects"), href: "/dashboard" },
     {
       id: "project-core",
       type: "section",
-      label: "Project",
+      label: t("nav.project"),
       children: [
-        { id: "back", type: "link", label: "← " + t("nav.overview"), href: "/dashboard" },
-        { id: "p-overview", type: "link", label: t("nav.overview"), href: `/projects/${projectId}` },
-        { id: "p-drafts", type: "link", label: t("projectWorkspace.tabs.draft") || "Drafts", href: `/projects/${projectId}/drafts` },
-        { id: "p-generate", type: "link", label: t("projectWorkspace.tabs.generate") || "Generate", href: `/projects/${projectId}/generate` },
-        { id: "p-review", type: "link", label: "Review", href: `/projects/${projectId}/review` },
+        { id: "p-info", type: "link", label: t("projectWorkspace.workspace.modeInfo"), href: `/projects/${projectId}/workspace?mode=info` },
+        { id: "p-workspace", type: "link", label: t("projectWorkspace.workspace.modeDocument"), href: `/projects/${projectId}/workspace?mode=document` },
+        { id: "p-generate", type: "link", label: t("projectWorkspace.workspace.modeGenerate"), href: `/projects/${projectId}/workspace?mode=generate` },
+        { id: "p-media", type: "link", label: t("projectWorkspace.workspace.modeMedia"), href: `/projects/${projectId}/workspace?mode=media` },
       ],
     }
   ] : dashboardNav;
@@ -171,8 +196,8 @@ export function SidebarLayout({ children, variant, projectId }: SidebarLayoutPro
 
     if (item.type === "link" && item.href) {
       let isActive = false;
-      if (item.href === "/dashboard") {
-        isActive = pathname === "/dashboard";
+      if (item.href === "/dashboard" || item.href === "/dashboard/team") {
+        isActive = pathname === item.href;
       } else if (projectId && item.href === `/projects/${projectId}`) {
         isActive = pathname === `/projects/${projectId}`;
       } else {
@@ -188,16 +213,59 @@ export function SidebarLayout({ children, variant, projectId }: SidebarLayoutPro
     return null;
   }
 
+  const isGlobalAdmin = session?.user.globalRole === "platform_super_admin";
+
+  const highestTeamRole = (() => {
+    if (isGlobalAdmin) return null;
+    const roles = (teamsQuery.data ?? []).map((team) => team.currentUserRole).filter(Boolean);
+    if (roles.includes("tenant_owner")) return "tenant_owner" as const;
+    if (roles.includes("tenant_admin")) return "tenant_admin" as const;
+    return null;
+  })();
+
+  const isTeamAdmin = highestTeamRole === "tenant_owner" || highestTeamRole === "tenant_admin";
+
+  function getRoleBadgeLabel(): string | null {
+    if (isGlobalAdmin) return t("nav.globalAdminBadge");
+    if (highestTeamRole === "tenant_owner") return t("nav.teamOwnerBadge");
+    if (highestTeamRole === "tenant_admin") return t("nav.teamAdminBadge");
+    return null;
+  }
+
+  function getAvatarClass(): string {
+    if (isGlobalAdmin) return "app-sidebar-avatar app-sidebar-avatar--admin";
+    if (isTeamAdmin) return "app-sidebar-avatar app-sidebar-avatar--team-admin";
+    return "app-sidebar-avatar";
+  }
+
   function renderSidebarFooter() {
+    const roleBadgeLabel = getRoleBadgeLabel();
+    const badgeClass = isGlobalAdmin ? "app-sidebar-admin-badge" : "app-sidebar-admin-badge app-sidebar-admin-badge--team";
+
     return (
       <div className="app-sidebar-footer">
         {session && (
           <div className="app-sidebar-user">
-            <div className="app-sidebar-avatar" aria-hidden="true">
-              {session.user.displayName.slice(0, 2).toUpperCase()}
+            <div className={getAvatarClass()} aria-hidden="true">
+              {isGlobalAdmin ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M8 1L10.2 5.5L15 6.2L11.5 9.6L12.4 14.4L8 12.1L3.6 14.4L4.5 9.6L1 6.2L5.8 5.5L8 1Z" fill="currentColor" />
+                </svg>
+              ) : isTeamAdmin ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M8 2L9.5 6H13.5L10.2 8.5L11.4 12.5L8 10L4.6 12.5L5.8 8.5L2.5 6H6.5L8 2Z" stroke="currentColor" strokeWidth="1.2" fill="none" />
+                </svg>
+              ) : (
+                session.user.displayName.slice(0, 2).toUpperCase()
+              )}
             </div>
             <div className="app-sidebar-user-info">
-              <div className="app-sidebar-user-name">{session.user.displayName}</div>
+              <div className="app-sidebar-user-name">
+                {session.user.displayName}
+                {roleBadgeLabel && (
+                  <span className={badgeClass}>{roleBadgeLabel}</span>
+                )}
+              </div>
               <div className="app-sidebar-user-email">{session.user.email}</div>
             </div>
           </div>
@@ -235,6 +303,8 @@ export function SidebarLayout({ children, variant, projectId }: SidebarLayoutPro
     );
   }
 
+  const isFlush = flush || (pathname && pathname.match(/\/projects\/[^\/]+\/workspace$/));
+
   return (
     <div className="app-layout">
       <a className="skip-link" href="#app-main">{t("common.skipToMain")}</a>
@@ -255,8 +325,8 @@ export function SidebarLayout({ children, variant, projectId }: SidebarLayoutPro
       )}
       <main id="app-main" className="app-main">
         <header style={{
-            position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", padding: "0 16px",
-            height: "56px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-surface)", justifyContent: "space-between",
+            position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", padding: "0 var(--space-6)",
+            height: "var(--topbar-height)", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)", justifyContent: "space-between",
           }}
         >
           <div className="mobile-only" style={{ display: "flex", alignItems: "center" }}>
@@ -267,9 +337,12 @@ export function SidebarLayout({ children, variant, projectId }: SidebarLayoutPro
             </button>
             <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-secondary)", marginLeft: "8px" }}>DramaFlow</span>
           </div>
-          <LanguageSwitcher style={{ width: "auto", marginLeft: "auto" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+            <NotificationBell />
+            <LanguageSwitcher style={{ width: "auto" }} />
+          </div>
         </header>
-        <div className="app-content">
+        <div className={isFlush ? "app-content--flush" : "app-content"}>
           {children}
         </div>
       </main>
