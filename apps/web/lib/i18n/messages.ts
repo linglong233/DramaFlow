@@ -389,6 +389,7 @@ export const zhCNMessages = {
       noScriptYet: "尚未生成剧本。",
       extractStoryboard: "提取分镜场景",
       outputTitle: "生成结果",
+      editResult: "编辑此结果",
       outputEmpty: "暂无生成结果",
       outputEmptyHint: "在左侧配置 Prompt 参数，然后开始生成。",
       collapseSettings: "收起设置",
@@ -893,6 +894,16 @@ export const zhCNMessages = {
     addDialogue: "+ 添加对白",
     speakerPlaceholder: "角色",
     linePlaceholder: "台词内容"
+  },
+  richScriptEditor: {
+    editorPlaceholder: "开始编写剧本…使用工具栏添加场景标题、对白和导演备注",
+    sceneHeading: "场景标题",
+    bold: "粗体",
+    italic: "斜体",
+    dialogue: "对白",
+    directorNote: "导演备注",
+    undo: "撤销",
+    redo: "重做"
   },
   versionDiff: {
     title: "版本对比",
@@ -1516,6 +1527,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       noScriptYet: "No script generated yet.",
       extractStoryboard: "Extract Storyboard scenes",
       outputTitle: "Generation Output",
+      editResult: "Edit this result",
       outputEmpty: "No outputs yet",
       outputEmptyHint: "Configure your Prompt settings, then start generating.",
       collapseSettings: "Collapse Settings",
@@ -2020,6 +2032,16 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     addDialogue: "+ Add dialogue",
     speakerPlaceholder: "Character",
     linePlaceholder: "Dialogue line"
+  },
+  richScriptEditor: {
+    editorPlaceholder: "Start writing your script… Use the toolbar to add scene headings, dialogue, and director notes",
+    sceneHeading: "Scene Heading",
+    bold: "Bold",
+    italic: "Italic",
+    dialogue: "Dialogue",
+    directorNote: "Director Note",
+    undo: "Undo",
+    redo: "Redo"
   },
   versionDiff: {
     title: "Version Diff",

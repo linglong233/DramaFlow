@@ -29,7 +29,7 @@ import { LoadingSkeleton } from "./loading-skeleton";
 import { VersionList } from "./project-workspace/version-list";
 import { VersionView } from "./project-workspace/version-view";
 import { VersionDiffView } from "./project-workspace/version-diff-view";
-import { ScriptEditor } from "./project-workspace/script-editor";
+import { RichScriptEditor } from "./project-workspace/rich-script-editor";
 import { StoryboardEditor } from "./project-workspace/storyboard-editor";
 import { TextGeneratorPanel } from "./project-workspace/text-generator-panel";
 import { MediaCanvasPanel } from "./project-workspace/media-canvas-panel";
@@ -42,15 +42,18 @@ import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { useRealtime } from "./realtime-provider";
 
-// New modes: document (view+edit combined), generate, media, info, worldbible, tasks
-type WorkspaceMode = "document" | "generate" | "media" | "info" | "worldbible" | "tasks" | "timeline";
+// Workspace modes: document (with sub-tabs: view/edit/generate), media, info, worldbible, tasks, timeline
+type WorkspaceMode = "document" | "media" | "info" | "worldbible" | "tasks" | "timeline";
+
+// Sub-tabs within document mode
+type DocSubTab = "view" | "edit" | "generate";
 
 // Backward-compat mapping for old URL mode params
 const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
   view: "document",
   edit: "document",
   document: "document",
-  generate: "generate",
+  generate: "document",
   media: "media",
   info: "info",
   worldbible: "worldbible",
@@ -192,10 +195,16 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   // Parse initial mode with backward compat
   const rawMode = searchParams.get("mode") || "document";
+  const rawSub = searchParams.get("sub") || "";
   const initialMode = MODE_COMPAT_MAP[rawMode] || "document";
 
   const [mode, setMode] = useState<WorkspaceMode>(initialMode);
   const [isEditing, setIsEditing] = useState(rawMode === "edit"); // If came from edit redirect
+  const [docSubTab, setDocSubTab] = useState<DocSubTab>(() => {
+    if (rawMode === "generate" || rawSub === "generate") return "generate";
+    if (rawMode === "edit" || rawSub === "edit") return "edit";
+    return "view";
+  });
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   // Hydrate panel state from localStorage after mount
@@ -214,6 +223,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
   const [editorInitialContent, setEditorInitialContent] = useState<ScriptContent | null>(null);
   const [storyboardEditorInitialContent, setStoryboardEditorInitialContent] = useState<StoryboardContent | null>(null);
+  const [editorSessionKey, setEditorSessionKey] = useState(0);
   const [showDiff, setShowDiff] = useState(false);
 
   const projectQuery = useQuery({
@@ -396,15 +406,45 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         fromVersion ? normalizeScriptContent(fromVersion.content) : null,
       );
     }
+    setEditorSessionKey((k) => k + 1);
     setIsEditing(true);
+  }
+
+  function handleEditResult(content: ScriptContent | StoryboardContent) {
+    if (isStoryboardDoc) {
+      setStoryboardEditorInitialContent(normalizeStoryboardContent(content));
+    } else {
+      setEditorInitialContent(normalizeScriptContent(content as ScriptContent));
+    }
+    setDocSubTab("edit");
   }
 
   function handleModeChange(newMode: string) {
     const mapped = MODE_COMPAT_MAP[newMode] || (newMode as WorkspaceMode);
     setMode(mapped);
-    if (mapped !== "document") setIsEditing(false);
+    if (mapped !== "document") {
+      setIsEditing(false);
+      setDocSubTab("view");
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.set("mode", mapped);
+    params.delete("sub");
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
+
+  function handleSubTabChange(sub: DocSubTab) {
+    setDocSubTab(sub);
+    if (sub === "edit") {
+      openEditor(selectedVersion);
+    } else {
+      setIsEditing(false);
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    if (sub !== "view") {
+      params.set("sub", sub);
+    } else {
+      params.delete("sub");
+    }
     router.replace(`?${params.toString()}`, { scroll: false });
   }
 
@@ -415,13 +455,22 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     if (mapped !== mode) {
       setMode(mapped as WorkspaceMode);
     }
+    // Sync sub-tab from URL
+    if (mapped === "document") {
+      const subParam = searchParams.get("sub");
+      if (subParam === "generate") setDocSubTab("generate");
+      else if (subParam === "edit") setDocSubTab("edit");
+      else if (subParam === "view" || !subParam) {
+        // Only reset if coming from external navigation
+        if (currentMode !== "document") setDocSubTab("view");
+      }
+    }
   }, [mode, searchParams]);
 
   const modeConfig = [
     { key: "info" as const, label: t("projectWorkspace.workspace.modeInfo"), icon: InfoIcon },
     { key: "document" as const, label: t("projectWorkspace.workspace.modeDocument"), icon: DocumentIcon },
     { key: "worldbible" as const, label: t("projectWorkspace.workspace.modeWorldBible"), icon: BookIcon },
-    { key: "generate" as const, label: t("projectWorkspace.workspace.modeGenerate"), icon: SparkleIcon },
     { key: "media" as const, label: t("projectWorkspace.workspace.modeMedia"), icon: MediaIcon },
     { key: "tasks" as const, label: t("projectWorkspace.workspace.modeTasks"), icon: TaskIcon },
     { key: "timeline" as const, label: t("projectWorkspace.workspace.modeTimeline"), icon: TimelineIcon },
@@ -524,7 +573,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
             </div>
           )}
           {/* Editing state indicator */}
-          {mode === "document" && isEditing && (
+          {mode === "document" && docSubTab === "edit" && (
             <span className="uw-editing-badge">
               <EditIcon />
               {t("projectWorkspace.workspace.editingState")}
@@ -616,14 +665,14 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 selectedVersionId={selectedVersionId}
                 onSelectDoc={(id) => {
                   setSelectedDocId(id);
-                  if (isEditing) setIsEditing(false);
+                  if (docSubTab === "edit") setDocSubTab("view");
                   const doc = documents.find((d) => d.id === id);
                   if (doc?.versions[0]) setSelectedVersionId(doc.versions[0].id);
                 }}
                 onSelectVersion={(id, docId) => {
                   setSelectedVersionId(id);
                   if (docId) setSelectedDocId(docId);
-                  if (isEditing) setIsEditing(false);
+                  if (docSubTab === "edit") setDocSubTab("view");
                 }}
                 isCollapsed={!leftPanelOpen}
                 onToggleCollapse={() => {
@@ -640,60 +689,108 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
           <div className="uw-center">
             <div className="uw-center-scroll">
               <div className="uw-center-inner">
-                {mode === "document" && !isEditing && !showDiff && (
-                  <div>
-                    {/* Edit button for mobile (<1024px) where right panel is a drawer */}
-                    {selectedVersion && (isScriptDoc || isStoryboardDoc) && (
-                      <div className="uw-edit-bar-mobile">
-                        <button className="btn btn-secondary btn-sm" type="button" onClick={() => openEditor(selectedVersion)}>
-                          <EditIcon /> <span style={{ marginLeft: 4 }}>{t("projectWorkspace.workspace.startEditing")}</span>
-                        </button>
-                        {selectedDoc && selectedDoc.versions.length >= 2 && (
-                          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowDiff(true)}>
-                            {t("versionDiff.compareVersions")}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    <VersionView
-                      version={selectedVersion ?? null}
-                      isLoading={(projectQuery.isFetching || jobsQuery.isFetching) && !projectQuery.data}
-                      projectId={projectId}
-                      project={payload}
-                      allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
-                    />
+                {/* Document sub-tab bar */}
+                {mode === "document" && (
+                  <div className="uw-sub-tabs" role="tablist">
+                    <button
+                      className={`uw-sub-tab${docSubTab === "view" ? " uw-sub-tab--active" : ""}`}
+                      role="tab"
+                      aria-selected={docSubTab === "view"}
+                      onClick={() => handleSubTabChange("view")}
+                      type="button"
+                    >
+                      <DocumentIcon />
+                      {t("projectWorkspace.workspace.modeView")}
+                    </button>
+                    <button
+                      className={`uw-sub-tab${docSubTab === "edit" ? " uw-sub-tab--active" : ""}`}
+                      role="tab"
+                      aria-selected={docSubTab === "edit"}
+                      onClick={() => handleSubTabChange("edit")}
+                      type="button"
+                    >
+                      <EditIcon />
+                      {t("projectWorkspace.workspace.modeEdit")}
+                    </button>
+                    <button
+                      className={`uw-sub-tab${docSubTab === "generate" ? " uw-sub-tab--active" : ""}`}
+                      role="tab"
+                      aria-selected={docSubTab === "generate"}
+                      onClick={() => handleSubTabChange("generate")}
+                      type="button"
+                    >
+                      <SparkleIcon />
+                      {t("projectWorkspace.workspace.modeGenerate")}
+                    </button>
                   </div>
                 )}
 
-                {mode === "document" && !isEditing && showDiff && selectedDoc && (
+                {/* View sub-tab */}
+                <div style={{ display: mode === "document" && docSubTab === "view" && !showDiff ? undefined : "none" }}>
+                  {mode === "document" && (
+                    <div>
+                      {/* Edit button for mobile (<1024px) where right panel is a drawer */}
+                      {selectedVersion && (isScriptDoc || isStoryboardDoc) && (
+                        <div className="uw-edit-bar-mobile">
+                          <button className="btn btn-secondary btn-sm" type="button" onClick={() => { openEditor(selectedVersion); handleSubTabChange("edit"); }}>
+                            <EditIcon /> <span style={{ marginLeft: 4 }}>{t("projectWorkspace.workspace.startEditing")}</span>
+                          </button>
+                          {selectedDoc && selectedDoc.versions.length >= 2 && (
+                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowDiff(true)}>
+                              {t("versionDiff.compareVersions")}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <VersionView
+                        version={selectedVersion ?? null}
+                        isLoading={(projectQuery.isFetching || jobsQuery.isFetching) && !projectQuery.data}
+                        projectId={projectId}
+                        project={payload}
+                        allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
+                        onStoryboardChange={(c) => handleEditorSave("Inline edit", c)}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Diff view (only in view sub-tab) */}
+                {mode === "document" && docSubTab === "view" && showDiff && selectedDoc && (
                   <VersionDiffView
                     versions={selectedDoc.versions}
                     onClose={() => setShowDiff(false)}
                   />
                 )}
-                {mode === "document" && isEditing && (
-                  isStoryboardDoc ? (
-                    <StoryboardEditor
-                      initialContent={storyboardEditorInitialContent}
-                      onSave={handleEditorSave}
-                      onCancel={() => setIsEditing(false)}
-                      isSaving={createVersionMutation.isPending}
-                      projectId={projectId}
-                      project={payload}
-                    />
-                  ) : (
-                    <ScriptEditor
-                      initialContent={editorInitialContent}
-                      onSave={handleEditorSave}
-                      onCancel={() => setIsEditing(false)}
-                      isSaving={createVersionMutation.isPending}
-                    />
-                  )
-                )}
 
-                {mode === "generate" && (
-                  <TextGeneratorPanel projectId={projectId} project={payload} />
-                )}
+                {/* Edit sub-tab */}
+                <div style={{ display: mode === "document" && docSubTab === "edit" ? undefined : "none" }}>
+                  {mode === "document" && (
+                    isStoryboardDoc ? (
+                      <StoryboardEditor
+                        key={`storyboard-${selectedVersionId || "new"}-${editorSessionKey}`}
+                        initialContent={storyboardEditorInitialContent}
+                        onSave={handleEditorSave}
+                        onCancel={() => handleSubTabChange("view")}
+                        isSaving={createVersionMutation.isPending}
+                        projectId={projectId}
+                        project={payload}
+                      />
+                    ) : (
+                      <RichScriptEditor
+                        key={`script-${selectedVersionId || "new"}-${editorSessionKey}`}
+                        initialContent={editorInitialContent}
+                        onSave={handleEditorSave}
+                        onCancel={() => handleSubTabChange("view")}
+                        isSaving={createVersionMutation.isPending}
+                      />
+                    )
+                  )}
+                </div>
+
+                {/* Generate sub-tab (always mounted to preserve streaming state) */}
+                <div style={{ display: mode === "document" && docSubTab === "generate" ? undefined : "none" }}>
+                  <TextGeneratorPanel projectId={projectId} project={payload} onEditResult={handleEditResult} />
+                </div>
 
                 {mode === "media" && (
                   <MediaCanvasPanel projectId={projectId} project={payload} />
@@ -709,8 +806,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               selectedVersionId={selectedVersionId}
               selectedVersion={selectedVersion}
               currentMode={mode}
+              docSubTab={docSubTab}
               isEditing={isEditing}
-              onStartEdit={() => openEditor(selectedVersion)}
+              onStartEdit={() => { openEditor(selectedVersion); handleSubTabChange("edit"); }}
               onFeedback={setFeedback}
               jobs={jobs}
               documents={payload.documents}
@@ -764,8 +862,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               selectedVersionId={selectedVersionId}
               selectedVersion={selectedVersion}
               currentMode={mode}
+              docSubTab={docSubTab}
               isEditing={isEditing}
-              onStartEdit={() => { openEditor(selectedVersion); setRightDrawerOpen(false); }}
+              onStartEdit={() => { openEditor(selectedVersion); handleSubTabChange("edit"); setRightDrawerOpen(false); }}
               onFeedback={setFeedback}
               jobs={jobs}
               documents={payload.documents}

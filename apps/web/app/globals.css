@@ -6933,6 +6933,47 @@ textarea.input {
   flex-shrink: 0;
 }
 
+/* ── Document sub-tabs (View | Edit | Generate) ── */
+.uw-sub-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.uw-sub-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.uw-sub-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.uw-sub-tab--active {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.uw-sub-tab svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 /* Panel toggle */
 .uw-panel-toggle {
   display: flex;
@@ -10861,4 +10902,133 @@ textarea.input {
 
 .uw-body--left-collapsed .uw-left-scroll {
   padding: var(--space-2) 0;
+}
+
+/* ═══ TipTap Rich Script Editor ═══ */
+
+.tiptap-root {
+  border: 1px solid var(--border-default, #e2e2e2);
+  border-radius: var(--radius-lg, 8px);
+  min-height: 400px;
+}
+
+.tiptap-editor {
+  min-height: 380px;
+  padding: var(--space-4);
+  outline: none;
+  font-size: 14px;
+  line-height: 1.7;
+  color: inherit;
+}
+
+.tiptap-editor:focus {
+  outline: none;
+}
+
+.tiptap-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-tertiary, #999);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Scene heading */
+.tiptap-scene-heading {
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: inherit;
+  background: rgba(128, 128, 128, 0.15);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 4px;
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+/* Dialogue block */
+.tiptap-dialogue-block {
+  padding: var(--space-1) var(--space-4);
+  margin: var(--space-1) 0;
+  border-left: 3px solid rgba(99, 102, 241, 0.6);
+  position: relative;
+  color: inherit;
+}
+
+.tiptap-dialogue-block::before {
+  content: attr(data-speaker);
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-secondary, #666);
+  margin-bottom: 2px;
+}
+
+.tiptap-dialogue-block[data-speaker=""]::before {
+  content: "SPEAKER";
+  color: var(--text-tertiary, #ccc);
+  font-style: italic;
+}
+
+/* Director note */
+.tiptap-director-note {
+  font-size: 13px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(128, 128, 128, 0.1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 4px;
+  margin: var(--space-2) 0;
+  border-left: 3px solid rgba(245, 158, 11, 0.6);
+}
+
+/* Toolbar */
+.tiptap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default, #e2e2e2);
+  border-radius: var(--radius-lg, 8px) var(--radius-lg, 8px) 0 0;
+  margin-bottom: -1px;
+}
+
+.tiptap-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tiptap-toolbar__btn:hover {
+  background: rgba(128, 128, 128, 0.2);
+  border-color: var(--border-default, #e2e2e2);
+}
+
+.tiptap-toolbar__btn--active {
+  background: rgba(99, 102, 241, 0.25);
+  color: inherit;
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.tiptap-toolbar__btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tiptap-toolbar__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-default, #e2e2e2);
+  margin: 0 var(--space-1);
 }

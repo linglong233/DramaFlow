@@ -133,17 +133,20 @@ export function StoryboardView({
   projectId,
   project,
   allowProjectMutations = true,
+  onChange,
 }: {
   content: StoryboardContent;
   projectId?: string;
   project?: ProjectWorkspacePayload;
   allowProjectMutations?: boolean;
+  onChange?: (content: StoryboardContent) => void;
 }) {
   const safeContent = normalizeStoryboardContent(content);
 
   return (
     <StoryboardWorkbench
       content={safeContent}
+      onChange={onChange}
       projectId={projectId}
       project={project}
       allowProjectMutations={allowProjectMutations}
@@ -547,12 +550,14 @@ export function VersionView({
   projectId,
   project,
   allowStoryboardMutations = true,
+  onStoryboardChange,
 }: {
   version: Version | null;
   isLoading: boolean;
   projectId?: string;
   project?: ProjectWorkspacePayload;
   allowStoryboardMutations?: boolean;
+  onStoryboardChange?: (content: StoryboardContent) => void;
 }) {
   const { formatDate, t } = useI18n();
 
@@ -581,7 +586,7 @@ export function VersionView({
     }
 
     if (isStoryboardContent(currentVersion.content)) {
-      return <StoryboardView content={normalizeStoryboardContent(currentVersion.content)} projectId={projectId} project={project} allowProjectMutations={allowStoryboardMutations} />;
+      return <StoryboardView content={normalizeStoryboardContent(currentVersion.content)} projectId={projectId} project={project} allowProjectMutations={allowStoryboardMutations} onChange={onStoryboardChange} />;
     }
 
     if (isScriptContent(currentVersion.content)) {

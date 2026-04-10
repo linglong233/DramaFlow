@@ -7,6 +7,7 @@ import {
   normalizeStoryboardContent,
   type LlmConfigSource,
   type ProjectWorkspacePayload,
+  type ScriptContent,
   type StoryboardContent,
 } from "@dramaflow/shared";
 
@@ -18,6 +19,7 @@ import { ScriptView, StoryboardPreview } from "./version-view";
 interface Props {
   projectId: string;
   project: ProjectWorkspacePayload;
+  onEditResult?: (content: ScriptContent | StoryboardContent) => void;
 }
 
 type GenerationStep = "synopsis" | "script";
@@ -62,7 +64,7 @@ function StopIcon() {
   );
 }
 
-export function TextGeneratorPanel({ projectId, project }: Props) {
+export function TextGeneratorPanel({ projectId, project, onEditResult }: Props) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
@@ -627,9 +629,20 @@ export function TextGeneratorPanel({ projectId, project }: Props) {
         <div className="gen-output__head">
           <h3 className="gen-output__title">{t("projectWorkspace.generate.outputTitle")}</h3>
           {hasOutput && (
-            <div className="gen-output__badge">
-              <div className="gen-output__dot" />
-              {targetType === "script" ? t("projectWorkspace.generate.scriptLabel") : t("projectWorkspace.generate.storyboardLabel")}
+            <div className="gen-output__actions">
+              <div className="gen-output__badge">
+                <div className="gen-output__dot" />
+                {targetType === "script" ? t("projectWorkspace.generate.scriptLabel") : t("projectWorkspace.generate.storyboardLabel")}
+              </div>
+              {onEditResult && outputContent && typeof outputContent === "object" ? (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  onClick={() => onEditResult(outputContent as ScriptContent | StoryboardContent)}
+                >
+                  {t("projectWorkspace.generate.editResult")}
+                </button>
+              ) : null}
             </div>
           )}
         </div>

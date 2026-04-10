@@ -37,6 +37,7 @@ interface Props {
   selectedVersionId: string;
   selectedVersion: Pick<VersionRecord, "id" | "title" | "versionNumber" | "status" | "content" | "createdAt"> | null;
   currentMode: string;
+  docSubTab?: "view" | "edit" | "generate";
   isEditing: boolean;
   onStartEdit: () => void;
   onFeedback: (msg: { message: string | null; error: string | null }) => void;
@@ -104,7 +105,7 @@ function JobDot({ status }: { status: string }) {
 }
 
 export function RightContextPanel({
-  projectId, selectedVersionId, selectedVersion, currentMode,
+  projectId, selectedVersionId, selectedVersion, currentMode, docSubTab = "view",
   isEditing, onStartEdit, onFeedback, jobs, documents, versions,
 }: Props) {
   const { t, formatDate } = useI18n();
@@ -184,8 +185,8 @@ export function RightContextPanel({
 
   return (
     <div className="uw-right-scroll">
-      {/* ── Document mode: Review + Edit + Discussion ── */}
-      {currentMode === "document" && (
+      {/* ── Document mode (view/edit sub-tab): Review + Edit + Discussion ── */}
+      {currentMode === "document" && docSubTab !== "generate" && (
         <>
           {/* Edit action */}
           {selectedVersion && !isEditing && (
@@ -298,8 +299,8 @@ export function RightContextPanel({
         </>
       )}
 
-      {/* ── Generate mode: Recent generation jobs ── */}
-      {currentMode === "generate" && (
+      {/* ── Generate sub-tab: Recent generation jobs ── */}
+      {currentMode === "document" && docSubTab === "generate" && (
         <div className="uw-right-section">
           <div className="uw-right-section-header">
             <span className="uw-right-section-icon"><SparkleIcon /></span>
