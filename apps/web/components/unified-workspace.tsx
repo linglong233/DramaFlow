@@ -522,6 +522,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const isTasksMode = mode === "tasks";
   const isTimelineMode = mode === "timeline";
   const showThreeColumnLayout = !isInfoMode && !isWorldBibleMode && !isTasksMode && !isTimelineMode;
+  const isDocumentMode = mode === "document";
 
   return (
     <div className="uw-root animate-fade-in">
@@ -560,7 +561,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
           {/* Mobile drawer toggles (visible only <1024px) */}
-          {showThreeColumnLayout && (
+          {showThreeColumnLayout && !isDocumentMode && (
             <div className="uw-mobile-toggles">
               <button className="uw-panel-toggle" type="button" onClick={() => setLeftDrawerOpen(true)}>
                 <MenuIcon />
@@ -579,7 +580,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               {t("projectWorkspace.workspace.editingState")}
             </span>
           )}
-          {showThreeColumnLayout && (
+          {showThreeColumnLayout && !isDocumentMode && (
             <>
               <ReviewPolicySwitcher
                 projectId={projectId}
@@ -655,7 +656,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
       {/* Three-column body for document/generate/media modes */}
       {showThreeColumnLayout && (
-        <div className={`uw-body${rightPanelOpen ? "" : " uw-body--collapsed"}${leftPanelOpen ? "" : " uw-body--left-collapsed"}`}>
+        <div className={`uw-body${rightPanelOpen ? "" : " uw-body--collapsed"}${leftPanelOpen ? "" : " uw-body--left-collapsed"}${isDocumentMode ? " uw-body--no-right" : ""}`}>
           {/* Left: Document tree + Job status */}
           <div className="uw-left">
             <div className="uw-left-scroll">
@@ -799,22 +800,24 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
             </div>
           </div>
 
-          {/* Right: Context panel */}
-          <div className="uw-right">
-            <RightContextPanel
-              projectId={projectId}
-              selectedVersionId={selectedVersionId}
-              selectedVersion={selectedVersion}
-              currentMode={mode}
-              docSubTab={docSubTab}
-              isEditing={isEditing}
-              onStartEdit={() => { openEditor(selectedVersion); handleSubTabChange("edit"); }}
-              onFeedback={setFeedback}
-              jobs={jobs}
-              documents={payload.documents}
-              versions={payload.versions}
-            />
-          </div>
+          {/* Right: Context panel (media mode only; document mode uses drawer in StoryboardWorkbench) */}
+          {!isDocumentMode && (
+            <div className="uw-right">
+              <RightContextPanel
+                projectId={projectId}
+                selectedVersionId={selectedVersionId}
+                selectedVersion={selectedVersion}
+                currentMode={mode}
+                docSubTab={docSubTab}
+                isEditing={isEditing}
+                onStartEdit={() => { openEditor(selectedVersion); handleSubTabChange("edit"); }}
+                onFeedback={setFeedback}
+                jobs={jobs}
+                documents={payload.documents}
+                versions={payload.versions}
+              />
+            </div>
+          )}
         </div>
       )}
       {/* Mobile drawers (only rendered when open, visible <1024px) */}

@@ -4,23 +4,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ImageConfigSource, ProjectWorkspacePayload, StoryboardContent, StoryboardShot } from "@dramaflow/shared";
 import {
-  STORYBOARD_CAMERA_MOVE_OPTIONS,
   STORYBOARD_FRAMING_OPTIONS,
-  getStoryboardCameraMoveLabel,
   getStoryboardEstimatedDuration,
-  getStoryboardFramingLabel,
   getStoryboardSceneIds,
-  getStoryboardShotAudioSummary,
-  getStoryboardShotVisualSummary,
   normalizeScriptContent,
   normalizeStoryboardContent,
   normalizeWorldBibleContent,
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../../lib/api";
-import { getJobStatusLabel, useI18n } from "../../lib/i18n";
+import { useI18n } from "../../lib/i18n";
 import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
+import { ShotCard } from "./shot-card";
+import { StoryboardToolbar } from "./storyboard-toolbar";
+import { ShotDetailDrawer } from "./shot-detail-drawer";
 
 interface Props {
   content: StoryboardContent;
@@ -66,126 +64,6 @@ interface ShotProjectState {
   isFinished: boolean;
 }
 
-const COPY = {
-  zh: {
-    title: "分镜工作台",
-    subtitle: "在左侧浏览分镜列表，并在右侧检查媒体、任务与提示词字段。",
-    filters: {
-      all: "所有分镜",
-      unfinished: "未完成",
-      candidates: "有候选待定",
-    },
-    columns: {
-      visual: "画面内容",
-      audio: "音频 / 对白",
-      notes: "备注",
-    },
-    stats: {
-      scenes: "场次",
-      shots: "镜头",
-      duration: "预估时长",
-      images: "图片",
-      videos: "视频",
-      audios: "配音",
-    },
-    sceneBatch: "按场次批量配音",
-    addScene: "添加场次",
-    addShot: "添加分镜",
-    createFirstShot: "创建首个分镜",
-    noShots: "暂无分镜内容。",
-    noSelection: "点击左侧列表选择一个分镜以在此处查看详情。",
-    noFilteredShots: "没有符合当前筛选条件的分镜。",
-    sceneFallback: "未绑定剧本场次",
-    inspector: "分镜监视器",
-    adoptedMedia: "当前采用媒体",
-    emptyMedia: "暂未采用任何图片或视频。",
-    production: "内容生成",
-    jobStatus: "任务状态",
-    ttsPanel: "角色配音",
-    promptPanel: "AI 提示词配置",
-    imageCandidates: "图片候选集",
-    videoCandidates: "视频候选集",
-    emptyCandidates: "暂无候选版本",
-    adopt: "采用",
-    adopted: "当前采用",
-    noJob: "无任务",
-    selected: "已选中",
-    readonly: "历史版本为只读模式。由于系统限制，媒体状态仍反映当前主干的媒体。",
-    ttsCharacter: "配音角色",
-    ttsText: "配音文本",
-    voice: "发声参数",
-    noCharacter: "未指定角色",
-    actionDescription: "动作描述",
-    imagePrompt: "画面提示词",
-    videoPrompt: "视频提示词",
-    characterIds: "关联角色",
-    moveUp: "上移",
-    moveDown: "下移",
-    deleteShot: "删除分镜",
-    overviewFallback: "暂无分镜概述内容。",
-    generateTts: "生成配音",
-  },
-  en: {
-    title: "Storyboard Workbench",
-    subtitle: "Scan the shot list on the left and inspect media, jobs, and prompt fields on the right.",
-    filters: {
-      all: "All shots",
-      unfinished: "Unfinished",
-      candidates: "Pending candidates",
-    },
-    columns: {
-      visual: "Visual Content",
-      audio: "Audio / Dialogue",
-      notes: "Notes",
-    },
-    stats: {
-      scenes: "Scenes",
-      shots: "Shots",
-      duration: "Estimated",
-      images: "Images",
-      videos: "Videos",
-      audios: "TTS",
-    },
-    sceneBatch: "Batch TTS by scene",
-    addScene: "Add scene",
-    addShot: "Add shot",
-    createFirstShot: "Create first shot",
-    noShots: "No storyboard shots yet.",
-    noSelection: "Select a shot on the left to inspect it here.",
-    noFilteredShots: "No shots match the current filter.",
-    sceneFallback: "No linked script scene",
-    inspector: "Shot Inspector",
-    adoptedMedia: "Adopted Media",
-    emptyMedia: "No adopted image or video yet.",
-    production: "Shot Production",
-    jobStatus: "Job Status",
-    ttsPanel: "TTS and Character",
-    promptPanel: "AI Prompt Fields",
-    imageCandidates: "Image Candidates",
-    videoCandidates: "Video Candidates",
-    emptyCandidates: "No candidate versions yet",
-    adopt: "Adopt",
-    adopted: "Adopted",
-    noJob: "No job yet",
-    selected: "Selected",
-    readonly: "Historical versions are read-only. Media state still reflects the current project.",
-    ttsCharacter: "TTS Character",
-    ttsText: "TTS Text",
-    voice: "Current Voice",
-    noCharacter: "No character mapped",
-    actionDescription: "Action",
-    imagePrompt: "Image Prompt",
-    videoPrompt: "Video Prompt",
-    characterIds: "Characters",
-    moveUp: "Move up",
-    moveDown: "Move down",
-    deleteShot: "Delete shot",
-    overviewFallback: "No storyboard overview yet.",
-    generateTts: "Generate TTS",
-  },
-} as const;
-
-
 function createShotId(sceneId: string, index: number) {
   return `shot-${sceneId}-${index + 1}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -207,114 +85,9 @@ function createEmptyShot(sceneId: string, index: number): StoryboardShot {
   };
 }
 
-function formatDuration(value: number, locale: "zh" | "en") {
-  const seconds = Math.max(0, Math.round(value));
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remain = seconds % 60;
-  return `${minutes}m ${remain}s`;
-}
-
-function CandidateList({
-  title,
-  candidates,
-  currentVersionId,
-  onAdopt,
-  canAdopt,
-  isPending,
-  emptyLabel,
-  adoptLabel,
-  adoptedLabel,
-}: {
-  title: string;
-  candidates: ProjectWorkspacePayload["versions"];
-  currentVersionId?: string;
-  onAdopt: (versionId: string) => void;
-  canAdopt: boolean;
-  isPending: boolean;
-  emptyLabel: string;
-  adoptLabel: string;
-  adoptedLabel: string;
-}) {
-  return (
-    <div className="swb-panel">
-      <div className="swb-panel__header">
-        <h4>{title}</h4>
-      </div>
-      {candidates.length === 0 ? (
-        <div className="swb-empty-inline">{emptyLabel}</div>
-      ) : (
-        <div className="swb-candidates">
-          {candidates.map((candidate) => {
-            const content = (candidate.content ?? {}) as MediaVersionContent;
-            const adopted = candidate.id === currentVersionId;
-            return (
-              <div key={candidate.id} className="swb-candidate">
-                <div className="swb-candidate__meta">
-                  <strong>{candidate.title}</strong>
-                  <span className="muted">V{candidate.versionNumber}{content.model ? ` 闂?${content.model}` : ""}</span>
-                </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  disabled={!canAdopt || isPending || adopted}
-                  onClick={() => onAdopt(candidate.id)}
-                >
-                  {adopted ? adoptedLabel : adoptLabel}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusRow({
-  label,
-  job,
-  formatDate,
-  statusLabel,
-  emptyLabel,
-}: {
-  label: string;
-  job?: ProjectWorkspacePayload["jobs"][number];
-  formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
-  statusLabel: (status: ProjectWorkspacePayload["jobs"][number]["status"]) => string;
-  emptyLabel: string;
-}) {
-  if (!job) {
-    return (
-      <div className="swb-status-row">
-        <span className="swb-status-row__label">{label}</span>
-        <span className="muted">{emptyLabel}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="swb-status-row">
-      <div className="swb-status-row__main">
-        <span className="swb-status-row__label">{label}</span>
-        <span className={`swb-status-pill swb-status-pill--${job.status}`}>{statusLabel(job.status)}</span>
-      </div>
-      <div className="swb-status-row__meta">
-        {typeof job.progress === "number" ? <span>{job.progress}%</span> : null}
-        <span>{formatDate(job.updatedAt, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-      </div>
-      {job.error ? <div className="swb-status-row__error">{job.error}</div> : null}
-    </div>
-  );
-}
-
 export function StoryboardWorkbench({ content, onChange, projectId, project, allowProjectMutations = true }: Props) {
-  const { t, locale, formatDate } = useI18n();
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const language = locale === "en" ? "en" : "zh";
-  const copy = COPY[language];
   const editable = Boolean(onChange);
   const canUseProject = Boolean(projectId && project);
   const canMutateProject = canUseProject && allowProjectMutations;
@@ -322,8 +95,8 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const safeWorldBible = useMemo(() => normalizeWorldBibleContent(project?.worldBible), [project?.worldBible]);
 
   const [selectedShotId, setSelectedShotId] = useState(safeContent.shots[0]?.id ?? "");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [filter, setFilter] = useState<ShotFilter>("all");
-  const [newSceneId, setNewSceneId] = useState("");
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
   const [ttsDrafts, setTtsDrafts] = useState<Record<string, { text: string; characterId: string }>>({});
   const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
@@ -331,9 +104,8 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const characters = safeWorldBible.characters;
   const voiceConfigs = safeWorldBible.voiceConfigs ?? [];
 
-  const charactersById = useMemo(() => new Map(characters.map((character) => [character.id, character])), [characters]);
-  const voiceConfigsByCharacterId = useMemo(() => new Map(voiceConfigs.map((config) => [config.characterId, config])), [voiceConfigs]);
-  const versionsById = useMemo(() => new Map((project?.versions ?? []).map((version) => [version.id, version])), [project?.versions]);
+  const charactersById = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
+  const versionsById = useMemo(() => new Map((project?.versions ?? []).map((v) => [v.id, v])), [project?.versions]);
 
   const versionsByDocument = useMemo(() => {
     const map = new Map<string, ProjectWorkspacePayload["versions"]>();
@@ -343,30 +115,28 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       map.set(version.documentId, group);
     }
     for (const group of map.values()) {
-      group.sort((left, right) => right.versionNumber - left.versionNumber);
+      group.sort((a, b) => b.versionNumber - a.versionNumber);
     }
     return map;
   }, [project?.versions]);
 
   const documentsByShot = useMemo(() => {
     const map = new Map<string, { image?: ProjectWorkspacePayload["documents"][number]; video?: ProjectWorkspacePayload["documents"][number]; audio?: ProjectWorkspacePayload["documents"][number] }>();
-    for (const document of project?.documents ?? []) {
-      if (!document.shotId || (document.type !== "image" && document.type !== "video" && document.type !== "audio")) {
-        continue;
-      }
-      const entry = map.get(document.shotId) ?? {};
-      if (document.type === "image") entry.image = document;
-      if (document.type === "video") entry.video = document;
-      if (document.type === "audio") entry.audio = document;
-      map.set(document.shotId, entry);
+    for (const doc of project?.documents ?? []) {
+      if (!doc.shotId || (doc.type !== "image" && doc.type !== "video" && doc.type !== "audio")) continue;
+      const entry = map.get(doc.shotId) ?? {};
+      if (doc.type === "image") entry.image = doc;
+      if (doc.type === "video") entry.video = doc;
+      if (doc.type === "audio") entry.audio = doc;
+      map.set(doc.shotId, entry);
     }
     return map;
   }, [project?.documents]);
 
   const latestJobsByShot = useMemo(() => {
     const map = new Map<string, ShotJobMap>();
-    const sortedJobs = [...(project?.jobs ?? [])].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    for (const job of sortedJobs) {
+    const sorted = [...(project?.jobs ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    for (const job of sorted) {
       if (!job.shotId) continue;
       const entry = map.get(job.shotId) ?? {};
       if (job.type === "image_generation" && !entry.image) entry.image = job;
@@ -380,43 +150,39 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const sceneHeadingMap = useMemo(() => {
     const map = new Map<string, string>();
     if (!project) return map;
-    const scriptDocument = project.documents.find((document) => document.type === "script");
-    const scriptVersion = project.versions.find((version) => version.id === scriptDocument?.currentVersionId);
-    if (!scriptVersion) return map;
-    for (const scene of normalizeScriptContent(scriptVersion.content).scenes) {
+    const scriptDoc = project.documents.find((d) => d.type === "script");
+    const scriptVer = project.versions.find((v) => v.id === scriptDoc?.currentVersionId);
+    if (!scriptVer) return map;
+    for (const scene of normalizeScriptContent(scriptVer.content).scenes) {
       map.set(scene.id, scene.heading);
     }
     return map;
   }, [project]);
+
   const shotStateById = useMemo(() => {
     const map = new Map<string, ShotProjectState>();
     for (const shot of safeContent.shots) {
-      const documents = documentsByShot.get(shot.id) ?? {};
-      const currentImage = documents.image?.currentVersionId ? versionsById.get(documents.image.currentVersionId) ?? null : null;
-      const currentVideo = documents.video?.currentVersionId ? versionsById.get(documents.video.currentVersionId) ?? null : null;
-      const currentAudio = documents.audio?.currentVersionId ? versionsById.get(documents.audio.currentVersionId) ?? null : null;
-      const imageCandidates = documents.image ? versionsByDocument.get(documents.image.id) ?? [] : [];
-      const videoCandidates = documents.video ? versionsByDocument.get(documents.video.id) ?? [] : [];
+      const docs = documentsByShot.get(shot.id) ?? {};
+      const currentImage = docs.image?.currentVersionId ? versionsById.get(docs.image.currentVersionId) ?? null : null;
+      const currentVideo = docs.video?.currentVersionId ? versionsById.get(docs.video.currentVersionId) ?? null : null;
+      const currentAudio = docs.audio?.currentVersionId ? versionsById.get(docs.audio.currentVersionId) ?? null : null;
+      const imageCandidates = docs.image ? versionsByDocument.get(docs.image.id) ?? [] : [];
+      const videoCandidates = docs.video ? versionsByDocument.get(docs.video.id) ?? [] : [];
       const hasImage = Boolean((currentImage?.content as MediaVersionContent | undefined)?.assetUrl);
       const hasVideo = Boolean((currentVideo?.content as MediaVersionContent | undefined)?.assetUrl);
       const hasAudio = Boolean((currentAudio?.content as MediaVersionContent | undefined)?.assetUrl);
       const requiresTts = Boolean(shot.dialogue?.trim());
-      const hasPendingCandidates = imageCandidates.some((candidate) => candidate.id !== documents.image?.currentVersionId)
-        || videoCandidates.some((candidate) => candidate.id !== documents.video?.currentVersionId);
+      const hasPendingCandidates = imageCandidates.some((c) => c.id !== docs.image?.currentVersionId)
+        || videoCandidates.some((c) => c.id !== docs.video?.currentVersionId);
 
       map.set(shot.id, {
-        imageDocument: documents.image ?? null,
-        videoDocument: documents.video ?? null,
-        audioDocument: documents.audio ?? null,
-        currentImage,
-        currentVideo,
-        currentAudio,
-        imageCandidates,
-        videoCandidates,
+        imageDocument: docs.image ?? null,
+        videoDocument: docs.video ?? null,
+        audioDocument: docs.audio ?? null,
+        currentImage, currentVideo, currentAudio,
+        imageCandidates, videoCandidates,
         jobs: latestJobsByShot.get(shot.id) ?? {},
-        hasImage,
-        hasVideo,
-        hasAudio,
+        hasImage, hasVideo, hasAudio,
         hasPendingCandidates,
         isFinished: hasImage && hasVideo && (!requiresTts || hasAudio),
       });
@@ -442,40 +208,26 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     return Array.from(map.entries()).map(([sceneId, shots]) => ({ sceneId, heading: sceneHeadingMap.get(sceneId), shots }));
   }, [sceneHeadingMap, visibleShots]);
 
-  const summary = useMemo(() => {
-    let imageReady = 0;
-    let videoReady = 0;
-    let audioReady = 0;
-    for (const shot of safeContent.shots) {
-      const state = shotStateById.get(shot.id);
-      if (!state) continue;
-      if (state.hasImage) imageReady += 1;
-      if (state.hasVideo) videoReady += 1;
-      if (state.hasAudio) audioReady += 1;
-    }
-    return {
-      sceneCount: getStoryboardSceneIds(safeContent).length,
-      shotCount: safeContent.shots.length,
-      duration: getStoryboardEstimatedDuration(safeContent),
-      imageReady,
-      videoReady,
-      audioReady,
-    };
-  }, [safeContent, shotStateById]);
-
+  // Keep selectedShotId valid when filter changes
   useEffect(() => {
-    if (visibleShots.some((shot) => shot.id === selectedShotId)) return;
+    if (visibleShots.some((s) => s.id === selectedShotId)) return;
     setSelectedShotId(visibleShots[0]?.id ?? "");
   }, [selectedShotId, visibleShots]);
 
-  const selectedShot = safeContent.shots.find((shot) => shot.id === selectedShotId) ?? visibleShots[0] ?? null;
+  const selectedShot = safeContent.shots.find((s) => s.id === selectedShotId) ?? visibleShots[0] ?? null;
   const selectedState = selectedShot ? shotStateById.get(selectedShot.id) ?? null : null;
-  const selectedCharacters = selectedShot?.characterIds?.length ? selectedShot.characterIds : characters.map((character) => character.id);
   const selectedDraft = selectedShot ? (ttsDrafts[selectedShot.id] ?? {
     text: selectedShot.dialogue ?? "",
     characterId: selectedShot.characterIds?.[0] ?? "",
   }) : null;
-  const selectedVoice = selectedDraft?.characterId ? voiceConfigsByCharacterId.get(selectedDraft.characterId) : undefined;
+
+  // Selected scene for toolbar
+  const selectedSceneId = selectedShot?.sceneId ?? visibleSceneGroups[0]?.sceneId ?? "";
+
+  // Prev/next navigation within the visible shots list
+  const selectedIndex = visibleShots.findIndex((s) => s.id === selectedShotId);
+  const hasPrev = selectedIndex > 0;
+  const hasNext = selectedIndex >= 0 && selectedIndex < visibleShots.length - 1;
 
   function updateContent(mutator: (current: StoryboardContent) => StoryboardContent) {
     if (!onChange) return;
@@ -485,22 +237,20 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   function updateShot(shotId: string, patch: Partial<StoryboardShot>) {
     updateContent((current) => ({
       ...current,
-      shots: current.shots.map((shot) => (shot.id === shotId ? { ...shot, ...patch } : shot)),
+      shots: current.shots.map((s) => (s.id === shotId ? { ...s, ...patch } : s)),
     }));
   }
 
-  function addScene() {
-    const sceneId = newSceneId.trim() || `scene-${getStoryboardSceneIds(safeContent).length + 1}`;
+  function addScene(sceneId: string) {
     const shot = createEmptyShot(sceneId, 0);
     updateContent((current) => ({ ...current, shots: [...current.shots, shot] }));
     setSelectedShotId(shot.id);
-    setNewSceneId("");
   }
 
   function addShot(sceneId: string) {
-    const sceneShots = safeContent.shots.filter((shot) => shot.sceneId === sceneId);
+    const sceneShots = safeContent.shots.filter((s) => s.sceneId === sceneId);
     const shot = createEmptyShot(sceneId, sceneShots.length);
-    const insertIndex = safeContent.shots.reduce((lastIndex, currentShot, index) => currentShot.sceneId === sceneId ? index : lastIndex, -1);
+    const insertIndex = safeContent.shots.reduce((last, s, i) => s.sceneId === sceneId ? i : last, -1);
     updateContent((current) => {
       const shots = [...current.shots];
       shots.splice(insertIndex + 1, 0, shot);
@@ -511,7 +261,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
 
   function moveShot(shotId: string, direction: -1 | 1) {
     updateContent((current) => {
-      const index = current.shots.findIndex((shot) => shot.id === shotId);
+      const index = current.shots.findIndex((s) => s.id === shotId);
       const target = index + direction;
       if (index < 0 || target < 0 || target >= current.shots.length) return current;
       const shots = [...current.shots];
@@ -521,7 +271,19 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   }
 
   function removeShot(shotId: string) {
-    updateContent((current) => ({ ...current, shots: current.shots.filter((shot) => shot.id !== shotId) }));
+    updateContent((current) => ({ ...current, shots: current.shots.filter((s) => s.id !== shotId) }));
+    setDrawerOpen(false);
+  }
+
+  function updateTtsDraft(field: "text" | "characterId", value: string) {
+    if (!selectedShot) return;
+    setTtsDrafts((current) => ({
+      ...current,
+      [selectedShot.id]: {
+        text: field === "text" ? value : selectedDraft?.text ?? selectedShot.dialogue ?? "",
+        characterId: field === "characterId" ? value : selectedDraft?.characterId ?? selectedShot.characterIds?.[0] ?? "",
+      },
+    }));
   }
 
   async function invalidateWorkspace() {
@@ -545,13 +307,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const generateImage = useMutation({
     mutationFn: async ({ shotId, prompt }: { shotId: string; prompt?: string }) => apiFetch(`/shots/${shotId}/image-jobs`, {
       method: "POST",
-      body: {
-        projectId: requireProjectId(),
-        style: "cinematic",
-        aspectRatio: "16:9",
-        configSource: imageConfigSource,
-        prompt: prompt || undefined,
-      },
+      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", configSource: imageConfigSource, prompt: prompt || undefined },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "Image", jobId: "queued" }), error: null });
@@ -563,14 +319,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const generateVideo = useMutation({
     mutationFn: async ({ shotId, prompt, referenceImageAssetId }: { shotId: string; prompt?: string; referenceImageAssetId?: string }) => apiFetch(`/shots/${shotId}/video-jobs`, {
       method: "POST",
-      body: {
-        projectId: requireProjectId(),
-        style: "cinematic",
-        aspectRatio: "16:9",
-        durationSeconds: 5,
-        prompt: prompt || undefined,
-        referenceImageAssetId,
-      },
+      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, prompt: prompt || undefined, referenceImageAssetId },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "Video", jobId: "queued" }), error: null });
@@ -594,24 +343,10 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const batchGenerateMissingImages = useMutation({
     mutationFn: async () => apiFetch(`/projects/${requireProjectId()}/batch-image-jobs`, {
       method: "POST",
-      body: {
-        shotIds: safeContent.shots.filter((shot) => !shotStateById.get(shot.id)?.hasImage).map((shot) => shot.id),
-      },
+      body: { shotIds: safeContent.shots.filter((s) => !shotStateById.get(s.id)?.hasImage).map((s) => s.id) },
     }),
     onSuccess: async () => {
       setFeedback({ message: "Batch image job queued.", error: null });
-      await invalidateWorkspace();
-    },
-    onError: setMutationError,
-  });
-
-  const batchSceneTts = useMutation({
-    mutationFn: async ({ sceneId, shotIds }: { sceneId: string; shotIds: string[] }) => apiFetch(`/scenes/${sceneId}/batch-tts-jobs`, {
-      method: "POST",
-      body: { projectId: requireProjectId(), shotIds },
-    }),
-    onSuccess: async () => {
-      setFeedback({ message: "Scene batch TTS queued.", error: null });
       await invalidateWorkspace();
     },
     onError: setMutationError,
@@ -629,374 +364,116 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     onError: setMutationError,
   });
 
-  function renderVisualCell(shot: StoryboardShot) {
-    if (!editable) {
-      return <div className="swb-cell-copy">{getStoryboardShotVisualSummary(shot) || <span className="muted">-</span>}</div>;
-    }
-
-    return (
-      <div className="swb-cell-stack">
-        <textarea
-          className="input swb-cell-textarea"
-          rows={2}
-          value={shot.visualDescription}
-          onChange={(event) => updateShot(shot.id, { visualDescription: event.target.value })}
-          placeholder="Composition, light, subject"
-        />
-        <textarea
-          className="input swb-cell-textarea swb-cell-textarea--subtle"
-          rows={2}
-          value={shot.actionDescription ?? ""}
-          onChange={(event) => updateShot(shot.id, { actionDescription: event.target.value })}
-          placeholder={copy.actionDescription}
-        />
-      </div>
-    );
-  }
-
-  function renderAudioCell(shot: StoryboardShot) {
-    if (!editable) {
-      return <div className="swb-cell-copy">{getStoryboardShotAudioSummary(shot) || <span className="muted">-</span>}</div>;
-    }
-
-    return (
-      <div className="swb-cell-stack">
-        <textarea
-          className="input swb-cell-textarea"
-          rows={2}
-          value={shot.dialogue ?? ""}
-          onChange={(event) => updateShot(shot.id, { dialogue: event.target.value })}
-          placeholder={t("storyboardEditor.dialoguePlaceholder")}
-        />
-        <textarea
-          className="input swb-cell-textarea swb-cell-textarea--subtle"
-          rows={2}
-          value={shot.soundDesign ?? ""}
-          onChange={(event) => updateShot(shot.id, { soundDesign: event.target.value })}
-          placeholder={t("storyboardEditor.soundDesignPlaceholder")}
-        />
-      </div>
-    );
-  }
-
-  function updateTtsDraft(field: "text" | "characterId", value: string) {
-    if (!selectedShot) return;
-    setTtsDrafts((current) => ({
-      ...current,
-      [selectedShot.id]: {
-        text: field === "text" ? value : selectedDraft?.text ?? selectedShot.dialogue ?? "",
-        characterId: field === "characterId" ? value : selectedDraft?.characterId ?? selectedShot.characterIds?.[0] ?? "",
-      },
-    }));
-  }
   return (
-    <div className={`swb-root${editable ? " swb-root--editable" : ""}`}>
-      <div className="swb-overview">
-        <div className="swb-overview__header">
-          <div>
-            <p className="swb-overview__eyebrow">{copy.title}</p>
-            <h3>{copy.subtitle}</h3>
-          </div>
-          <InlineFeedback message={feedback.message} error={feedback.error} />
-        </div>
-        {editable ? (
-          <textarea
-            className="input swb-overview__input"
-            rows={3}
-            value={safeContent.overview}
-            onChange={(event) => updateContent((current) => ({ ...current, overview: event.target.value }))}
-            placeholder={t("storyboardEditor.overviewPlaceholder")}
-          />
-        ) : (
-          <p className="swb-overview__copy">{safeContent.overview || copy.overviewFallback}</p>
-        )}
-      </div>
+    <div className="swb-root-v2">
+      {/* Feedback */}
+      <InlineFeedback message={feedback.message} error={feedback.error} />
 
-      <div className="swb-summary">
-        <div className="swb-summary__stats">
-          <div className="swb-stat"><span>{copy.stats.scenes}</span><strong>{summary.sceneCount}</strong></div>
-          <div className="swb-stat"><span>{copy.stats.shots}</span><strong>{summary.shotCount}</strong></div>
-          <div className="swb-stat"><span>{copy.stats.duration}</span><strong>{formatDuration(summary.duration, language)}</strong></div>
-          <div className="swb-stat"><span>{copy.stats.images}</span><strong>{summary.imageReady}</strong></div>
-          <div className="swb-stat"><span>{copy.stats.videos}</span><strong>{summary.videoReady}</strong></div>
-          <div className="swb-stat"><span>{copy.stats.audios}</span><strong>{summary.audioReady}</strong></div>
-        </div>
-        <div className="swb-summary__actions">
-          <div className="swb-filter-row">
-            <button className={`swb-filter-chip${filter === "all" ? " swb-filter-chip--active" : ""}`} type="button" onClick={() => setFilter("all")}>{copy.filters.all}</button>
-            <button className={`swb-filter-chip${filter === "unfinished" ? " swb-filter-chip--active" : ""}`} type="button" onClick={() => setFilter("unfinished")}>{copy.filters.unfinished}</button>
-            <button className={`swb-filter-chip${filter === "candidates" ? " swb-filter-chip--active" : ""}`} type="button" onClick={() => setFilter("candidates")}>{copy.filters.candidates}</button>
-          </div>
-          {editable ? (
-            <div className="swb-scene-create">
-              <input className="input" value={newSceneId} onChange={(event) => setNewSceneId(event.target.value)} placeholder={t("storyboardEditor.newSceneIdPlaceholder")} />
-              <button className="btn btn-secondary btn-sm" type="button" onClick={addScene}>{copy.addScene}</button>
-            </div>
-          ) : null}
-          {canUseProject ? (
-            <div className="swb-batch-actions">
-              <label className="swb-inline-select">
-                <span>{t("projectWorkspace.media.imageConfigSourceLabel")}</span>
-                <select value={imageConfigSource} onChange={(event) => setImageConfigSource(event.target.value as ImageConfigSource)} disabled={!canMutateProject}>
-                  <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
-                  <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
-                </select>
-              </label>
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                disabled={!canMutateProject || batchGenerateMissingImages.isPending || safeContent.shots.every((shot) => shotStateById.get(shot.id)?.hasImage)}
-                onClick={() => batchGenerateMissingImages.mutate()}
-              >
-                {batchGenerateMissingImages.isPending ? t("common.submitting") : t("projectWorkspace.media.batchGenerateMissingImages")}
+      {/* Toolbar */}
+      <StoryboardToolbar
+        content={safeContent}
+        editable={editable}
+        canMutateProject={canMutateProject}
+        filter={filter}
+        onFilterChange={setFilter}
+        onAddScene={addScene}
+        onAddShot={addShot}
+        onBatchGenerateImages={() => batchGenerateMissingImages.mutate()}
+        isBatchPending={batchGenerateMissingImages.isPending}
+        allImagesReady={safeContent.shots.every((s) => shotStateById.get(s.id)?.hasImage)}
+        imageConfigSource={imageConfigSource}
+        onImageConfigSourceChange={setImageConfigSource}
+        sceneGroups={visibleSceneGroups.map((g) => ({ sceneId: g.sceneId, heading: g.heading }))}
+        selectedSceneId={selectedSceneId}
+        onSceneSelect={(sceneId) => {
+          const firstShot = visibleShots.find((s) => s.sceneId === sceneId);
+          if (firstShot) setSelectedShotId(firstShot.id);
+        }}
+      />
+
+      {/* Card grid */}
+      <div className="swb-grid-scroll">
+        {visibleSceneGroups.length === 0 ? (
+          <div className="swb-empty">
+            <p>{safeContent.shots.length === 0 ? "No storyboard shots yet." : "No shots match the current filter."}</p>
+            {editable && safeContent.shots.length === 0 && (
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => addScene(`scene-1`)}>
+                Create first shot
               </button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {canUseProject && visibleSceneGroups.length > 0 ? (
-        <div className="swb-scene-batches">
-          <span className="swb-scene-batches__label">{copy.sceneBatch}</span>
-          <div className="swb-scene-batches__list">
-            {visibleSceneGroups.map((group) => {
-              const eligibleShotIds = group.shots.filter((shot) => Boolean(shot.dialogue?.trim())).map((shot) => shot.id);
-              return (
-                <button
-                  key={group.sceneId}
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  disabled={!canMutateProject || batchSceneTts.isPending || eligibleShotIds.length === 0}
-                  onClick={() => batchSceneTts.mutate({ sceneId: group.sceneId, shotIds: eligibleShotIds })}
-                >
-                  {(group.heading || group.sceneId).slice(0, 24)}
-                </button>
-              );
-            })}
+            )}
           </div>
-        </div>
-      ) : null}
-
-      <div className="swb-shell">
-        <div className="swb-board">
-          {visibleSceneGroups.length === 0 ? (
-            <div className="swb-empty">
-              <p>{safeContent.shots.length === 0 ? copy.noShots : copy.noFilteredShots}</p>
-              {editable && safeContent.shots.length === 0 ? <button className="btn btn-primary btn-sm" type="button" onClick={addScene}>{copy.createFirstShot}</button> : null}
-            </div>
-          ) : visibleSceneGroups.map((group, groupIndex) => (
-            <section key={group.sceneId} className="swb-scene">
-              <header className="swb-scene__header">
-                <div>
-                  <span className="swb-scene__index">{t("storyboardEditor.scenePrefix")} {groupIndex + 1}</span>
-                  <h4>{group.heading || copy.sceneFallback}</h4>
-                  <p>{group.sceneId}</p>
-                </div>
-                {editable ? <button className="btn btn-ghost btn-sm" type="button" onClick={() => addShot(group.sceneId)}>{copy.addShot}</button> : null}
-              </header>
-
-              <div className="swb-table-wrap">
-                <table className="swb-table">
-                  <thead>
-                    <tr>
-                      <th>{t("storyboardEditor.shotLabelField")}</th>
-                      <th>{t("storyboardEditor.framingLabel")}</th>
-                      <th>{t("storyboardEditor.cameraMoveLabel")}</th>
-                      <th>{copy.columns.visual}</th>
-                      <th>{copy.columns.audio}</th>
-                      <th>{t("storyboardEditor.durationLabel")}</th>
-                      <th>{copy.columns.notes}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.shots.map((shot) => {
-                      const isSelected = selectedShot?.id === shot.id;
-                      return (
-                        <tr key={shot.id} className={`swb-table__row${isSelected ? " swb-table__row--selected" : ""}`} onClick={() => setSelectedShotId(shot.id)}>
-                          <td>
-                            {editable ? (
-                              <input className="input swb-cell-input" value={shot.shotLabel} onChange={(event) => updateShot(shot.id, { shotLabel: event.target.value })} />
-                            ) : (
-                              <div className="swb-shot-anchor"><strong>{shot.shotLabel}</strong>{isSelected ? <span>{copy.selected}</span> : null}</div>
-                            )}
-                          </td>
-                          <td>
-                            {editable ? (
-                              <select className="input swb-cell-input" value={shot.framing} onChange={(event) => updateShot(shot.id, { framing: event.target.value })}>
-                                {STORYBOARD_FRAMING_OPTIONS.map((option) => <option key={option} value={option}>{getStoryboardFramingLabel(option, locale === "en" ? "en" : "zh-CN")}</option>)}
-                              </select>
-                            ) : <span className="swb-token">{getStoryboardFramingLabel(shot.framing, locale === "en" ? "en" : "zh-CN")}</span>}
-                          </td>
-                          <td>
-                            {editable ? (
-                              <select className="input swb-cell-input" value={shot.cameraMove} onChange={(event) => updateShot(shot.id, { cameraMove: event.target.value })}>
-                                {STORYBOARD_CAMERA_MOVE_OPTIONS.map((option) => <option key={option} value={option}>{getStoryboardCameraMoveLabel(option, locale === "en" ? "en" : "zh-CN")}</option>)}
-                              </select>
-                            ) : <span className="swb-token swb-token--subtle">{getStoryboardCameraMoveLabel(shot.cameraMove, locale === "en" ? "en" : "zh-CN")}</span>}
-                          </td>
-                          <td>{renderVisualCell(shot)}</td>
-                          <td>{renderAudioCell(shot)}</td>
-                          <td>
-                            {editable ? (
-                              <input className="input swb-cell-input" type="number" min={1} step={1} value={shot.durationSeconds} onChange={(event) => updateShot(shot.id, { durationSeconds: Number(event.target.value) || 1 })} />
-                            ) : <span>{formatDuration(shot.durationSeconds, language)}</span>}
-                          </td>
-                          <td>
-                            {editable ? (
-                              <textarea className="input swb-cell-textarea swb-cell-textarea--compact" rows={3} value={shot.notes ?? ""} onChange={(event) => updateShot(shot.id, { notes: event.target.value })} placeholder={copy.columns.notes} />
-                            ) : <div className="swb-cell-copy">{shot.notes || <span className="muted">-</span>}</div>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+        ) : (
+          visibleSceneGroups.map((group, groupIndex) => (
+            <div key={group.sceneId} className="swb-scene-group">
+              <div className="swb-scene-group__header">
+                <span className="swb-scene-group__index">Scene {groupIndex + 1}</span>
+                <h4 className="swb-scene-group__heading">{group.heading || "Untitled Scene"}</h4>
+                {editable && (
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => addShot(group.sceneId)}>
+                    + Add shot
+                  </button>
+                )}
               </div>
-
-              <div className="swb-mobile-list">
+              <div className="swb-card-grid">
                 {group.shots.map((shot) => {
+                  const state = shotStateById.get(shot.id) ?? null;
                   const isSelected = selectedShot?.id === shot.id;
                   return (
-                    <button key={shot.id} className={`swb-mobile-card${isSelected ? " swb-mobile-card--selected" : ""}`} type="button" onClick={() => setSelectedShotId(shot.id)}>
-                      <div className="swb-mobile-card__top"><strong>{shot.shotLabel}</strong><span>{formatDuration(shot.durationSeconds, language)}</span></div>
-                      <div className="swb-mobile-card__meta"><span>{getStoryboardFramingLabel(shot.framing, locale === "en" ? "en" : "zh-CN")}</span><span>{getStoryboardCameraMoveLabel(shot.cameraMove, locale === "en" ? "en" : "zh-CN")}</span></div>
-                      <div className="swb-mobile-card__body">
-                        <div><span>{copy.columns.visual}</span><p>{getStoryboardShotVisualSummary(shot) || "-"}</p></div>
-                        <div><span>{copy.columns.audio}</span><p>{getStoryboardShotAudioSummary(shot) || "-"}</p></div>
-                  {editable ? <textarea className="input" rows={3} value={selectedShot.notes ?? ""} onChange={(event) => updateShot(selectedShot.id, { notes: event.target.value })} /> : <div className="swb-static-field">{selectedShot.notes || "-"}</div>}
-                      </div>
-                    </button>
+                    <ShotCard
+                      key={shot.id}
+                      shot={shot}
+                      state={state}
+                      isSelected={isSelected}
+                      onClick={() => {
+                        setSelectedShotId(shot.id);
+                        setDrawerOpen(true);
+                      }}
+                    />
                   );
                 })}
               </div>
-            </section>
-          ))}
-        </div>
-
-        <aside className="swb-inspector">
-          {selectedShot ? (
-            <>
-              <div className="swb-inspector__header">
-                <div>
-                  <p className="swb-inspector__eyebrow">{copy.inspector}</p>
-                  <h3>{selectedShot.shotLabel}</h3>
-                  <p>{sceneHeadingMap.get(selectedShot.sceneId) || copy.sceneFallback}<span> / {selectedShot.sceneId}</span></p>
-                </div>
-                {!canMutateProject && canUseProject ? <span className="swb-token swb-token--subtle">{copy.readonly}</span> : null}
-              </div>
-
-              <div className="swb-panel">
-                <div className="swb-panel__header"><h4>{copy.adoptedMedia}</h4></div>
-                <div className="swb-preview">
-                  {(selectedState?.currentVideo?.content as MediaVersionContent | undefined)?.assetUrl ? (
-                    <video controls playsInline className="swb-preview__media"><source src={(selectedState?.currentVideo?.content as MediaVersionContent | undefined)?.assetUrl} type={(selectedState?.currentVideo?.content as MediaVersionContent | undefined)?.mimeType ?? "video/mp4"} /></video>
-                  ) : (selectedState?.currentImage?.content as MediaVersionContent | undefined)?.assetUrl ? (
-                    <img className="swb-preview__media" src={(selectedState?.currentImage?.content as MediaVersionContent | undefined)?.assetUrl} alt={selectedShot.shotLabel} />
-                  ) : (
-                    <div className="swb-preview__empty">{copy.emptyMedia}</div>
-                  )}
-                </div>
-                {(selectedState?.currentAudio?.content as MediaVersionContent | undefined)?.assetUrl ? <audio controls src={(selectedState?.currentAudio?.content as MediaVersionContent | undefined)?.assetUrl} className="swb-audio-player" /> : null}
-              </div>
-
-              {canUseProject ? (
-                <>
-                  <div className="swb-panel">
-                    <div className="swb-panel__header"><h4>{copy.production}</h4></div>
-                    <div className="swb-production-actions">
-                      <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || generateImage.isPending} onClick={() => generateImage.mutate({ shotId: selectedShot.id, prompt: selectedShot.imagePrompt })}>{generateImage.isPending ? t("common.submitting") : t("projectWorkspace.media.genImage")}</button>
-                      <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || generateVideo.isPending} onClick={() => generateVideo.mutate({ shotId: selectedShot.id, prompt: selectedShot.videoPrompt, referenceImageAssetId: (selectedState?.currentImage?.content as MediaVersionContent | undefined)?.assetId })}>{generateVideo.isPending ? t("common.submitting") : t("projectWorkspace.media.genVideo")}</button>
-                      <button className="btn btn-ghost btn-sm" type="button" disabled={!canMutateProject || !selectedDraft?.characterId || !selectedDraft.text.trim() || generateTts.isPending} onClick={() => selectedDraft && generateTts.mutate({ shotId: selectedShot.id, characterId: selectedDraft.characterId, text: selectedDraft.text.trim() })}>{generateTts.isPending ? t("common.submitting") : copy.generateTts}</button>
-                    </div>
-                  </div>
-
-                  <div className="swb-panel">
-                    <div className="swb-panel__header"><h4>{copy.jobStatus}</h4></div>
-                    <div className="swb-status-list">
-                      <StatusRow label="Image" job={selectedState?.jobs.image} formatDate={formatDate} statusLabel={(status) => getJobStatusLabel(t, status)} emptyLabel={copy.noJob} />
-                      <StatusRow label="Video" job={selectedState?.jobs.video} formatDate={formatDate} statusLabel={(status) => getJobStatusLabel(t, status)} emptyLabel={copy.noJob} />
-                      <StatusRow label="TTS" job={selectedState?.jobs.tts} formatDate={formatDate} statusLabel={(status) => getJobStatusLabel(t, status)} emptyLabel={copy.noJob} />
-                    </div>
-                  </div>
-                </>
-              ) : null}
-
-              <div className="swb-panel">
-                <div className="swb-panel__header"><h4>{copy.ttsPanel}</h4></div>
-                <label className="swb-field"><span className="swb-field__label">{copy.ttsCharacter}</span>
-                  <select className="input" value={selectedDraft?.characterId ?? ""} onChange={(event) => updateTtsDraft("characterId", event.target.value)}>
-                    {selectedCharacters.length === 0 ? <option value="">{copy.noCharacter}</option> : null}
-                    {selectedCharacters.map((characterId) => <option key={characterId} value={characterId}>{charactersById.get(characterId)?.name ?? characterId}</option>)}
-                  </select>
-                </label>
-                <label className="swb-field"><span className="swb-field__label">{copy.voice}</span><div className="swb-static-field">{(selectedState?.currentAudio?.content as MediaVersionContent | undefined)?.voiceName ?? selectedVoice?.voiceName ?? copy.noCharacter}</div></label>
-                <label className="swb-field"><span className="swb-field__label">{copy.ttsText}</span>
-                  <textarea className="input" rows={4} value={selectedDraft?.text ?? ""} onChange={(event) => updateTtsDraft("text", event.target.value)} placeholder={t("storyboardEditor.dialoguePlaceholder")} />
-                </label>
-              </div>
-
-              <div className="swb-panel">
-                <div className="swb-panel__header"><h4>{copy.promptPanel}</h4></div>
-                <label className="swb-field"><span className="swb-field__label">{copy.characterIds}</span>
-                  {editable ? <input className="input" value={selectedShot.characterIds?.join(", ") ?? ""} onChange={(event) => updateShot(selectedShot.id, { characterIds: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} /> : <div className="swb-static-field">{(selectedShot.characterIds ?? []).map((characterId) => charactersById.get(characterId)?.name ?? characterId).join(", ") || "-"}</div>}
-                </label>
-                <label className="swb-field"><span className="swb-field__label">{copy.actionDescription}</span>
-                  {editable ? <textarea className="input" rows={3} value={selectedShot.actionDescription ?? ""} onChange={(event) => updateShot(selectedShot.id, { actionDescription: event.target.value })} /> : <div className="swb-static-field">{selectedShot.actionDescription || "-"}</div>}
-                </label>
-                <label className="swb-field"><span className="swb-field__label">{copy.columns.notes}</span>
-                  {editable ? <textarea className="input" rows={3} value={selectedShot.notes ?? ""} onChange={(event) => updateShot(selectedShot.id, { notes: event.target.value })} /> : <div className="swb-static-field">{selectedShot.notes || "-"}</div>}
-                </label>
-                <label className="swb-field"><span className="swb-field__label">{copy.imagePrompt}</span>
-                  {editable ? <textarea className="input" rows={4} value={selectedShot.imagePrompt ?? ""} onChange={(event) => updateShot(selectedShot.id, { imagePrompt: event.target.value })} /> : <div className="swb-static-field swb-static-field--mono">{selectedShot.imagePrompt || "-"}</div>}
-                </label>
-                <label className="swb-field"><span className="swb-field__label">{copy.videoPrompt}</span>
-                  {editable ? <textarea className="input" rows={4} value={selectedShot.videoPrompt ?? ""} onChange={(event) => updateShot(selectedShot.id, { videoPrompt: event.target.value })} /> : <div className="swb-static-field swb-static-field--mono">{selectedShot.videoPrompt || "-"}</div>}
-                </label>
-              </div>
-
-              {canUseProject ? (
-                <>
-                  <CandidateList
-                    title={copy.imageCandidates}
-                    candidates={selectedState?.imageCandidates ?? []}
-                    currentVersionId={selectedState?.imageDocument?.currentVersionId}
-                    onAdopt={(versionId) => selectedState?.imageDocument && adoptVersion.mutate({ documentId: selectedState.imageDocument.id, versionId })}
-                    canAdopt={Boolean(canMutateProject && selectedState?.imageDocument)}
-                    isPending={adoptVersion.isPending}
-                    emptyLabel={copy.emptyCandidates}
-                    adoptLabel={copy.adopt}
-                    adoptedLabel={copy.adopted}
-                  />
-                  <CandidateList
-                    title={copy.videoCandidates}
-                    candidates={selectedState?.videoCandidates ?? []}
-                    currentVersionId={selectedState?.videoDocument?.currentVersionId}
-                    onAdopt={(versionId) => selectedState?.videoDocument && adoptVersion.mutate({ documentId: selectedState.videoDocument.id, versionId })}
-                    canAdopt={Boolean(canMutateProject && selectedState?.videoDocument)}
-                    isPending={adoptVersion.isPending}
-                    emptyLabel={copy.emptyCandidates}
-                    adoptLabel={copy.adopt}
-                    adoptedLabel={copy.adopted}
-                  />
-                </>
-              ) : null}
-
-              {editable ? (
-                <div className="swb-panel swb-panel--danger">
-                  <div className="swb-panel__header"><h4>{copy.inspector}</h4></div>
-                  <div className="swb-editor-actions">
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => moveShot(selectedShot.id, -1)}>{copy.moveUp}</button>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => moveShot(selectedShot.id, 1)}>{copy.moveDown}</button>
-                    <button className="btn btn-danger btn-sm" type="button" onClick={() => removeShot(selectedShot.id)}>{copy.deleteShot}</button>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <div className="swb-empty swb-empty--inspector"><p>{copy.noSelection}</p></div>
-          )}
-        </aside>
+            </div>
+          ))
+        )}
       </div>
+
+      {/* Detail drawer */}
+      {drawerOpen && selectedShot && (
+        <ShotDetailDrawer
+          shot={selectedShot}
+          state={selectedState}
+          editable={editable}
+          canMutateProject={canMutateProject}
+          canUseProject={canUseProject}
+          characters={characters.map((c) => ({ id: c.id, name: c.name }))}
+          voiceConfigs={voiceConfigs.map((v) => ({ characterId: v.characterId, voiceName: v.voiceName }))}
+          sceneHeadingMap={sceneHeadingMap}
+          onShotUpdate={updateShot}
+          onGenerateImage={(shotId, prompt) => generateImage.mutate({ shotId, prompt })}
+          onGenerateVideo={(shotId, prompt, ref) => generateVideo.mutate({ shotId, prompt, referenceImageAssetId: ref })}
+          onGenerateTts={(shotId, characterId, text) => generateTts.mutate({ shotId, characterId, text })}
+          onAdoptVersion={(documentId, versionId) => adoptVersion.mutate({ documentId, versionId })}
+          onMoveShot={moveShot}
+          onRemoveShot={removeShot}
+          isImagePending={generateImage.isPending}
+          isVideoPending={generateVideo.isPending}
+          isTtsPending={generateTts.isPending}
+          isAdoptPending={adoptVersion.isPending}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={() => {
+            const prev = visibleShots[selectedIndex - 1];
+            if (prev) setSelectedShotId(prev.id);
+          }}
+          onNext={() => {
+            const next = visibleShots[selectedIndex + 1];
+            if (next) setSelectedShotId(next.id);
+          }}
+          onClose={() => setDrawerOpen(false)}
+          ttsDraft={selectedDraft}
+          onTtsDraftChange={updateTtsDraft}
+        />
+      )}
     </div>
   );
 }
