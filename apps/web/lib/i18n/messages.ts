@@ -1035,7 +1035,23 @@ export const zhCNMessages = {
     noPromptPreview: "选择镜头后预览自动拼接的 Prompt",
     characterCount: "{count} 个角色",
     locationCount: "{count} 个场景",
-    editStyleGuide: "编辑风格指南"
+    editStyleGuide: "编辑风格指南",
+    editorTitle: "世界观编辑器",
+    titleFromExisting: "基于已有版本",
+    titleManual: "世界观 v1",
+    editorPlaceholder: "点击工具栏按钮添加角色、场景、风格指南或语音配置…",
+    versionTitlePlaceholder: "例如：世界观设定 v2",
+    addStyleGuide: "风格指南",
+    addVoiceConfig: "语音配置",
+    charLabel: "角色: ",
+    charEmpty: "角色",
+    locLabel: "场景: ",
+    locEmpty: "场景",
+    styleLabel: "风格指南",
+    voiceLabel: "语音: ",
+    voiceEmpty: "语音配置",
+    speedLabel: "语速",
+    voicePreviewUnavailable: "该语音暂无试听预览。"
   },
   notifications: {
     title: "通知",
@@ -1714,7 +1730,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       storyboard: "Storyboard",
       image: "Image",
       video: "Video",
-      world_bible: "WorldBible",
+      world_bible: "World Bible",
       audio: "Audio"
     },
     reviewPolicyMode: {
@@ -2173,7 +2189,23 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     noPromptPreview: "Select a shot to preview the auto-constructed prompt",
     characterCount: "{count} characters",
     locationCount: "{count} locations",
-    editStyleGuide: "Edit Style Guide"
+    editStyleGuide: "Edit Style Guide",
+    editorTitle: "World Bible Editor",
+    titleFromExisting: "Based on existing version",
+    titleManual: "World Bible v1",
+    editorPlaceholder: "Click toolbar buttons to add characters, locations, style guide, or voice configs...",
+    versionTitlePlaceholder: "e.g., World Bible v2",
+    addStyleGuide: "Style Guide",
+    addVoiceConfig: "Voice Config",
+    charLabel: "CHAR: ",
+    charEmpty: "CHARACTER",
+    locLabel: "LOC: ",
+    locEmpty: "LOCATION",
+    styleLabel: "STYLE GUIDE",
+    voiceLabel: "VOICE: ",
+    voiceEmpty: "VOICE CONFIG",
+    speedLabel: "Speed",
+    voicePreviewUnavailable: "Sample preview is not available for this voice."
   },
   notifications: {
     title: "Notifications",

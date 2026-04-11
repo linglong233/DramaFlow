@@ -128,8 +128,8 @@ export class StorageService {
     }
 
     await this.assertProjectReadable(userId, asset.projectId);
-    if (!asset.mimeType.startsWith("image/")) {
-      throw new BadRequestException("Only image assets can be used as generation references");
+    if (!asset.mimeType.startsWith("image/") && !asset.mimeType.startsWith("video/")) {
+      throw new BadRequestException("Only image and video assets can be used as generation references");
     }
 
     try {

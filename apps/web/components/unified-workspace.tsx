@@ -7,6 +7,7 @@ import Link from "next/link";
 import {
   normalizeScriptContent,
   normalizeStoryboardContent,
+  normalizeWorldBibleContent,
   type ExportRecord,
   type ProjectVersionsResponse,
   type ProjectWorkspacePayload,
@@ -15,6 +16,7 @@ import {
   type RealtimeReviewUpdatedEvent,
   type ScriptContent,
   type StoryboardContent,
+  type WorldBibleContent,
   type TaskListResponse,
   type TimelineResponse,
   type VersionRecord,
@@ -28,6 +30,7 @@ import { InlineFeedback } from "./inline-feedback";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { VersionList } from "./project-workspace/version-list";
 import { VersionView } from "./project-workspace/version-view";
+import { VideoDocumentViewer } from "./project-workspace/video-document-viewer";
 import { VersionDiffView } from "./project-workspace/version-diff-view";
 import { RichScriptEditor } from "./project-workspace/rich-script-editor";
 import { StoryboardEditor } from "./project-workspace/storyboard-editor";
@@ -37,13 +40,13 @@ import { JobStatusBar } from "./project-workspace/job-status-bar";
 import { RightContextPanel } from "./project-workspace/right-context-panel";
 import { ReviewPolicySwitcher } from "./review-policy-switcher";
 import { ProjectInfoPanel } from "./project-workspace/project-info-panel";
-import { WorldBiblePanel } from "./project-workspace/world-bible-panel";
+import { WorldBibleEditor } from "./project-workspace/world-bible-editor";
 import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { useRealtime } from "./realtime-provider";
 
-// Workspace modes: document (with sub-tabs: view/edit/generate), media, info, worldbible, tasks, timeline
-type WorkspaceMode = "document" | "media" | "info" | "worldbible" | "tasks" | "timeline";
+// Workspace modes: document (with sub-tabs: view/edit/generate), media, info, tasks, timeline
+type WorkspaceMode = "document" | "media" | "info" | "tasks" | "timeline";
 
 // Sub-tabs within document mode
 type DocSubTab = "view" | "edit" | "generate";
@@ -56,7 +59,7 @@ const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
   generate: "document",
   media: "media",
   info: "info",
-  worldbible: "worldbible",
+  worldbible: "document",
   tasks: "tasks",
   timeline: "timeline",
 };
@@ -65,6 +68,7 @@ interface DocumentWithVersions {
   id: string;
   type: string;
   title: string;
+  shotId?: string;
   currentVersionId?: string;
   versions: Array<Pick<VersionRecord, "id" | "title" | "versionNumber" | "status" | "content" | "createdAt">>;
 }
@@ -118,15 +122,6 @@ function InfoIcon() {
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3" />
       <path d="M7 6v4M7 4.5v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function BookIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M2 2.5h4a1 1 0 011 1v8.5l-1-.5H2.5a.5.5 0 01-.5-.5V2.5z" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M12 2.5H8a1 1 0 00-1 1v8.5l1-.5h3.5a.5.5 0 00.5-.5V2.5z" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   );
 }
@@ -223,6 +218,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
   const [editorInitialContent, setEditorInitialContent] = useState<ScriptContent | null>(null);
   const [storyboardEditorInitialContent, setStoryboardEditorInitialContent] = useState<StoryboardContent | null>(null);
+  const [worldBibleEditorInitialContent, setWorldBibleEditorInitialContent] = useState<WorldBibleContent | null>(null);
   const [editorSessionKey, setEditorSessionKey] = useState(0);
   const [showDiff, setShowDiff] = useState(false);
 
@@ -331,7 +327,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, socket]);
 
   const documents: DocumentWithVersions[] = useMemo(() => {
-    return rawDocuments.map((doc) => {
+    const docTypes = new Set(["script", "storyboard", "video", "world_bible"]);
+    const typeOrder: Record<string, number> = { world_bible: 0, script: 1, storyboard: 2, video: 3 };
+    return rawDocuments
+      .filter((doc) => docTypes.has(doc.type))
+      .sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99))
+      .map((doc) => {
       const docVersions = rawVersions
         .filter((v) => v.documentId === doc.id)
         .sort((a, b) => b.versionNumber - a.versionNumber);
@@ -339,6 +340,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         id: doc.id,
         type: doc.type,
         title: doc.title,
+        shotId: doc.shotId,
         currentVersionId: doc.currentVersionId,
         versions: docVersions,
       };
@@ -369,6 +371,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   const isScriptDoc = selectedDoc?.type === "script";
   const isStoryboardDoc = selectedDoc?.type === "storyboard";
+  const isVideoDoc = selectedDoc?.type === "video";
+  const isWorldBibleDoc = selectedDoc?.type === "world_bible";
 
   // Version creation (for editor save)
   const createVersionMutation = useMutation({
@@ -391,7 +395,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
   });
 
-  function handleEditorSave(title: string, content: ScriptContent | StoryboardContent) {
+  function handleEditorSave(title: string, content: ScriptContent | StoryboardContent | WorldBibleContent) {
     setFeedback({ message: null, error: null });
     createVersionMutation.mutate({ title, content });
   }
@@ -400,6 +404,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     if (isStoryboardDoc) {
       setStoryboardEditorInitialContent(
         fromVersion ? normalizeStoryboardContent(fromVersion.content) : null,
+      );
+    } else if (isWorldBibleDoc) {
+      setWorldBibleEditorInitialContent(
+        fromVersion ? normalizeWorldBibleContent(fromVersion.content) : null,
       );
     } else {
       setEditorInitialContent(
@@ -410,9 +418,11 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     setIsEditing(true);
   }
 
-  function handleEditResult(content: ScriptContent | StoryboardContent) {
+  function handleEditResult(content: ScriptContent | StoryboardContent | WorldBibleContent) {
     if (isStoryboardDoc) {
       setStoryboardEditorInitialContent(normalizeStoryboardContent(content));
+    } else if (isWorldBibleDoc) {
+      setWorldBibleEditorInitialContent(normalizeWorldBibleContent(content));
     } else {
       setEditorInitialContent(normalizeScriptContent(content as ScriptContent));
     }
@@ -470,7 +480,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const modeConfig = [
     { key: "info" as const, label: t("projectWorkspace.workspace.modeInfo"), icon: InfoIcon },
     { key: "document" as const, label: t("projectWorkspace.workspace.modeDocument"), icon: DocumentIcon },
-    { key: "worldbible" as const, label: t("projectWorkspace.workspace.modeWorldBible"), icon: BookIcon },
     { key: "media" as const, label: t("projectWorkspace.workspace.modeMedia"), icon: MediaIcon },
     { key: "tasks" as const, label: t("projectWorkspace.workspace.modeTasks"), icon: TaskIcon },
     { key: "timeline" as const, label: t("projectWorkspace.workspace.modeTimeline"), icon: TimelineIcon },
@@ -516,12 +525,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const storyboardVersion = payload.versions.find((version) => version.id === storyboardDocument?.currentVersionId);
   const storyboardShots = normalizeStoryboardContent(storyboardVersion?.content).shots;
 
-  // Info mode: full-width, no left/right panels
   const isInfoMode = mode === "info";
-  const isWorldBibleMode = mode === "worldbible";
   const isTasksMode = mode === "tasks";
   const isTimelineMode = mode === "timeline";
-  const showThreeColumnLayout = !isInfoMode && !isWorldBibleMode && !isTasksMode && !isTimelineMode;
+  const showThreeColumnLayout = !isInfoMode && !isTasksMode && !isTimelineMode;
   const isDocumentMode = mode === "document";
 
   return (
@@ -614,15 +621,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         <div className="uw-info-scroll">
           <div className="uw-info-inner">
             <ProjectInfoPanel projectId={projectId} payload={payload} />
-          </div>
-        </div>
-      )}
-
-      {/* WorldBible mode: full-width content */}
-      {isWorldBibleMode && (
-        <div className="uw-info-scroll">
-          <div className="uw-info-inner">
-            <WorldBiblePanel projectId={projectId} worldBible={payload.worldBible} />
           </div>
         </div>
       )}
@@ -731,7 +729,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   {mode === "document" && (
                     <div>
                       {/* Edit button for mobile (<1024px) where right panel is a drawer */}
-                      {selectedVersion && (isScriptDoc || isStoryboardDoc) && (
+                      {selectedVersion && (isScriptDoc || isStoryboardDoc || isWorldBibleDoc) && (
                         <div className="uw-edit-bar-mobile">
                           <button className="btn btn-secondary btn-sm" type="button" onClick={() => { openEditor(selectedVersion); handleSubTabChange("edit"); }}>
                             <EditIcon /> <span style={{ marginLeft: 4 }}>{t("projectWorkspace.workspace.startEditing")}</span>
@@ -743,14 +741,23 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                           )}
                         </div>
                       )}
-                      <VersionView
-                        version={selectedVersion ?? null}
-                        isLoading={(projectQuery.isFetching || jobsQuery.isFetching) && !projectQuery.data}
-                        projectId={projectId}
-                        project={payload}
-                        allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
-                        onStoryboardChange={(c) => handleEditorSave("Inline edit", c)}
-                      />
+                      {isVideoDoc && selectedDoc ? (
+                        <VideoDocumentViewer
+                          projectId={projectId}
+                          documentId={selectedDoc.id}
+                          shotId={selectedDoc.shotId}
+                          project={payload}
+                        />
+                      ) : (
+                        <VersionView
+                          version={selectedVersion ?? null}
+                          isLoading={(projectQuery.isFetching || jobsQuery.isFetching) && !projectQuery.data}
+                          projectId={projectId}
+                          project={payload}
+                          allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
+                          onStoryboardChange={(c) => handleEditorSave("Inline edit", c)}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -766,7 +773,14 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 {/* Edit sub-tab */}
                 <div style={{ display: mode === "document" && docSubTab === "edit" ? undefined : "none" }}>
                   {mode === "document" && (
-                    isStoryboardDoc ? (
+                    isVideoDoc && selectedDoc ? (
+                      <VideoDocumentViewer
+                        projectId={projectId}
+                        documentId={selectedDoc.id}
+                        shotId={selectedDoc.shotId}
+                        project={payload}
+                      />
+                    ) : isStoryboardDoc ? (
                       <StoryboardEditor
                         key={`storyboard-${selectedVersionId || "new"}-${editorSessionKey}`}
                         initialContent={storyboardEditorInitialContent}
@@ -775,6 +789,15 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         isSaving={createVersionMutation.isPending}
                         projectId={projectId}
                         project={payload}
+                      />
+                    ) : isWorldBibleDoc ? (
+                      <WorldBibleEditor
+                        key={`worldbible-${selectedVersionId || "new"}-${editorSessionKey}`}
+                        initialContent={worldBibleEditorInitialContent}
+                        onSave={handleEditorSave}
+                        onCancel={() => handleSubTabChange("view")}
+                        isSaving={createVersionMutation.isPending}
+                        projectId={projectId}
                       />
                     ) : (
                       <RichScriptEditor
