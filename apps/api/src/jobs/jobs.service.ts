@@ -37,6 +37,8 @@ import { StorageService } from "../storage/storage.service";
 import { WorkspaceService } from "../workspace/workspace.service";
 import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { OpenAiMediaProvider } from "./media-generation.provider";
+import { SdWebuiImageProvider } from "./sd-webui-image.provider";
+import { ComfyuiImageProvider } from "./comfyui-image.provider";
 import { PromptBuilderService } from "./prompt-builder.service";
 import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provider";
 import { TTSProviderService } from "./tts.provider";
@@ -84,7 +86,7 @@ interface VideoJobState extends Record<string, unknown> {
 }
 
 interface ResolvedImageExecution {
-  providerKind: "legacy-openai" | "google-gemini" | "openai-compatible";
+  providerKind: "legacy-openai" | "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui";
   configSource?: ImageConfigSource;
   config?: ImageGenerationConfig;
   model?: string;
@@ -104,6 +106,8 @@ export class JobsService {
     @Inject(OpenAiCompatTextProvider) private readonly textProvider: OpenAiCompatTextProvider,
     @Inject(OpenAiMediaProvider) private readonly mediaProvider: OpenAiMediaProvider,
     @Inject(GoogleGeminiImageProvider) private readonly googleGeminiImageProvider: GoogleGeminiImageProvider,
+    @Inject(SdWebuiImageProvider) private readonly sdWebuiProvider: SdWebuiImageProvider,
+    @Inject(ComfyuiImageProvider) private readonly comfyuiProvider: ComfyuiImageProvider,
     @Inject(PromptBuilderService) private readonly promptBuilder: PromptBuilderService,
     @Inject(NotificationService) private readonly notificationService: NotificationService,
     @Inject(RealtimeEventsService) private readonly realtimeEvents: RealtimeEventsService,
@@ -652,6 +656,16 @@ export class JobsService {
         { ...job.input, prompt },
         this.toOpenAiImageLlmConfig(execution.config!),
       ) as GeneratedMediaResult;
+    } else if (execution.providerKind === "stable-diffusion") {
+      generated = await this.sdWebuiProvider.generateImage(
+        { ...job.input, prompt },
+        execution.config,
+      ) as GeneratedMediaResult;
+    } else if (execution.providerKind === "comfyui") {
+      generated = await this.comfyuiProvider.generateImage(
+        { ...job.input, prompt },
+        execution.config,
+      ) as GeneratedMediaResult;
     } else {
       const config = await this.resolveLlmConfig(job.createdBy, job.projectId);
       generated = await this.mediaProvider.generateImage({ ...job.input, prompt }, config) as GeneratedMediaResult;
@@ -669,6 +683,88 @@ export class JobsService {
     };
 
     return this.finalizeMediaJob(job, "image", prompt, generated);
+  }
+
+  async generateImageFromPrompt(
+    userId: string,
+    projectId: string,
+    prompt: string,
+    configSource: ImageConfigSource,
+  ): Promise<{ buffer: Buffer; mimeType: string; provider: string; model?: string }> {
+    const config = await this.resolveImageGenerationConfig(userId, projectId, configSource);
+    const sourceLabel = configSource === "team" ? "team" : "personal";
+    if (!config) {
+      throw new BadRequestException(`The ${sourceLabel} image generation config is not set.`);
+    }
+    if (!config.apiKey?.trim()) {
+      throw new BadRequestException(`The ${sourceLabel} image generation config is missing an API key.`);
+    }
+    if (!config.model?.trim()) {
+      throw new BadRequestException(`The ${sourceLabel} image generation config is missing a model.`);
+    }
+    if (config.provider === "openai-compatible" && !config.baseUrl?.trim()) {
+      throw new BadRequestException(`The ${sourceLabel} OpenAI-compatible image config is missing a base URL.`);
+    }
+
+    const input = { prompt, shotId: "char-ref", style: "portrait", aspectRatio: "1:1" };
+    let generated: GeneratedMediaResult;
+
+    if (config.provider === "google-gemini") {
+      generated = await this.googleGeminiImageProvider.generateImage(input, config) as GeneratedMediaResult;
+    } else if (config.provider === "openai-compatible") {
+      generated = await this.mediaProvider.generateImage(input, this.toOpenAiImageLlmConfig(config)) as GeneratedMediaResult;
+    } else if (config.provider === "stable-diffusion") {
+      generated = await this.sdWebuiProvider.generateImage(input, config) as GeneratedMediaResult;
+    } else if (config.provider === "comfyui") {
+      generated = await this.comfyuiProvider.generateImage(input, config) as GeneratedMediaResult;
+    } else {
+      throw new BadRequestException(`Unsupported image provider: ${config.provider}`);
+    }
+
+    const inlineBody = generated.inlineBody
+      ? (Buffer.isBuffer(generated.inlineBody)
+          ? generated.inlineBody
+          : generated.inlineBody instanceof Uint8Array
+            ? Buffer.from(generated.inlineBody)
+            : Buffer.from(generated.inlineBody as string))
+      : null;
+
+    if (!inlineBody) {
+      throw new Error("Image generation did not return inline body");
+    }
+
+    return {
+      buffer: inlineBody,
+      mimeType: generated.mimeType,
+      provider: generated.provider,
+      model: generated.model ?? config.model,
+    };
+  }
+
+  async generateCharacterReferenceImage(
+    userId: string,
+    projectId: string,
+    characterId: string,
+    prompt: string,
+    configSource: ImageConfigSource = "team",
+  ): Promise<{ assetUrl: string }> {
+    const wb = await this.workspaceService.getWorldBible(userId, projectId);
+    const character = wb.characters.find((c) => c.id === characterId);
+    if (!character) {
+      throw new NotFoundException("Character not found");
+    }
+
+    const result = await this.generateImageFromPrompt(userId, projectId, prompt, configSource);
+
+    const filename = `char-ref-${characterId}-${Date.now()}.${result.mimeType.split("/")[1] || "png"}`;
+    const stored = await this.storageService.storeGeneratedAsset(userId, {
+      projectId,
+      filename,
+      contentType: result.mimeType,
+      body: result.buffer,
+    });
+
+    return { assetUrl: stored.url! };
   }
 
   private async processVideoJob(job: JobRecord<MediaJobInput>) {

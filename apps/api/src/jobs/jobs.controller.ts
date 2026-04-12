@@ -61,6 +61,22 @@ export class JobsController {
     return this.jobsService.createImageJob(user.id, shotId, body);
   }
 
+  @Post("projects/:projectId/world-bible/characters/:characterId/generate-reference-image")
+  generateCharacterRefImage(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("characterId") characterId: string,
+    @Body() body: { prompt: string; configSource?: "team" | "personal" },
+  ) {
+    return this.jobsService.generateCharacterReferenceImage(
+      user.id,
+      projectId,
+      characterId,
+      body.prompt,
+      body.configSource ?? "team",
+    );
+  }
+
   @Post("shots/:id/video-jobs")
   createVideoJob(
     @CurrentUser() user: { id: string },
