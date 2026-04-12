@@ -12,6 +12,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { TagInput } from "./tiptap/node-views/shared/tag-input";
 import { ReferenceImageUploader } from "./tiptap/node-views/shared/reference-image-uploader";
+import { CharacterImageGenDialog } from "./character-image-gen-dialog";
 
 type WbTab = "characters" | "locations" | "styleGuide" | "voiceConfigs";
 
@@ -543,6 +544,7 @@ function CharacterForm({
 }) {
   const [costumeKey, setCostumeKey] = useState("");
   const [costumeVal, setCostumeVal] = useState("");
+  const [showImageGen, setShowImageGen] = useState(false);
 
   const addCostume = () => {
     if (!costumeKey.trim()) return;
@@ -643,11 +645,36 @@ function CharacterForm({
       <label className="wb-form__label">
         {t("worldBible.referenceImagesLabel")}
       </label>
-      <ReferenceImageUploader
-        images={char.referenceImages}
-        onChange={(imgs) => onUpdate(char.id, { referenceImages: imgs })}
-        projectId={projectId}
-      />
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <ReferenceImageUploader
+            images={char.referenceImages}
+            onChange={(imgs) => onUpdate(char.id, { referenceImages: imgs })}
+            projectId={projectId}
+          />
+        </div>
+        <button
+          className="btn btn--secondary"
+          onClick={() => setShowImageGen(true)}
+          title={t("worldBible.generateRefImageTitle")}
+          style={{ whiteSpace: "nowrap", marginTop: 4 }}
+        >
+          ✦ {t("worldBible.generateRefImage")}
+        </button>
+      </div>
+
+      {showImageGen && (
+        <CharacterImageGenDialog
+          character={char}
+          projectId={projectId}
+          onImageGenerated={(assetUrl) => {
+            onUpdate(char.id, {
+              referenceImages: [...char.referenceImages, assetUrl],
+            });
+          }}
+          onClose={() => setShowImageGen(false)}
+        />
+      )}
     </div>
   );
 }

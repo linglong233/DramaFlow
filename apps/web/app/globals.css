@@ -12513,3 +12513,58 @@ textarea.input {
   font-size: 0.7rem;
   color: var(--text-secondary);
 }
+
+/* Dialog Overlay */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.dialog-content {
+  background: var(--bg-primary, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.dialog-content--sm {
+  width: 480px;
+  max-width: 90vw;
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border, #eee);
+}
+.dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.dialog-close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--text-secondary, #888);
+  padding: 4px 8px;
+  line-height: 1;
+}
+.dialog-close:hover {
+  color: var(--text, #333);
+}
+.dialog-body {
+  padding: 20px;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border, #eee);
+}
