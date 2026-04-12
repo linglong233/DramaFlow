@@ -92,7 +92,7 @@ export function CharacterImageGenDialog({
           </div>
 
           {error && (
-            <div style={{ color: "var(--color-error, #e53e3e)", marginBottom: 12 }}>
+            <div style={{ color: "var(--danger-text, #f87171)", marginBottom: 12 }}>
               {error}
             </div>
           )}
@@ -102,7 +102,7 @@ export function CharacterImageGenDialog({
               <img
                 src={previewUrl}
                 alt="Generated reference"
-                style={{ width: "100%", borderRadius: 6, maxHeight: 300, objectFit: "contain" }}
+                style={{ width: "100%", borderRadius: "var(--radius-sm, 6px)", maxHeight: 300, objectFit: "contain" }}
               />
             </div>
           )}
@@ -111,11 +111,11 @@ export function CharacterImageGenDialog({
         <div className="dialog-footer">
           {status === "editing" || status === "error" ? (
             <>
-              <button className="btn btn--secondary" onClick={onClose}>
+              <button className="btn btn-secondary" onClick={onClose}>
                 {t("common.cancel")}
               </button>
               <button
-                className="btn btn--primary"
+                className="btn btn-primary"
                 onClick={handleGenerate}
                 disabled={!prompt.trim()}
               >
@@ -123,15 +123,15 @@ export function CharacterImageGenDialog({
               </button>
             </>
           ) : status === "generating" ? (
-            <button className="btn btn--primary" disabled>
+            <button className="btn btn-primary" disabled>
               {t("worldBible.generateRefImageGenerating")}
             </button>
           ) : status === "preview" ? (
             <>
-              <button className="btn btn--secondary" onClick={() => { setStatus("editing"); setPreviewUrl(null); }}>
+              <button className="btn btn-secondary" onClick={() => { setStatus("editing"); setPreviewUrl(null); }}>
                 {t("worldBible.generateRefImageRegenerate")}
               </button>
-              <button className="btn btn--primary" onClick={handleUseImage}>
+              <button className="btn btn-primary" onClick={handleUseImage}>
                 {t("worldBible.generateRefImageUseThis")}
               </button>
             </>

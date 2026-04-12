@@ -654,7 +654,7 @@ function CharacterForm({
           />
         </div>
         <button
-          className="btn btn--secondary"
+          className="btn btn-secondary"
           onClick={() => setShowImageGen(true)}
           title={t("worldBible.generateRefImageTitle")}
           style={{ whiteSpace: "nowrap", marginTop: 4 }}
