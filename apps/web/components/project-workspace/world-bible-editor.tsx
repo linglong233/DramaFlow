@@ -12,7 +12,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { TagInput } from "./tiptap/node-views/shared/tag-input";
 import { ReferenceImageUploader } from "./tiptap/node-views/shared/reference-image-uploader";
-import { CharacterImageGenDialog } from "./character-image-gen-dialog";
+import { WorldBibleReferenceImageDialog } from "./world-bible-reference-image-dialog";
 
 type WbTab = "characters" | "locations" | "styleGuide" | "voiceConfigs";
 
@@ -531,6 +531,36 @@ function VoiceIcon() {
 
 type TFn = ReturnType<typeof useI18n>["t"];
 
+function buildWorldBibleReferencePrompt(parts: Array<string | undefined>) {
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join("\n");
+}
+
+function buildCharacterReferencePrompt(character: CharacterProfile) {
+  return buildWorldBibleReferencePrompt([
+    character.appearance,
+  ]);
+}
+
+function buildLocationReferencePrompt(location: LocationProfile) {
+  return buildWorldBibleReferencePrompt([
+    location.name,
+    location.description,
+    location.lighting,
+    location.timeOfDay,
+  ]);
+}
+
+function buildStyleGuideReferencePrompt(styleGuide?: StyleGuideProfile) {
+  return buildWorldBibleReferencePrompt([
+    styleGuide?.visualStyle,
+    styleGuide?.colorPalette,
+    styleGuide?.compositionNote,
+  ]);
+}
+
 function CharacterForm({
   character: char,
   onUpdate,
@@ -664,9 +694,9 @@ function CharacterForm({
       </div>
 
       {showImageGen && (
-        <CharacterImageGenDialog
-          character={char}
-          projectId={projectId}
+        <WorldBibleReferenceImageDialog
+          generatePath={`/projects/${projectId}/world-bible/characters/${char.id}/generate-reference-image`}
+          initialPrompt={buildCharacterReferencePrompt(char)}
           onImageGenerated={(assetUrl) => {
             onUpdate(char.id, {
               referenceImages: [...char.referenceImages, assetUrl],
@@ -690,6 +720,8 @@ function LocationForm({
   t: TFn;
   projectId: string;
 }) {
+  const [showImageGen, setShowImageGen] = useState(false);
+
   const todOptions = ["", "白天", "黄昏", "夜晚", "清晨"];
 
   return (
@@ -746,11 +778,36 @@ function LocationForm({
       <label className="wb-form__label">
         {t("worldBible.referenceImagesLabel")}
       </label>
-      <ReferenceImageUploader
-        images={loc.referenceImages}
-        onChange={(imgs) => onUpdate(loc.id, { referenceImages: imgs })}
-        projectId={projectId}
-      />
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <ReferenceImageUploader
+            images={loc.referenceImages}
+            onChange={(imgs) => onUpdate(loc.id, { referenceImages: imgs })}
+            projectId={projectId}
+          />
+        </div>
+        <button
+          className="btn btn-secondary"
+          onClick={() => setShowImageGen(true)}
+          title={t("worldBible.generateRefImageTitle")}
+          style={{ whiteSpace: "nowrap", marginTop: 4 }}
+        >
+          ✦ {t("worldBible.generateRefImage")}
+        </button>
+      </div>
+
+      {showImageGen && (
+        <WorldBibleReferenceImageDialog
+          generatePath={`/projects/${projectId}/world-bible/locations/${loc.id}/generate-reference-image`}
+          initialPrompt={buildLocationReferencePrompt(loc)}
+          onImageGenerated={(assetUrl) => {
+            onUpdate(loc.id, {
+              referenceImages: [...loc.referenceImages, assetUrl],
+            });
+          }}
+          onClose={() => setShowImageGen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -767,6 +824,7 @@ function StyleGuideForm({
   projectId: string;
 }) {
   const sg = styleGuide || { visualStyle: "", referenceImages: [] };
+  const [showImageGen, setShowImageGen] = useState(false);
 
   return (
     <div className="wb-form">
@@ -821,11 +879,36 @@ function StyleGuideForm({
       <label className="wb-form__label">
         {t("worldBible.referenceImagesLabel")}
       </label>
-      <ReferenceImageUploader
-        images={sg.referenceImages || []}
-        onChange={(imgs) => onUpdate({ referenceImages: imgs })}
-        projectId={projectId}
-      />
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <ReferenceImageUploader
+            images={sg.referenceImages || []}
+            onChange={(imgs) => onUpdate({ referenceImages: imgs })}
+            projectId={projectId}
+          />
+        </div>
+        <button
+          className="btn btn-secondary"
+          onClick={() => setShowImageGen(true)}
+          title={t("worldBible.generateRefImageTitle")}
+          style={{ whiteSpace: "nowrap", marginTop: 4 }}
+        >
+          ✦ {t("worldBible.generateRefImage")}
+        </button>
+      </div>
+
+      {showImageGen && (
+        <WorldBibleReferenceImageDialog
+          generatePath={`/projects/${projectId}/world-bible/style-guide/generate-reference-image`}
+          initialPrompt={buildStyleGuideReferencePrompt(styleGuide)}
+          onImageGenerated={(assetUrl) => {
+            onUpdate({
+              referenceImages: [...(sg.referenceImages || []), assetUrl],
+            });
+          }}
+          onClose={() => setShowImageGen(false)}
+        />
+      )}
     </div>
   );
 }

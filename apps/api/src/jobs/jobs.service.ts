@@ -26,6 +26,7 @@ import type {
   RewriteSegmentInput,
   ScriptContent,
   StoryboardContent,
+  WorldBibleReferenceImageGenerateResponse,
   WorldBibleContent,
 } from "@dramaflow/shared";
 
@@ -753,16 +754,69 @@ export class JobsService {
     characterId: string,
     prompt: string,
     configSource: ImageConfigSource = "team",
-  ): Promise<{ assetUrl: string }> {
+  ): Promise<WorldBibleReferenceImageGenerateResponse> {
     const wb = await this.workspaceService.getWorldBible(userId, projectId);
     const character = wb.characters.find((c) => c.id === characterId);
     if (!character) {
       throw new NotFoundException("Character not found");
     }
 
+    return this.generateWorldBibleReferenceImage(
+      userId,
+      projectId,
+      `char-ref-${characterId}`,
+      prompt,
+      configSource,
+    );
+  }
+
+  async generateLocationReferenceImage(
+    userId: string,
+    projectId: string,
+    locationId: string,
+    prompt: string,
+    configSource: ImageConfigSource = "team",
+  ): Promise<WorldBibleReferenceImageGenerateResponse> {
+    const wb = await this.workspaceService.getWorldBible(userId, projectId);
+    const location = wb.locations.find((item) => item.id === locationId);
+    if (!location) {
+      throw new NotFoundException("Location not found");
+    }
+
+    return this.generateWorldBibleReferenceImage(
+      userId,
+      projectId,
+      `location-ref-${locationId}`,
+      prompt,
+      configSource,
+    );
+  }
+
+  async generateStyleGuideReferenceImage(
+    userId: string,
+    projectId: string,
+    prompt: string,
+    configSource: ImageConfigSource = "team",
+  ): Promise<WorldBibleReferenceImageGenerateResponse> {
+    return this.generateWorldBibleReferenceImage(
+      userId,
+      projectId,
+      "style-guide-ref",
+      prompt,
+      configSource,
+    );
+  }
+
+  private async generateWorldBibleReferenceImage(
+    userId: string,
+    projectId: string,
+    filenamePrefix: string,
+    prompt: string,
+    configSource: ImageConfigSource,
+  ): Promise<WorldBibleReferenceImageGenerateResponse> {
     const result = await this.generateImageFromPrompt(userId, projectId, prompt, configSource);
 
-    const filename = `char-ref-${characterId}-${Date.now()}.${result.mimeType.split("/")[1] || "png"}`;
+    const filename = `${filenamePrefix}-${Date.now()}.${result.mimeType.split("/")[1] || "png"}`;
     const stored = await this.storageService.storeGeneratedAsset(userId, {
       projectId,
       filename,

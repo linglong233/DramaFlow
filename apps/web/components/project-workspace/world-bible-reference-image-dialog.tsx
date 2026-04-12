@@ -1,64 +1,85 @@
 "use client";
 
 import { useState } from "react";
-import type { CharacterProfile } from "@dramaflow/shared";
-import { useI18n } from "../../lib/i18n";
+import type {
+  ImageConfigSource,
+  WorldBibleReferenceImageGenerateRequest,
+  WorldBibleReferenceImageGenerateResponse,
+} from "@dramaflow/shared";
 import { apiFetch } from "../../lib/api";
+import { useI18n } from "../../lib/i18n";
 
-interface CharacterImageGenDialogProps {
-  character: CharacterProfile;
-  projectId: string;
+type DialogStatus = "editing" | "generating" | "preview" | "error";
+
+interface WorldBibleReferenceImageDialogProps {
+  generatePath: string;
+  initialPrompt: string;
   onImageGenerated: (assetUrl: string) => void;
   onClose: () => void;
 }
 
-export function CharacterImageGenDialog({
-  character,
-  projectId,
+export function WorldBibleReferenceImageDialog({
+  generatePath,
+  initialPrompt,
   onImageGenerated,
   onClose,
-}: CharacterImageGenDialogProps) {
+}: WorldBibleReferenceImageDialogProps) {
   const { t } = useI18n();
-  const [prompt, setPrompt] = useState(character.appearance || "");
-  const [configSource, setConfigSource] = useState<"team" | "personal">("team");
-  const [status, setStatus] = useState<"editing" | "generating" | "preview" | "error">("editing");
+  const [prompt, setPrompt] = useState(initialPrompt);
+  const [configSource, setConfigSource] = useState<ImageConfigSource>("team");
+  const [status, setStatus] = useState<DialogStatus>("editing");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim()) {
+      return;
+    }
+
     setStatus("generating");
     setError(null);
+
     try {
-      const data = await apiFetch<{ assetUrl: string }>(
-        `projects/${projectId}/world-bible/characters/${character.id}/generate-reference-image`,
+      const body: WorldBibleReferenceImageGenerateRequest = {
+        prompt: prompt.trim(),
+        configSource,
+      };
+      const data = await apiFetch<WorldBibleReferenceImageGenerateResponse>(
+        generatePath.startsWith("/") ? generatePath : `/${generatePath}`,
         {
           method: "POST",
-          body: { prompt: prompt.trim(), configSource },
+          body,
         },
       );
       setPreviewUrl(data.assetUrl);
       setStatus("preview");
-    } catch (err: any) {
-      setError(err.message || t("worldBible.generateRefImageFailed"));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t("worldBible.generateRefImageFailed"));
       setStatus("error");
     }
   };
 
   const handleUseImage = () => {
-    if (previewUrl) {
-      onImageGenerated(previewUrl);
-      onClose();
+    if (!previewUrl) {
+      return;
     }
+
+    onImageGenerated(previewUrl);
+    onClose();
   };
 
   return (
-    <div className="dialog-overlay" onClick={(e) => e.target === e.currentTarget && status !== "generating" && onClose()}>
+    <div
+      className="dialog-overlay"
+      onClick={(event) => event.target === event.currentTarget && status !== "generating" && onClose()}
+    >
       <div className="dialog-content dialog-content--sm">
         <div className="dialog-header">
           <h3 className="dialog-title">{t("worldBible.generateRefImageTitle")}</h3>
           {status !== "generating" && (
-            <button className="dialog-close" onClick={onClose}>&times;</button>
+            <button className="dialog-close" onClick={onClose}>
+              &times;
+            </button>
           )}
         </div>
 
@@ -70,7 +91,7 @@ export function CharacterImageGenDialog({
             <select
               className="input wb-form__input"
               value={configSource}
-              onChange={(e) => setConfigSource(e.target.value as "team" | "personal")}
+              onChange={(event) => setConfigSource(event.target.value as ImageConfigSource)}
               disabled={status === "generating"}
             >
               <option value="team">{t("worldBible.generateRefImageConfigTeam")}</option>
@@ -85,7 +106,7 @@ export function CharacterImageGenDialog({
             <textarea
               className="input wb-form__textarea"
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(event) => setPrompt(event.target.value)}
               rows={4}
               disabled={status === "generating"}
             />
@@ -102,7 +123,12 @@ export function CharacterImageGenDialog({
               <img
                 src={previewUrl}
                 alt="Generated reference"
-                style={{ width: "100%", borderRadius: "var(--radius-sm, 6px)", maxHeight: 300, objectFit: "contain" }}
+                style={{
+                  width: "100%",
+                  borderRadius: "var(--radius-sm, 6px)",
+                  maxHeight: 300,
+                  objectFit: "contain",
+                }}
               />
             </div>
           )}
@@ -128,7 +154,13 @@ export function CharacterImageGenDialog({
             </button>
           ) : status === "preview" ? (
             <>
-              <button className="btn btn-secondary" onClick={() => { setStatus("editing"); setPreviewUrl(null); }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setStatus("editing");
+                  setPreviewUrl(null);
+                }}
+              >
                 {t("worldBible.generateRefImageRegenerate")}
               </button>
               <button className="btn btn-primary" onClick={handleUseImage}>

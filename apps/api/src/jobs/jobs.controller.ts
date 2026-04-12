@@ -17,6 +17,7 @@ import type {
   CreateSynopsisJobPayload,
   JobStatus,
   JobType,
+  WorldBibleReferenceImageGenerateRequest,
 } from "@dramaflow/shared";
 
 import { AuthGuard } from "../common/auth.guard";
@@ -66,12 +67,42 @@ export class JobsController {
     @CurrentUser() user: { id: string },
     @Param("projectId") projectId: string,
     @Param("characterId") characterId: string,
-    @Body() body: { prompt: string; configSource?: "team" | "personal" },
+    @Body() body: WorldBibleReferenceImageGenerateRequest,
   ) {
     return this.jobsService.generateCharacterReferenceImage(
       user.id,
       projectId,
       characterId,
+      body.prompt,
+      body.configSource ?? "team",
+    );
+  }
+
+  @Post("projects/:projectId/world-bible/locations/:locationId/generate-reference-image")
+  generateLocationRefImage(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("locationId") locationId: string,
+    @Body() body: WorldBibleReferenceImageGenerateRequest,
+  ) {
+    return this.jobsService.generateLocationReferenceImage(
+      user.id,
+      projectId,
+      locationId,
+      body.prompt,
+      body.configSource ?? "team",
+    );
+  }
+
+  @Post("projects/:projectId/world-bible/style-guide/generate-reference-image")
+  generateStyleGuideRefImage(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Body() body: WorldBibleReferenceImageGenerateRequest,
+  ) {
+    return this.jobsService.generateStyleGuideReferenceImage(
+      user.id,
+      projectId,
       body.prompt,
       body.configSource ?? "team",
     );

@@ -290,6 +290,15 @@ export interface StyleGuideUpdatePayload {
   referenceImages?: string[];
 }
 
+export interface WorldBibleReferenceImageGenerateRequest {
+  prompt: string;
+  configSource?: ImageConfigSource;
+}
+
+export interface WorldBibleReferenceImageGenerateResponse {
+  assetUrl: string;
+}
+
 export interface PromptPreviewRequest {
   projectId: string;
   shotId: string;

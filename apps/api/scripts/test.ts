@@ -319,6 +319,9 @@ async function main() {
       "createScriptJob",
       "createStoryboardJob",
       "createImageJob",
+      "generateCharacterRefImage",
+      "generateLocationRefImage",
+      "generateStyleGuideRefImage",
       "createVideoJob",
       "getJob",
     ]);
@@ -1037,6 +1040,163 @@ async function main() {
       assert.equal(typeof teamImageVersion?.content?.assetId, "string");
     });
   });
+
+  await runCase("world bible reference image routes support locations and style guide prompts", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "world-bible-image-owner@example.com",
+        displayName: "World Bible Image Owner",
+      });
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+      const readOnlyHeaders = authHeaders(owner.accessToken);
+
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      assert.equal(teams.length > 0, true);
+      const teamId = teams[0].id;
+
+      const teamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        headers: { ...readOnlyHeaders },
+      });
+      assert.equal(teamResponse.status, 200);
+      const team = await teamResponse.json() as {
+        name: string;
+        defaultReviewPolicy: "required" | "bypass";
+      };
+
+      const updateProfileResponse = await originalFetch(`${baseUrl}/auth/me`, {
+        method: "PATCH",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          imageGenerationConfig: {
+            provider: "google-gemini",
+            apiKey: "world-bible-personal-key",
+            model: "gemini-world-bible-personal",
+          },
+        }),
+      });
+      assert.equal(updateProfileResponse.status, 200);
+
+      const updateTeamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        method: "PATCH",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          name: team.name,
+          defaultReviewPolicy: team.defaultReviewPolicy,
+          imageGenerationConfig: {
+            provider: "google-gemini",
+            apiKey: "world-bible-team-key",
+            model: "gemini-world-bible-team",
+          },
+        }),
+      });
+      assert.equal(updateTeamResponse.status, 200);
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          teamId,
+          name: "World Bible Reference Images",
+          description: "Reference image generation for locations and style guide",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const createdProject = await createProjectResponse.json() as { id: string };
+
+      const createLocationResponse = await originalFetch(`${baseUrl}/projects/${createdProject.id}/world-bible/locations`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          name: "Abandoned Factory",
+          description: "Rusty machinery, damp concrete, fog drifting through broken windows.",
+          lighting: "Cold moonlight with a few flickering tungsten practicals.",
+          timeOfDay: "night",
+        }),
+      });
+      assert.equal(createLocationResponse.status, 201);
+      const location = await createLocationResponse.json() as { id: string };
+
+      const providerRequests: Array<{
+        url: string;
+        prompt: string;
+      }> = [];
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith("https://generativelanguage.googleapis.com/")) {
+          const body = JSON.parse(String(init?.body)) as {
+            contents: Array<{ parts: Array<{ text?: string }> }>;
+          };
+          providerRequests.push({
+            url,
+            prompt: body.contents[0]?.parts[0]?.text ?? "",
+          });
+          return new Response(JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: Buffer.from(`world-bible-image-${providerRequests.length}`).toString("base64"),
+                        mimeType: "image/png",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        return originalFetch(input, init ? { ...init, headers: new Headers(init.headers ?? {}) } : init);
+      }) as typeof fetch;
+
+      const locationPrompt = "Abandoned factory interior, wet concrete floor, cold moonlight, cinematic wide environment.";
+      const locationReferenceResponse = await readResponse(await originalFetch(
+        `${baseUrl}/projects/${createdProject.id}/world-bible/locations/${location.id}/generate-reference-image`,
+        {
+          method: "POST",
+          headers: { ...jsonHeaders },
+          body: JSON.stringify({
+            prompt: locationPrompt,
+            configSource: "team",
+          }),
+        },
+      ));
+      assert.equal(locationReferenceResponse.status, 201, locationReferenceResponse.bodyText);
+      const locationReference = locationReferenceResponse.json as { assetUrl?: string };
+      assert.equal(typeof locationReference.assetUrl, "string");
+
+      const stylePrompt = "Neo-noir palette, reflective surfaces, dramatic diagonals, glossy rain-soaked highlights.";
+      const styleReferenceResponse = await readResponse(await originalFetch(
+        `${baseUrl}/projects/${createdProject.id}/world-bible/style-guide/generate-reference-image`,
+        {
+          method: "POST",
+          headers: { ...jsonHeaders },
+          body: JSON.stringify({
+            prompt: stylePrompt,
+            configSource: "personal",
+          }),
+        },
+      ));
+      assert.equal(styleReferenceResponse.status, 201, styleReferenceResponse.bodyText);
+      const styleReference = styleReferenceResponse.json as { assetUrl?: string };
+      assert.equal(typeof styleReference.assetUrl, "string");
+
+      assert.equal(providerRequests.length, 2);
+      assert.equal(providerRequests[0].url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-world-bible-team:generateContent?key=world-bible-team-key");
+      assert.equal(providerRequests[1].url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-world-bible-personal:generateContent?key=world-bible-personal-key");
+      assert.equal(providerRequests[0].prompt, locationPrompt);
+      assert.equal(providerRequests[1].prompt, stylePrompt);
+      assert.equal(providerRequests[0].prompt.length > 0, true);
+      assert.equal(providerRequests[1].prompt.length > 0, true);
+    });
+  });
+
   await runCase("text generation jobs honor llm config source", async () => {
     await withHttpApp(async (baseUrl) => {
       const owner = await registerUser(baseUrl, {
