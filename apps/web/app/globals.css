@@ -23,7 +23,7 @@
   /* Text */
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
-  --text-tertiary: #a1a1aa;   /* Changed from #71717a (4.3:1) to #a1a1aa (8.6:1) 鉁?AAA */
+  --text-tertiary: #a1a1aa;   /* Changed from #71717a (4.3:1) to #a1a1aa (8.6:1) ✓AAA */
   --text-inverse: #09090b;
   --text-inverse-muted: rgba(9, 9, 11, 0.6);
 
@@ -42,7 +42,7 @@
 
   /* Status */
   --success-bg: rgba(34, 197, 94, 0.1);
-  --success-text: #22c55e;  /* 5.1:1 鉁?AA (enhanced from #4ade80) */
+  --success-text: #22c55e;  /* 5.1:1 ✓AA (enhanced from #4ade80) */
   --warning-bg: rgba(234, 179, 8, 0.1);
   --warning-text: #fbbf24;  /* Enhanced from #facc15 for better contrast */
   --danger-bg: rgba(239, 68, 68, 0.1);
@@ -112,9 +112,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+/* ─────────────────────────────────────────────────────────────────────────────
    ACCESSIBILITY: Focus Indicators & Keyboard Navigation
-   鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+   ───────────────────────────────────────────────────────────────────────────── */
 
 /* Ensure all interactive elements have visible focus states */
 button:focus-visible,
@@ -166,9 +166,9 @@ textarea:disabled,
   opacity: 0.5;
 }
 
-/* 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+/* ─────────────────────────────────────────────────────────────────────────────
    ACCESSIBILITY: Reduced Motion Support
-   鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+   ───────────────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -3719,7 +3719,7 @@ textarea.input {
   max-width: 640px;
 }
 
-/* Metadata strip 鈥?inline key-value pairs */
+/* Metadata strip —inline key-value pairs */
 .po-meta-strip {
   display: flex;
   align-items: center;
@@ -3791,7 +3791,7 @@ textarea.input {
   box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
 }
 
-/* 鈹€鈹€ Review Policy Switcher 鈹€鈹€ */
+/* ── Review Policy Switcher ── */
 .rps-group {
   display: flex;
   gap: var(--space-2);
@@ -3855,7 +3855,7 @@ textarea.input {
   transform: none;
 }
 
-/* Full variant 鈥?card-style with description */
+/* Full variant —card-style with description */
 .rps-group--full .rps-option {
   flex: 1;
   min-width: 160px;
@@ -3942,7 +3942,7 @@ textarea.input {
   color: rgb(52, 211, 153);
 }
 
-/* Action bar 鈥?appears when selection differs from saved */
+/* Action bar —appears when selection differs from saved */
 .rps-action-bar {
   display: flex;
   align-items: center;
@@ -4018,7 +4018,7 @@ textarea.input {
   cursor: not-allowed;
 }
 
-/* 鈹€鈹€ Compact variant: trigger + dropdown 鈹€鈹€ */
+/* ── Compact variant: trigger + dropdown ── */
 .rps-compact-root {
   position: relative;
   display: inline-flex;
@@ -4410,9 +4410,9 @@ textarea.input {
   line-height: 1.6;
 }
 
-/* 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+/* ─────────────────────────────────────────────────────────────────────────────
    RESPONSIVE DESIGN: Mobile-First Breakpoints
-   鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+   ───────────────────────────────────────────────────────────────────────────── */
 
 /* Mobile (375px - 640px) */
 @media (max-width: 640px) {
@@ -4874,9 +4874,9 @@ textarea.input {
   padding: 2px 6px;
 }
 
-/* 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+/* ─────────────────────────────────────────────────────────────────────────────
    TEAM ADMIN DASHBOARD
-   鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+   ───────────────────────────────────────────────────────────────────────────── */
 
 /* Hero */
 .team-hero {
@@ -5827,9 +5827,9 @@ textarea.input {
   color: var(--text-primary);
 }
 
-/* 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+/* ─────────────────────────────────────────────────────────────────────────────
    MICRO-INTERACTIONS & POLISH
-   鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+   ───────────────────────────────────────────────────────────────────────────── */
 
 /* Staggered list reveal animations */
 .po-list .po-row {
@@ -5970,9 +5970,9 @@ textarea.input {
   animation: focusGlow 2s ease-in-out infinite;
 }
 
-/* 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+/* ─────────────────────────────────────────────────────────────────────────────
    PERFORMANCE OPTIMIZATIONS
-   鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+   ───────────────────────────────────────────────────────────────────────────── */
 
 /* Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
@@ -6022,11 +6022,11 @@ textarea.input {
 }
 
 /* ========================
-   Version View 鈥?Cinematic Timeline Renderer
+   Version View —Cinematic Timeline Renderer
    Premium storyboard & script visual system
    ======================== */
 
-/* 鈹€鈹€ Version Header 鈹€鈹€ */
+/* ── Version Header ── */
 .vv-header {
   display: flex;
   align-items: flex-start;
@@ -6063,14 +6063,14 @@ textarea.input {
   margin-top: 2px;
 }
 
-/* 鈹€鈹€ Container 鈹€鈹€ */
+/* ── Container ── */
 .vv-content {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
 }
 
-/* 鈹€鈹€ Overview Quote 鈹€鈹€ */
+/* ── Overview Quote ── */
 .vv-overview {
   font-size: 15px;
   color: var(--text-secondary);
@@ -6083,7 +6083,7 @@ textarea.input {
   border-left: 3px solid var(--accent);
 }
 
-/* 鈹€鈹€ Summary Bar 鈹€鈹€ */
+/* ── Summary Bar ── */
 .vv-summary-bar {
   display: flex;
   align-items: center;
@@ -6104,7 +6104,7 @@ textarea.input {
   user-select: none;
 }
 
-/* 鈹€鈹€ Timeline Container 鈹€鈹€ */
+/* ── Timeline Container ── */
 .vv-timeline {
   display: flex;
   flex-direction: column;
@@ -6124,7 +6124,7 @@ textarea.input {
   border-radius: 999px;
 }
 
-/* 鈹€鈹€ Scene Group 鈹€鈹€ */
+/* ── Scene Group ── */
 @keyframes vv-scene-enter {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -6175,14 +6175,14 @@ textarea.input {
   border-radius: 999px;
 }
 
-/* 鈹€鈹€ Shot Grid 鈹€鈹€ */
+/* ── Shot Grid ── */
 .vv-shot-grid {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
-/* 鈹€鈹€ Shot Card 鈹€鈹€ */
+/* ── Shot Card ── */
 @keyframes vv-shot-enter {
   from { opacity: 0; transform: translateX(-6px); }
   to   { opacity: 1; transform: translateX(0); }
@@ -9623,7 +9623,7 @@ textarea.input {
   }
 }
 
-/* 鈹€鈹€ Task Panel 鈹€鈹€ */
+/* ── Task Panel ── */
 
 .task-panel {
   display: flex;
