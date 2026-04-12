@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 文本生成面板
+ * @module web/components/project-workspace
+ *
+ * AI 剧本/大纲/分镜生成的参数配置和流式输出界面。
+ */
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";

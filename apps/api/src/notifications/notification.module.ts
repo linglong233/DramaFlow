@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 通知模块
+ * @module api/notifications
+ *
+ * 注册通知控制器和服务。
+ */
+
 import { Module } from "@nestjs/common";
 
 import { CommonModule } from "../common/common.module";

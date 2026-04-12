@@ -1,9 +1,20 @@
+/**
+ * @fileoverview 开发态 JSON 文件数据库服务
+ * @module api/common
+ *
+ * 基于 JSON 文件的轻量级数据存储，用于开发和轻量部署场景。
+ * 生产环境应迁移到 Prisma + PostgreSQL。
+ *
+ * 使用串行化写入队列（writeChain）保证数据一致性。
+ */
+
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import { createEmptyDatabase, type DevDatabase } from "./database.types";
 
+/** 开发态 JSON 文件数据库服务，提供 query/mutate 两种数据访问模式 */
 @Injectable()
 export class DevDatabaseService implements OnModuleInit {
   private readonly dataDir = process.env.DATA_DIR ?? "apps/api/data";
@@ -14,6 +25,10 @@ export class DevDatabaseService implements OnModuleInit {
     await this.ensureReady();
   }
 
+  /**
+   * 只读查询数据库
+   * @param reader - 读取回调，接收当前数据库快照
+   */
   async query<T>(reader: (db: DevDatabase) => T | Promise<T>): Promise<T> {
     await this.writeChain;
     await this.ensureReady();
@@ -21,6 +36,10 @@ export class DevDatabaseService implements OnModuleInit {
     return reader(db);
   }
 
+  /**
+   * 写入操作数据库（串行化执行，结束后自动写入文件）
+   * @param writer - 写入回调，可修改数据库内容
+   */
   async mutate<T>(writer: (db: DevDatabase) => T | Promise<T>): Promise<T> {
     const operation = this.writeChain.then(async () => {
       await this.ensureReady();
@@ -39,6 +58,7 @@ export class DevDatabaseService implements OnModuleInit {
     return operation;
   }
 
+  /** 确保数据文件存在，不存在则初始化空数据库 */
   private async ensureReady(): Promise<void> {
     const filePath = this.getDataFilePath();
     await mkdir(dirname(filePath), { recursive: true });
@@ -62,6 +82,9 @@ export class DevDatabaseService implements OnModuleInit {
     await writeFile(this.getDataFilePath(), JSON.stringify(db, null, 2), "utf-8");
   }
 
+  /**
+   * 规范化数据库结构，确保所有数组字段存在并修复已知的乱码标题
+   */
   private normalize(db: DevDatabase): { normalized: DevDatabase; changed: boolean } {
     let changed = false;
 
@@ -95,6 +118,7 @@ export class DevDatabaseService implements OnModuleInit {
     };
   }
 
+  /** 修复已知的文档标题乱码问题，使用 Unicode 转义序列确保正确编码 */
   private normalizeDocumentTitle(type: DevDatabase["documents"][number]["type"], title: string) {
     if (!this.looksCorrupted(title)) {
       return title;
@@ -115,10 +139,12 @@ export class DevDatabaseService implements OnModuleInit {
     return title;
   }
 
+  /** 检测字符串是否包含乱码特征 */
   private looksCorrupted(value: string) {
     return value.includes("\u951f") || value.includes("\ufffd");
   }
 
+  /** 获取数据库 JSON 文件的绝对路径 */
   private getDataFilePath(): string {
     if (isAbsolute(this.dataDir)) {
       return join(this.dataDir, this.dataFileName);

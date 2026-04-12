@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 上传控制器
+ * @module api/storage
+ *
+ * 提供文件上传和上传目标创建的 REST 端点。
+ */
+
 import {
   Body,
   Controller,

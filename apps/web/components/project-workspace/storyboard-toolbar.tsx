@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 分镜工具栏
+ * @module web/components/project-workspace
+ *
+ * 分镜工作台的操作工具栏。
+ */
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";

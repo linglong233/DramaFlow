@@ -1,3 +1,10 @@
+/**
+ * @fileoverview OpenAI 兼容文本生成 Provider
+ * @module api/jobs
+ *
+ * 通过 OpenAI 兼容接口生成剧本、分镜、大纲等文本内容，支持流式输出。
+ */
+
 import { Injectable, Logger } from "@nestjs/common";
 import type {
   GenerateScriptInput,

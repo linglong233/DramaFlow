@@ -1,3 +1,10 @@
+/**
+ * @fileoverview OpenAI 媒体生成 Provider
+ * @module api/jobs
+ *
+ * 通过 OpenAI 兼容接口生成图片和视频。
+ */
+
 import { Injectable } from "@nestjs/common";
 import type {
   GenerateMediaInput,

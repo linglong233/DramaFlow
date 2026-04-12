@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 内联反馈组件
+ * @module web/components
+ *
+ * 表单操作后的成功/错误内联提示。
+ */
+
 interface InlineFeedbackProps {
   message?: string | null;
   error?: string | null;

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview S3 兼容对象存储 Provider
+ * @module api/storage
+ *
+ * 将文件存储到 S3 兼容的对象存储服务。
+ */
+
 import { Injectable } from "@nestjs/common";
 import {
   CopyObjectCommand,

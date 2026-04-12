@@ -1,3 +1,11 @@
+/**
+ * @fileoverview AI 任务控制器
+ * @module api/jobs
+ *
+ * 提供 AI 生成任务创建、SSE 流式生成、任务管理、批量操作、
+ * TTS、导出等 REST 端点。
+ */
+
 import {
   Body,
   Controller,
@@ -26,6 +34,7 @@ import { JobsService } from "./jobs.service";
 import { PromptBuilderService } from "./prompt-builder.service";
 import { ExportService } from "./export.service";
 
+/** AI 任务控制器，处理生成任务、流式响应、批量操作等 */
 @Controller()
 @UseGuards(AuthGuard)
 export class JobsController {
@@ -135,7 +144,7 @@ export class JobsController {
     return this.jobsService.createRewriteJob(user.id, projectId, body);
   }
 
-  // ===== SSE Streaming Endpoints =====
+  // ===== SSE 流式生成端点 =====
 
   @Post("projects/:id/script-jobs/stream")
   async streamScriptJob(
@@ -196,6 +205,7 @@ export class JobsController {
     this.endSseResponse(res);
   }
 
+  /** 初始化 SSE 响应头 */
   private initSseResponse(res: Response) {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -204,10 +214,12 @@ export class JobsController {
     res.flushHeaders();
   }
 
+  /** 写入单条 SSE 事件 */
   private writeSseEvent(res: Response, data: unknown) {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 
+  /** 结束 SSE 响应 */
   private endSseResponse(res: Response) {
     res.write("data: [DONE]\n\n");
     res.end();
@@ -236,7 +248,7 @@ export class JobsController {
     return this.promptBuilder.previewVideoPrompt(body.projectId, shotId);
   }
 
-  // ===== Task Management =====
+  // ===== 任务管理 =====
 
   @Get("projects/:id/jobs")
   listProjectJobs(

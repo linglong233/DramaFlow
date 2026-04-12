@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 工作区模块
+ * @module api/workspace
+ *
+ * 组装团队、项目、文档、版本、评论、审核、时间线、导出等核心业务功能。
+ */
+
 import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module";

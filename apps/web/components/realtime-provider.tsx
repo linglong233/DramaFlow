@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 实时通信 Provider
+ * @module web/components
+ *
+ * WebSocket 实时连接管理和事件分发。
+ */
+
 "use client";
 
 import type { ReactNode } from "react";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 提示词构建服务
+ * @module api/jobs
+ *
+ * 根据世界观设定和镜头信息构建图片/视频生成提示词。
+ */
+
 import { Inject, Injectable } from "@nestjs/common";
 import type {
   CharacterProfile,

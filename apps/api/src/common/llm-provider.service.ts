@@ -1,3 +1,10 @@
+/**
+ * @fileoverview LLM Provider 服务
+ * @module api/common
+ *
+ * 提供 LLM 模型列表查询功能，通过 OpenAI 兼容接口获取可用模型。
+ */
+
 import {
   BadGatewayException,
   BadRequestException,
@@ -5,20 +12,28 @@ import {
 } from "@nestjs/common";
 import type { LlmModelSummary, LlmProviderConfig } from "@dramaflow/shared";
 
+/** OpenAI 兼容接口的模型记录 */
 interface OpenAiCompatModelRecord {
   id?: string;
   created?: number;
   owned_by?: string;
 }
 
+/** OpenAI 兼容接口的模型列表响应体 */
 interface OpenAiCompatModelListPayload {
   data?: OpenAiCompatModelRecord[];
 }
 
+/** LLM Provider 服务，封装 OpenAI 兼容接口的模型查询 */
 @Injectable()
 export class LlmProviderService {
   private readonly defaultBaseUrl = (process.env.OPENAI_COMPAT_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
 
+  /**
+   * 查询可用的 LLM 模型列表
+   * @param config - 可选的 LLM 配置（指定自定义 Provider 地址和密钥）
+   * @returns 按 ID 字母顺序排列的模型摘要列表
+   */
   async listModels(config?: LlmProviderConfig): Promise<LlmModelSummary[]> {
     const provider = (config?.provider ?? "openai-completions").trim() || "openai-completions";
     if (provider !== "openai-completions") {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview TipTap 场景标题扩展
+ * @module web/components/tiptap
+ *
+ * 实现剧本中场景标题的自定义 TipTap 节点。
+ */
+
 import { Node, mergeAttributes } from "@tiptap/core";
 
 export interface SceneHeadingOptions {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 区块卡片
+ * @module web/components
+ *
+ * 通用的内容区块卡片容器。
+ */
+
 import type { ReactNode } from "react";
 
 interface SectionCardProps {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 统一工作区
+ * @module web/components
+ *
+ * 项目文档编辑和 AI 生成的统一工作区界面。
+ */
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";

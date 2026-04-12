@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 团队设置面板
+ * @module web/components
+ *
+ * 团队名称、审核策略、LLM 和图片生成配置管理。
+ */
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

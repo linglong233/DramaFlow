@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 加载骨架屏
+ * @module web/components
+ *
+ * 数据加载中的骨架占位动画。
+ */
+
 interface LoadingSkeletonProps {
   rows?: number;
   variant?: "card" | "hero";

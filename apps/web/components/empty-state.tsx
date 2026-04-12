@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 空状态组件
+ * @module web/components
+ *
+ * 数据为空时的友好提示占位。
+ */
+
 import type { ReactNode } from "react";
 
 interface EmptyStateProps {

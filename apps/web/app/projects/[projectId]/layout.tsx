@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 项目工作区布局
+ * @module web/app/projects
+ *
+ * 项目级页面的共享布局。
+ */
+
 import { AuthGuard } from "../../../components/layouts/auth-guard";
 import { SidebarLayout } from "../../../components/layouts/sidebar-layout";
 

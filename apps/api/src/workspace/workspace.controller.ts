@@ -1,3 +1,11 @@
+/**
+ * @fileoverview 工作区控制器
+ * @module api/workspace
+ *
+ * 提供团队管理、项目 CRUD、文档版本管理、审核流、世界观设定、
+ * 时间线、导出等 REST 端点。所有端点均需认证。
+ */
+
 import {
   Body,
   Controller,
@@ -19,6 +27,7 @@ import { AuthGuard } from "../common/auth.guard";
 import { AuditService } from "./audit.service";
 import { WorkspaceService } from "./workspace.service";
 
+/** 工作区控制器，聚合所有团队/项目/文档/版本/审核/时间线等 REST 端点 */
 @Controller()
 @UseGuards(AuthGuard)
 export class WorkspaceController {
@@ -369,7 +378,7 @@ export class WorkspaceController {
     return this.workspaceService.updateStyleGuide(user.id, projectId, body);
   }
 
-  // ===== Audit Config =====
+  // ===== 审核配置 =====
 
   @Get("projects/:id/audit-configs")
   getAuditConfigs(
@@ -408,7 +417,7 @@ export class WorkspaceController {
     return this.auditService.getAuditRecordsForVersion(versionId);
   }
 
-  // ===== Timeline =====
+  // ===== 时间线 =====
 
   @Get("projects/:id/timeline")
   getTimeline(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
@@ -432,7 +441,7 @@ export class WorkspaceController {
     return this.workspaceService.autoAssembleTimeline(user.id, projectId);
   }
 
-  // ===== Voice Config =====
+  // ===== 角色语音配置 =====
 
   @Patch("projects/:projectId/world-bible/characters/:characterId/voice")
   updateCharacterVoice(
@@ -444,7 +453,7 @@ export class WorkspaceController {
     return this.workspaceService.updateCharacterVoice(user.id, projectId, characterId, body);
   }
 
-  // ===== Exports =====
+  // ===== 导出 =====
 
   @Get("projects/:id/exports")
   listExports(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {

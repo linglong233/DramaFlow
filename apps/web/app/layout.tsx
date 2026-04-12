@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 全局根布局
+ * @module web/app
+ *
+ * 配置全局字体、主题和 SEO 元数据，包裹认证和 React Query Provider。
+ */
+
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";

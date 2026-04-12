@@ -1,5 +1,17 @@
+/**
+ * @fileoverview 分镜数据规范化、别名映射与本地化工具
+ * @module shared/storyboard
+ *
+ * 提供分镜相关的工具函数，包括：
+ * - 景别和运镜的标准化选项与别名映射
+ * - 景别/运镜的中英文标签
+ * - AI 返回的分镜数据规范化
+ * - 分镜统计工具函数
+ */
+
 import type { StoryboardContent, StoryboardShot } from "./domain";
 
+/** 景别标准选项列表 */
 export const STORYBOARD_FRAMING_OPTIONS = [
   "ECU",
   "CU",
@@ -15,6 +27,7 @@ export const STORYBOARD_FRAMING_OPTIONS = [
   "dutch-angle",
 ] as const;
 
+/** 运镜方式标准选项列表 */
 export const STORYBOARD_CAMERA_MOVE_OPTIONS = [
   "static",
   "pan-left",
@@ -33,8 +46,10 @@ export const STORYBOARD_CAMERA_MOVE_OPTIONS = [
   "zoom-out",
 ] as const;
 
+/** 支持的分镜本地化语言 */
 type StoryboardLocale = "zh-CN" | "en";
 
+/** 景别别名映射表（支持中英文别名转换为标准值） */
 const FRAMING_ALIAS_ENTRIES: Array<[string, string]> = [
   ["extreme close up", "ECU"],
   ["extreme close-up", "ECU"],
@@ -89,6 +104,7 @@ const FRAMING_ALIAS_ENTRIES: Array<[string, string]> = [
   ["倾斜", "dutch-angle"],
 ];
 
+/** 运镜方式别名映射表（支持中英文别名转换为标准值） */
 const CAMERA_MOVE_ALIAS_ENTRIES: Array<[string, string]> = [
   ["static", "static"],
   ["locked off", "static"],
@@ -150,6 +166,7 @@ const CAMERA_MOVE_ALIAS_ENTRIES: Array<[string, string]> = [
   ["拉焦", "zoom-out"],
 ];
 
+/** 景别本地化标签映射 */
 const STORYBOARD_FRAMING_LABELS: Record<StoryboardLocale, Record<string, string>> = {
   "zh-CN": {
     ECU: "大特写",
@@ -181,6 +198,7 @@ const STORYBOARD_FRAMING_LABELS: Record<StoryboardLocale, Record<string, string>
   },
 };
 
+/** 运镜方式本地化标签映射 */
 const STORYBOARD_CAMERA_MOVE_LABELS: Record<StoryboardLocale, Record<string, string>> = {
   "zh-CN": {
     static: "固定机位",
@@ -250,6 +268,12 @@ function sanitizeNumber(value: unknown, fallback: number) {
   return fallback;
 }
 
+/**
+ * 通过别名表查找标准值
+ * @param value - 原始输入值
+ * @param aliases - 别名映射表
+ * @returns 标准化后的值
+ */
 function aliasLookup(value: string, aliases: Array<[string, string]>) {
   const normalized = value.toLowerCase().replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
 
@@ -262,6 +286,7 @@ function aliasLookup(value: string, aliases: Array<[string, string]>) {
   return value.trim();
 }
 
+/** 确保值为对象类型，非对象返回空对象 */
 function ensureShotObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object") {
     return {};
@@ -270,6 +295,7 @@ function ensureShotObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** 规范化分镜场景 ID，尝试从多个字段推断 */
 function normalizeStoryboardSceneId(rawShot: Record<string, unknown>, index: number) {
   const direct = sanitizeString(rawShot.sceneId);
   if (direct) {
@@ -293,6 +319,7 @@ function normalizeStoryboardSceneId(rawShot: Record<string, unknown>, index: num
   return `scene-${index + 1}`;
 }
 
+/** 规范化镜头编号标签 */
 function normalizeStoryboardShotLabel(rawShot: Record<string, unknown>, sceneId: string, index: number) {
   const direct = sanitizeString(rawShot.shotLabel);
   if (direct) {
@@ -310,6 +337,7 @@ function normalizeStoryboardShotLabel(rawShot: Record<string, unknown>, sceneId:
   return `${sceneSuffix}-${index + 1}`;
 }
 
+/** 规范化镜头 ID，基于场景 ID 和镜头标签生成 */
 function normalizeStoryboardShotId(rawShot: Record<string, unknown>, sceneId: string, shotLabel: string, index: number) {
   const direct = sanitizeString(rawShot.id);
   if (direct) {
@@ -321,6 +349,7 @@ function normalizeStoryboardShotId(rawShot: Record<string, unknown>, sceneId: st
   return `shot-${safeScene}-${safeLabel || index + 1}`;
 }
 
+/** 规范化镜头关联的角色 ID 列表 */
 function normalizeCharacterIds(rawShot: Record<string, unknown>) {
   const direct = rawShot.characterIds;
   if (Array.isArray(direct)) {
@@ -333,6 +362,11 @@ function normalizeCharacterIds(rawShot: Record<string, unknown>) {
   return undefined;
 }
 
+/**
+ * 规范化景别值，通过别名表转换为标准值
+ * @param value - 原始景别描述（中/英文、缩写均可）
+ * @returns 标准景别值，默认为 "MS"
+ */
 export function normalizeStoryboardFraming(value: unknown) {
   const raw = sanitizeString(value);
   if (!raw) {
@@ -343,6 +377,11 @@ export function normalizeStoryboardFraming(value: unknown) {
   return sanitizeString(normalized) || "MS";
 }
 
+/**
+ * 规范化运镜方式，通过别名表转换为标准值
+ * @param value - 原始运镜描述
+ * @returns 标准运镜值，默认为 "static"
+ */
 export function normalizeStoryboardCameraMove(value: unknown) {
   const raw = sanitizeString(value);
   if (!raw) {
@@ -353,6 +392,12 @@ export function normalizeStoryboardCameraMove(value: unknown) {
   return sanitizeString(normalized) || "static";
 }
 
+/**
+ * 规范化单个分镜镜头数据
+ * @param value - AI 返回的原始镜头数据
+ * @param index - 镜头序号
+ * @returns 标准化的 StoryboardShot
+ */
 export function normalizeStoryboardShot(value: unknown, index = 0): StoryboardShot {
   const rawShot = ensureShotObject(value);
   const sceneId = normalizeStoryboardSceneId(rawShot, index);
@@ -390,6 +435,11 @@ export function normalizeStoryboardShot(value: unknown, index = 0): StoryboardSh
   };
 }
 
+/**
+ * 规范化完整分镜内容
+ * @param value - AI 返回的原始分镜数据
+ * @returns 标准化的 StoryboardContent
+ */
 export function normalizeStoryboardContent(value: unknown): StoryboardContent {
   const rawContent = ensureShotObject(value);
   const rawShots = Array.isArray(rawContent.shots) ? rawContent.shots : [];
@@ -400,6 +450,7 @@ export function normalizeStoryboardContent(value: unknown): StoryboardContent {
   };
 }
 
+/** 类型守卫：检查值是否为有效的 StoryboardContent */
 export function isStoryboardContent(value: unknown): value is StoryboardContent {
   if (!value || typeof value !== "object") {
     return false;
@@ -409,22 +460,35 @@ export function isStoryboardContent(value: unknown): value is StoryboardContent 
   return typeof normalized.overview === "string" && Array.isArray(normalized.shots);
 }
 
+/**
+ * 获取景别的本地化标签
+ * @param value - 标准景别值
+ * @param locale - 目标语言，默认简体中文
+ */
 export function getStoryboardFramingLabel(value: string, locale: StoryboardLocale = "zh-CN") {
   return STORYBOARD_FRAMING_LABELS[locale][value] ?? value;
 }
 
+/**
+ * 获取运镜方式的本地化标签
+ * @param value - 标准运镜值
+ * @param locale - 目标语言，默认简体中文
+ */
 export function getStoryboardCameraMoveLabel(value: string, locale: StoryboardLocale = "zh-CN") {
   return STORYBOARD_CAMERA_MOVE_LABELS[locale][value] ?? value;
 }
 
+/** 获取镜头的视觉内容摘要（画面描述 + 动作描述） */
 export function getStoryboardShotVisualSummary(shot: StoryboardShot) {
   return [shot.visualDescription, shot.actionDescription].filter(Boolean).join("\n");
 }
 
+/** 获取镜头的音频内容摘要（对白 + 音效） */
 export function getStoryboardShotAudioSummary(shot: StoryboardShot) {
   return [shot.dialogue, shot.soundDesign].filter(Boolean).join("\n");
 }
 
+/** 获取分镜中所有不重复的场景 ID（保持出现顺序） */
 export function getStoryboardSceneIds(content: StoryboardContent) {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -439,6 +503,7 @@ export function getStoryboardSceneIds(content: StoryboardContent) {
   return result;
 }
 
+/** 估算分镜总时长（秒） */
 export function getStoryboardEstimatedDuration(content: StoryboardContent) {
   return content.shots.reduce((total, shot) => total + Math.max(0, shot.durationSeconds || 0), 0);
 }

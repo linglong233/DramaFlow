@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 审核面板
+ * @module web/components/project-workspace
+ *
+ * 版本审核操作界面，支持通过/驳回/评论。
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";

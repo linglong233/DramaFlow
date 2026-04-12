@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 通知服务
+ * @module api/notifications
+ *
+ * 管理通知的创建、查询、标记已读等操作。
+ */
+
 import { Inject, Injectable } from "@nestjs/common";
 import type { NotificationRecord, NotificationType } from "@dramaflow/shared";
 

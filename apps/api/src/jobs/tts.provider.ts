@@ -1,3 +1,10 @@
+/**
+ * @fileoverview TTS 语音合成 Provider
+ * @module api/jobs
+ *
+ * 通过 TTS API 将文本转换为语音。
+ */
+
 import { Injectable } from "@nestjs/common";
 import type { LlmProviderConfig } from "@dramaflow/shared";
 import type { VoiceInfo } from "@dramaflow/shared";

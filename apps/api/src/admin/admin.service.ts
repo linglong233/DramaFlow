@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 平台管理后台服务
+ * @module api/admin
+ *
+ * 实现平台概览统计、团队概览和团队设置读取等管理功能。
+ */
+
 import {
   ForbiddenException,
   Inject,

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 实时事件服务
+ * @module api/realtime
+ *
+ * 向已订阅的客户端广播任务更新、审核状态变更等实时事件。
+ */
+
 import { Inject, Injectable } from "@nestjs/common";
 import type { JobRecord, NotificationRecord, RealtimeReviewUpdatedEvent } from "@dramaflow/shared";
 

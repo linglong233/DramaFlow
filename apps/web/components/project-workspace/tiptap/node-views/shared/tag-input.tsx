@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 标签输入组件
+ * @module web/components/tiptap
+ *
+ * 支持标签输入和管理的通用组件。
+ */
+
 "use client";
 
 import { useState } from "react";

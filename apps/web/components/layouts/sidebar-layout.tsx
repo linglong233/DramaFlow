@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 侧边栏布局组件
+ * @module web/components/layouts
+ *
+ * 带导航侧边栏的页面布局壳。
+ */
+
 "use client";
 
 import type { ReactNode } from "react";

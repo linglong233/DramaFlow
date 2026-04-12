@@ -1,9 +1,19 @@
+/**
+ * @fileoverview Worker 轮询主入口
+ * @module worker
+ *
+ * 轻量级任务 Worker，通过定时轮询 API 的内部接口领取并执行 AI 生成任务。
+ * 支持失败自动重试和进度追踪。
+ */
+
 const apiUrl = (process.env.API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const pollIntervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 4000);
 const internalApiKey = process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key";
 const internalHeaders: Record<string, string> = { "x-internal-key": internalApiKey };
+/** 并发锁，防止同时执行多个任务 */
 let running = false;
 
+/** 单次轮询周期：领取任务 → 执行 → 处理结果 / 重试 */
 async function tick() {
   if (running) {
     return;
@@ -40,7 +50,7 @@ async function tick() {
       const body = await processResponse.text();
       process.stdout.write(`[worker] job ${job.id} failed: ${body}\n`);
 
-      // Auto-retry if within retry limits
+      // 在重试限制内自动重试
       const retryCount = job.retryCount ?? 0;
       const maxRetries = job.maxRetries ?? 3;
       if (retryCount < maxRetries) {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 重置密码页
+ * @module web/app
+ *
+ * 执行密码重置。
+ */
+
 "use client";
 
 import { useI18n } from "../../lib/i18n";

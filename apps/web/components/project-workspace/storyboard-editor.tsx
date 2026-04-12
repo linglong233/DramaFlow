@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 分镜编辑器
+ * @module web/components/project-workspace
+ *
+ * 分镜场景和镜头的结构化编辑器。
+ */
+
 "use client";
 
 import { useState } from "react";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Next.js 配置
+ * @module web
+ *
+ * Next.js 构建和运行时配置。
+ */
+
 import { cp, mkdir, readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { NextConfig } from "next";

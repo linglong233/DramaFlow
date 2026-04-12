@@ -1,3 +1,11 @@
+/**
+ * @fileoverview 工作区核心业务服务
+ * @module api/workspace
+ *
+ * 实现团队管理、项目 CRUD、文档版本管理、审核流、世界观设定、通知、
+ * 时间线、导出等核心业务逻辑。所有业务规则都引用 @dramaflow/shared 的共享函数。
+ */
+
 import {
   BadRequestException,
   ForbiddenException,
@@ -68,6 +76,7 @@ import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { AuditService } from "./audit.service";
 
+/** 操作者上下文，封装用户在团队和项目中的角色 */
 interface ActorContext {
   userId: string;
   globalRole: "platform_super_admin" | "user";
@@ -75,6 +84,7 @@ interface ActorContext {
   projectRoles: ProjectRole[];
 }
 
+/** 工作区核心业务服务，聚合团队、项目、文档、版本、审核、世界观等操作 */
 @Injectable()
 export class WorkspaceService {
   constructor(

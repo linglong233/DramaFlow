@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 业务规则单元测试
+ * @module shared/business-rules.test
+ *
+ * 验证审核策略解析、版本状态流转等核心业务规则的正确性。
+ */
+
 import test from "node:test";
 import assert from "node:assert/strict";
 

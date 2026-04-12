@@ -1,3 +1,10 @@
+/**
+ * @fileoverview LLM 配置工具
+ * @module web/lib
+ *
+ * LLM Provider 的配置解析和表单辅助。
+ */
+
 import type { LlmProviderConfig } from "@dramaflow/shared";
 
 type LlmConfigSource = Partial<Pick<LlmProviderConfig, "provider" | "apiKey" | "baseUrl" | "model" | "stream">> & {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Provider 单元测试
+ * @module api/jobs
+ *
+ * 验证各 AI Provider 的基本功能和接口实现。
+ */
+
 import test from "node:test";
 import assert from "node:assert/strict";
 

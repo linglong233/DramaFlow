@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 图片生成配置工具
+ * @module web/lib
+ *
+ * 图片生成 Provider 的配置解析和表单辅助。
+ */
+
 import type { ImageGenerationConfig, ImageGenerationProvider } from "@dramaflow/shared";
 
 type ImageConfigSource = Partial<Pick<ImageGenerationConfig, "provider" | "apiKey" | "baseUrl" | "model">> & {

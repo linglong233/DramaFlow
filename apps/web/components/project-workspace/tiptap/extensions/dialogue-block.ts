@@ -1,3 +1,10 @@
+/**
+ * @fileoverview TipTap 对白块扩展
+ * @module web/components/tiptap
+ *
+ * 实现剧本中对白块的自定义 TipTap 节点。
+ */
+
 import { Node, mergeAttributes } from "@tiptap/core";
 
 export interface DialogueBlockOptions {

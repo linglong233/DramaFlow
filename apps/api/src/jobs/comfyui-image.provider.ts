@@ -1,3 +1,10 @@
+/**
+ * @fileoverview ComfyUI 图片生成 Provider
+ * @module api/jobs
+ *
+ * 通过 ComfyUI API 生成图片。
+ */
+
 import { Injectable, Logger } from "@nestjs/common";
 import type { GenerateMediaInput, ImageGenerationConfig, MediaContent } from "@dramaflow/shared";
 

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 通知铃铛
+ * @module web/components
+ *
+ * 导航栏的通知图标和未读计数。
+ */
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";

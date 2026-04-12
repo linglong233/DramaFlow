@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 审核服务
+ * @module api/workspace
+ *
+ * 管理审核配置和审核记录，包括记录审核操作和发送相关通知。
+ */
+
 import { Injectable, Inject } from "@nestjs/common";
 import type {
   AuditAction,
@@ -13,6 +20,7 @@ import { DevDatabaseService } from "../common/dev-database.service";
 import { NotificationService } from "../notifications/notification.service";
 import { createId } from "../common/id";
 
+/** 审核服务，管理审核配置、记录审核操作并发送通知 */
 @Injectable()
 export class AuditService {
   constructor(
@@ -20,12 +28,14 @@ export class AuditService {
     @Inject(NotificationService) private readonly notificationService: NotificationService,
   ) {}
 
+  /** 获取项目的审核配置列表 */
   async getAuditConfigs(projectId: string): Promise<AuditConfigRecord[]> {
     return this.database.query((db) =>
       db.auditConfigs.filter((c) => c.projectId === projectId),
     );
   }
 
+  /** 创建或更新审核配置 */
   async upsertAuditConfig(
     projectId: string,
     contentType: AuditContentType,
@@ -60,6 +70,7 @@ export class AuditService {
     });
   }
 
+  /** 记录审核操作并发送通知 */
   async recordAuditAction(params: {
     projectId: string;
     versionId: string;
@@ -83,12 +94,13 @@ export class AuditService {
       db.auditRecords.push(entry);
     });
 
-    // Send notifications to relevant users
+    // 向相关用户发送审核通知
     await this.notifyAuditAction(params);
 
     return entry;
   }
 
+  /** 查询项目审核记录（分页） */
   async listAuditRecords(
     projectId: string,
     options: { type?: DocumentType; limit?: number; offset?: number } = {},
@@ -111,6 +123,7 @@ export class AuditService {
     });
   }
 
+  /** 获取指定版本的审核记录 */
   async getAuditRecordsForVersion(versionId: string): Promise<AuditRecordSummary[]> {
     return this.database.query((db) =>
       db.auditRecords
@@ -120,6 +133,7 @@ export class AuditService {
     );
   }
 
+  /** 将审核记录转换为包含审核人信息的摘要 */
   private toAuditRecordSummary(
     db: import("../common/database.types").DevDatabase,
     record: AuditRecordEntry,
@@ -138,6 +152,7 @@ export class AuditService {
     };
   }
 
+  /** 根据审核操作类型发送通知（提交时通知审核员，通过/拒绝时通知更新人） */
   private async notifyAuditAction(params: {
     projectId: string;
     versionId: string;
@@ -163,7 +178,7 @@ export class AuditService {
     });
 
     if (action === "submitted") {
-      // Notify reviewers
+      // 通知审核员
       const recipientIds = data.reviewerMemberUserIds.filter((id) => id !== reviewerId);
       await this.notificationService.createNotificationForMany(recipientIds, {
         projectId,
@@ -174,7 +189,7 @@ export class AuditService {
         referenceType: "version",
       });
     } else if (action === "approved" || action === "rejected") {
-      // Notify version creator
+      // 通知版本创建者
       const type = action === "approved" ? "review_approved" as const : "review_rejected" as const;
       if (data.versionCreatedBy && data.versionCreatedBy !== reviewerId) {
         await this.notificationService.createNotification({

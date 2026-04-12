@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 存储服务
+ * @module api/storage
+ *
+ * 提供文件上传、下载和删除的统一接口。
+ */
+
 import {
   BadRequestException,
   ForbiddenException,

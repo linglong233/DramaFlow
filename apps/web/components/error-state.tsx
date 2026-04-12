@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 错误状态组件
+ * @module web/components
+ *
+ * 请求失败或异常时的友好提示。
+ */
+
 import type { ReactNode } from "react";
 
 interface ErrorStateProps {

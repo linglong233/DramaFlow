@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 工作台概览组件
+ * @module web/components
+ *
+ * 工作台首页的统计卡片和快速入口。
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";

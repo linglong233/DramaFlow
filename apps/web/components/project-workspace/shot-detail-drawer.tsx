@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 镜头详情抽屉
+ * @module web/components/project-workspace
+ *
+ * 展示和编辑镜头详细信息的侧边抽屉。
+ */
+
 "use client";
 
 import { useEffect, useCallback, useState } from "react";

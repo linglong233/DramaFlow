@@ -1,3 +1,10 @@
+/**
+ * @fileoverview UI 文案翻译
+ * @module web/lib/i18n
+ *
+ * 界面文案的中英文翻译定义。
+ */
+
 export const zhCNMessages = {
   common: {
     language: "语言",

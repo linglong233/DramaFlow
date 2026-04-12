@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 世界观参考图生成对话框
+ * @module web/components/project-workspace
+ *
+ * 通过 AI 为世界观要素生成参考图片的对话框。
+ */
+
 "use client";
 
 import { useState } from "react";

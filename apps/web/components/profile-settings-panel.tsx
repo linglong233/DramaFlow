@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 个人设置面板
+ * @module web/components
+ *
+ * 用户个人信息、LLM 和图片生成配置管理。
+ */
+
 "use client";
 
 import { useEffect, useState } from "react";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 国际化 Provider
+ * @module web/lib/i18n
+ *
+ * 国际化上下文 Provider 和翻译 Hook。
+ */
+
 "use client";
 
 import type { ReactNode } from "react";

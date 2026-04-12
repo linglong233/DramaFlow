@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 版本查看器
+ * @module web/components/project-workspace
+ *
+ * 版本内容的只读预览。
+ */
+
 "use client";
 
 import { useState, useCallback, useMemo } from "react";

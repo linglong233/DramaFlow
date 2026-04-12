@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 全局 Provider 组装
+ * @module web/components
+ *
+ * 组合 React Query、Session、I18n、Realtime 等全局 Provider。
+ */
+
 "use client";
 
 import type { ReactNode } from "react";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 确认操作对话框
+ * @module web/components
+ *
+ * 通用的操作确认弹窗组件。
+ */
+
 "use client";
 
 import { useEffect, useState } from "react";

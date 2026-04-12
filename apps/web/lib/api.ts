@@ -1,18 +1,28 @@
+/**
+ * @fileoverview API 客户端
+ * @module web/lib
+ *
+ * 封装所有后端 API 调用，包含认证令牌管理和自动刷新。
+ */
+
 import type { SessionPayload } from "@dramaflow/shared";
 
 import type { TranslateFn, TranslationKey, TranslationParams } from "./i18n";
 
+/** 会话快照，包含当前会话数据和就绪状态 */
 export interface SessionSnapshot {
   session: SessionPayload | null;
   ready: boolean;
 }
 
+/** API 请求体类型，支持 JSON 对象和各种二进制载体 */
 export type ApiBody = BodyInit | object | null | undefined;
 
 export interface ApiFetchInit extends Omit<RequestInit, "body"> {
   body?: ApiBody;
 }
 
+/** API 错误，包含状态码和可选的国际化错误消息键 */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -29,6 +39,7 @@ export class ApiError extends Error {
 export const SESSION_KEY = "dramaflow.session";
 export const SESSION_EVENT_NAME = "dramaflow:session";
 
+/** 获取 API 基础地址 */
 export function getApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 }
@@ -41,6 +52,7 @@ function dispatchSessionChange() {
   window.dispatchEvent(new Event(SESSION_EVENT_NAME));
 }
 
+/** 从 localStorage 读取当前会话 */
 export function readSession(): SessionPayload | null {
   if (typeof window === "undefined") {
     return null;
@@ -59,6 +71,7 @@ export function readSession(): SessionPayload | null {
   }
 }
 
+/** 保存会话并触发变更事件 */
 export function saveSession(payload: SessionPayload) {
   if (typeof window === "undefined") {
     return;
@@ -68,6 +81,7 @@ export function saveSession(payload: SessionPayload) {
   dispatchSessionChange();
 }
 
+/** 清除会话并触发变更事件 */
 export function clearSession() {
   if (typeof window === "undefined") {
     return;
@@ -133,6 +147,11 @@ function extractMessage(status: number, payload: string) {
   return { message: payload };
 }
 
+/**
+ * 统一 API 请求函数，自动附加认证头并处理常见错误
+ * @param path - API 路径（不含基础 URL）
+ * @param init - 请求配置
+ */
 export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
   const session = readSession();
   const headers = new Headers(init.headers ?? {});
@@ -191,6 +210,7 @@ export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promis
   return response.text() as Promise<T>;
 }
 
+/** 格式化 API 错误为用户可读的文本 */
 export function formatApiError(
   error: unknown,
   t: TranslateFn,
@@ -214,8 +234,9 @@ export function formatApiError(
   return t(fallbackKey, fallbackParams);
 }
 
-// ===== SSE Streaming =====
+// ===== SSE 流式请求 =====
 
+/** SSE 流式响应块类型 */
 export interface StreamChunk {
   type: "chunk" | "done" | "error";
   content?: string;
@@ -223,6 +244,11 @@ export interface StreamChunk {
   error?: string;
 }
 
+/**
+ * SSE 流式 API 请求生成器，逐块 yield 服务端返回的流式数据
+ * @param path - API 路径
+ * @param init - 请求配置
+ */
 export async function* apiStreamFetch(
   path: string,
   init: ApiFetchInit = {},

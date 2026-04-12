@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Stable Diffusion WebUI 图片生成 Provider
+ * @module api/jobs
+ *
+ * 通过 SD WebUI API 生成图片。
+ */
+
 import { Injectable } from "@nestjs/common";
 import type { GenerateMediaInput, ImageGenerationConfig, MediaContent } from "@dramaflow/shared";
 

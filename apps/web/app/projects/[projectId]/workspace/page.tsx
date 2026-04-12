@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 统一工作区页
+ * @module web/app/projects
+ *
+ * 项目文档和生成的统一工作区入口。
+ */
+
 import { use, Suspense } from "react";
 import { UnifiedWorkspace } from "../../../../components/unified-workspace";
 

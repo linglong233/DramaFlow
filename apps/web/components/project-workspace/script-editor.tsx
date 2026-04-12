@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 剧本编辑器
+ * @module web/components/project-workspace
+ *
+ * 纯文本模式的剧本编辑器。
+ */
+
 "use client";
 
 import { useState } from "react";

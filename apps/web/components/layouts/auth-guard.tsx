@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 认证守卫组件
+ * @module web/components/layouts
+ *
+ * 拦截未认证用户并重定向到登录页。
+ */
+
 "use client";
 
 import { useEffect } from "react";

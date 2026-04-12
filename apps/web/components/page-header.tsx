@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 页面标题头
+ * @module web/components
+ *
+ * 通用的页面标题和面包屑组件。
+ */
+
 import type { ReactNode } from "react";
 
 interface PageHeaderProps {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 存储模块
+ * @module api/storage
+ *
+ * 根据环境变量注册本地或 S3 存储 Provider。
+ */
+
 import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module";

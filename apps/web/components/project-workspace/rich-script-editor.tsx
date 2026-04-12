@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 富文本剧本编辑器
+ * @module web/components/project-workspace
+ *
+ * 基于 TipTap 的结构化剧本编辑器，支持场景标题、对白、导演注释等语义节点。
+ */
+
 "use client";
 
 import { useCallback, useState } from "react";

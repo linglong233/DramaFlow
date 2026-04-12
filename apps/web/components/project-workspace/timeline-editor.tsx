@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 时间线编辑器
+ * @module web/components/project-workspace
+ *
+ * 视频时间线的可视化编辑器。
+ */
+
 "use client";
 
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 视频面板
+ * @module web/components/project-workspace
+ *
+ * 视频资产的管理和预览面板。
+ */
+
 "use client";
 
 import { useRef, useState } from "react";

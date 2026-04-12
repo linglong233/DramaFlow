@@ -1,3 +1,10 @@
+/**
+ * @fileoverview JWT Bearer 认证守卫
+ * @module api/common
+ *
+ * 从请求头提取 Bearer Token，验证 JWT 并将用户对象挂载到 request.user。
+ */
+
 import {
   CanActivate,
   ExecutionContext,
@@ -9,6 +16,7 @@ import { JwtService } from "@nestjs/jwt";
 
 import { DevDatabaseService } from "./dev-database.service";
 
+/** JWT Bearer 认证守卫，验证访问令牌并加载用户信息 */
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -16,6 +24,7 @@ export class AuthGuard implements CanActivate {
     @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
   ) {}
 
+  /** 验证请求中的 Bearer Token 并加载用户对象 */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const header = request.headers.authorization;

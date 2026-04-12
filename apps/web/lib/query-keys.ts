@@ -1,3 +1,10 @@
+/**
+ * @fileoverview React Query 缓存键定义
+ * @module web/lib
+ *
+ * 统一管理所有 React Query 的缓存键常量。
+ */
+
 export const queryKeys = {
   teams: ["teams"] as const,
   team: (teamId: string) => ["team", teamId] as const,

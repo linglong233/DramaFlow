@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 通知控制器
+ * @module api/notifications
+ *
+ * 提供通知列表查询、标记已读、获取未读计数等端点。
+ */
+
 import {
   Controller,
   Get,

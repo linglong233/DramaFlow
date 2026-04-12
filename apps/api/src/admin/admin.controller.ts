@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 平台管理后台控制器
+ * @module api/admin
+ *
+ * 提供平台概览、团队概览和团队设置查询端点。
+ */
+
 import { Controller, Get, Inject, Param, UseGuards } from "@nestjs/common";
 
 import { AuthGuard } from "../common/auth.guard";

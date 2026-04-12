@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 重置密码表单
+ * @module web/components
+ *
+ * 密码重置的令牌验证和新密码设置表单。
+ */
+
 "use client";
 
 import Link from "next/link";

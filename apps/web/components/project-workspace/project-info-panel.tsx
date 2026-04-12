@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 项目信息面板
+ * @module web/components/project-workspace
+ *
+ * 项目基本信息展示和成员管理。
+ */
+
 "use client";
 
 import { useState } from "react";

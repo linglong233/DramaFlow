@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 媒体画布面板
+ * @module web/components/project-workspace
+ *
+ * 图片和视频资产的可视化管理画布。
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";

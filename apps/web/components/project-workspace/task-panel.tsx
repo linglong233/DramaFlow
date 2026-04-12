@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 任务面板
+ * @module web/components/project-workspace
+ *
+ * 项目 AI 任务列表和状态管理。
+ */
+
 "use client";
 
 import { useState } from "react";

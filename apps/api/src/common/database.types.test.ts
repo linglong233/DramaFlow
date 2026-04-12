@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 数据库类型单元测试
+ * @module api/common
+ *
+ * 验证数据库类型定义和初始化函数的正确性。
+ */
+
 import test from "node:test";
 import assert from "node:assert/strict";
 

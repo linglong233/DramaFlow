@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 本地磁盘存储 Provider
+ * @module api/storage
+ *
+ * 将文件存储到本地磁盘，用于开发和轻量部署。
+ */
+
 import { Injectable } from "@nestjs/common";
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";

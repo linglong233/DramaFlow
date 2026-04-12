@@ -1,3 +1,11 @@
+/**
+ * @fileoverview 认证服务
+ * @module api/auth
+ *
+ * 实现用户注册、登录、令牌管理、密码重置和个人信息管理。
+ * 使用 argon2 进行密码哈希，JWT 进行会话管理。
+ */
+
 import {
   BadRequestException,
   ConflictException,
@@ -14,26 +22,31 @@ import { DevDatabaseService } from "../common/dev-database.service";
 import { LlmProviderService } from "../common/llm-provider.service";
 import { createId } from "../common/id";
 
+/** 注册输入参数 */
 interface RegisterInput {
   email: string;
   password: string;
   displayName: string;
 }
 
+/** 登录输入参数 */
 interface LoginInput {
   email: string;
   password: string;
 }
 
+/** 刷新令牌输入参数 */
 interface RefreshInput {
   refreshToken: string;
 }
 
+/** 重置密码输入参数 */
 interface ResetPasswordInput {
   token: string;
   nextPassword: string;
 }
 
+/** 认证服务，封装所有身份认证与会话管理业务逻辑 */
 @Injectable()
 export class AuthService {
   constructor(
@@ -42,6 +55,7 @@ export class AuthService {
     @Inject(LlmProviderService) private readonly llmProviderService: LlmProviderService,
   ) {}
 
+  /** 用户注册，首个用户自动成为平台超级管理员，同时创建个人工作室 */
   async register(input: RegisterInput) {
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
@@ -98,6 +112,7 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  /** 用户登录，验证邮箱和密码 */
   async login(input: LoginInput) {
     const email = input.email.trim().toLowerCase();
     const user = await this.database.query((db) =>
@@ -116,6 +131,7 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  /** 使用刷新令牌获取新的访问令牌（旧刷新令牌将失效） */
   async refresh(input: RefreshInput) {
     const token = input.refreshToken?.trim();
     if (!token) {
@@ -152,6 +168,7 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  /** 用户登出，删除刷新令牌 */
   async logout(input: RefreshInput) {
     const token = input.refreshToken?.trim();
     if (!token) {
@@ -176,6 +193,7 @@ export class AuthService {
     return { ok: true };
   }
 
+  /** 发起密码重置流程（开发模式直接返回 token） */
   async forgotPassword(emailValue: string) {
     const email = emailValue.trim().toLowerCase();
     const user = await this.database.query((db) =>
@@ -204,6 +222,7 @@ export class AuthService {
     };
   }
 
+  /** 执行密码重置 */
   async resetPassword(input: ResetPasswordInput) {
     this.validatePasswordStrength(input.nextPassword);
 
@@ -235,6 +254,7 @@ export class AuthService {
     }
   }
 
+  /** 获取用户公开信息 */
   async getProfile(userId: string) {
     const user = await this.database.query((db) =>
       db.users.find((item) => item.id === userId),
@@ -247,6 +267,7 @@ export class AuthService {
     return this.toPublicUser(user);
   }
 
+  /** 更新用户个人信息 */
   async updateProfile(userId: string, input: { displayName?: string; llmConfig?: LlmProviderConfig; imageGenerationConfig?: ImageGenerationConfig }) {
     await this.database.mutate((db) => {
       const user = db.users.find((item) => item.id === userId);
@@ -272,6 +293,7 @@ export class AuthService {
     return this.getProfile(userId);
   }
 
+  /** 查询用户可用的 LLM 模型列表 */
   async listAvailableModels(userId: string, draftConfig?: LlmProviderConfig): Promise<LlmModelListResponse> {
     const user = await this.database.query((db) =>
       db.users.find((item) => item.id === userId),
@@ -288,6 +310,7 @@ export class AuthService {
     };
   }
 
+  /** 合并已保存的 LLM 配置与草稿配置 */
   private mergeLlmConfig(
     savedConfig?: LlmProviderConfig,
     draftConfig?: LlmProviderConfig,
@@ -303,12 +326,14 @@ export class AuthService {
     };
   }
 
+  /** 验证密码强度 */
   private validatePasswordStrength(password: string) {
     if (!password || password.length < 8) {
       throw new BadRequestException("Password must be at least 8 characters long");
     }
   }
 
+  /** 签发会话（生成访问令牌 + 刷新令牌） */
   private async issueSession(user: UserRecord) {
     const accessToken = await this.jwtService.signAsync(
       {
@@ -355,6 +380,7 @@ export class AuthService {
     };
   }
 
+  /** 将用户记录转换为公开信息（排除敏感字段） */
   private toPublicUser(user: UserRecord) {
     return {
       id: user.id,

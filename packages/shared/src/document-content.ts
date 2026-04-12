@@ -1,3 +1,14 @@
+/**
+ * @fileoverview 文档内容规范化工具函数
+ * @module shared/document-content
+ *
+ * 提供 AI 生成结果到标准数据结构的规范化转换，包括：
+ * - 剧本内容（ScriptContent）规范化
+ * - 世界观设定（WorldBibleContent）规范化
+ *
+ * 所有 normalize 函数都具有容错能力，能处理 AI 返回的各种非标格式。
+ */
+
 import type {
   CharacterProfile,
   CharacterVoiceConfig,
@@ -8,6 +19,11 @@ import type {
   WorldBibleContent,
 } from "./domain";
 
+/**
+ * 将未知类型的值安全转换为字符串
+ * @param value - 待转换的值
+ * @returns 清理后的字符串，非字符串类型返回空串
+ */
 function sanitizeString(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return String(value);
@@ -20,11 +36,19 @@ function sanitizeString(value: unknown) {
   return value.trim();
 }
 
+/**
+ * 将未知类型的值安全转换为可选字符串
+ * @returns 空串时返回 undefined
+ */
 function sanitizeOptionalString(value: unknown) {
   const normalized = sanitizeString(value);
   return normalized || undefined;
 }
 
+/**
+ * 将未知类型的值安全转换为数字
+ * @param fallback - 无法解析时的默认值
+ */
 function sanitizeNumber(value: unknown, fallback: number) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -40,6 +64,7 @@ function sanitizeNumber(value: unknown, fallback: number) {
   return fallback;
 }
 
+/** 将未知类型的值安全转换为可选数字，无法解析时返回 undefined */
 function sanitizeOptionalNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -55,6 +80,7 @@ function sanitizeOptionalNumber(value: unknown) {
   return undefined;
 }
 
+/** 确保值为对象类型，非对象返回空对象 */
 function ensureObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object") {
     return {};
@@ -63,6 +89,7 @@ function ensureObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** 将未知类型的值转换为字符串数组，支持数组和逗号分隔字符串 */
 function sanitizeStringArray(value: unknown) {
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeString(item)).filter(Boolean);
@@ -78,6 +105,7 @@ function sanitizeStringArray(value: unknown) {
   return [];
 }
 
+/** 将未知类型的值转换为 Record<string, string>，用于服装等键值对数据 */
 function sanitizeStringRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -94,6 +122,7 @@ function sanitizeStringRecord(value: unknown) {
   return Object.fromEntries(entries);
 }
 
+/** 规范化单条对白数据，兼容字符串和对象两种格式 */
 function normalizeScriptDialogue(value: unknown) {
   if (typeof value === "string") {
     return {
@@ -110,6 +139,7 @@ function normalizeScriptDialogue(value: unknown) {
   };
 }
 
+/** 规范化剧本角色数据，兼容字符串和对象两种格式 */
 function normalizeScriptCharacter(value: unknown): ScriptContent["characters"][number] {
   if (typeof value === "string") {
     return {
@@ -127,6 +157,12 @@ function normalizeScriptCharacter(value: unknown): ScriptContent["characters"][n
   };
 }
 
+/**
+ * 规范化剧本场景数据
+ * @param value - AI 返回的原始场景数据
+ * @param index - 场景序号（用于生成默认 ID）
+ * @returns 标准化的 ScriptScene
+ */
 export function normalizeScriptScene(value: unknown, index = 0): ScriptScene {
   const rawScene = ensureObject(value);
   const dialogue = Array.isArray(rawScene.dialogue)
@@ -146,6 +182,11 @@ export function normalizeScriptScene(value: unknown, index = 0): ScriptScene {
   };
 }
 
+/**
+ * 规范化完整剧本内容
+ * @param value - AI 返回的原始剧本数据
+ * @returns 标准化的 ScriptContent
+ */
 export function normalizeScriptContent(value: unknown): ScriptContent {
   const rawContent = ensureObject(value);
   const characters = Array.isArray(rawContent.characters)
@@ -165,6 +206,7 @@ export function normalizeScriptContent(value: unknown): ScriptContent {
   };
 }
 
+/** 规范化角色档案数据 */
 function normalizeCharacterProfile(value: unknown, index = 0): CharacterProfile {
   const rawCharacter = ensureObject(value);
 
@@ -180,6 +222,7 @@ function normalizeCharacterProfile(value: unknown, index = 0): CharacterProfile 
   };
 }
 
+/** 规范化场景地点档案数据 */
 function normalizeLocationProfile(value: unknown, index = 0): LocationProfile {
   const rawLocation = ensureObject(value);
 
@@ -194,6 +237,7 @@ function normalizeLocationProfile(value: unknown, index = 0): LocationProfile {
   };
 }
 
+/** 规范化视觉风格指南数据 */
 function normalizeStyleGuide(value: unknown): StyleGuideProfile {
   const rawGuide = ensureObject(value);
 
@@ -206,6 +250,7 @@ function normalizeStyleGuide(value: unknown): StyleGuideProfile {
   };
 }
 
+/** 规范化语音参数设置 */
 function normalizeVoiceSettings(value: unknown) {
   const rawSettings = ensureObject(value);
   const speed = sanitizeOptionalNumber(rawSettings.speed);
@@ -223,6 +268,7 @@ function normalizeVoiceSettings(value: unknown) {
   };
 }
 
+/** 规范化角色语音配置，缺少 characterId 时返回 null */
 function normalizeVoiceConfig(value: unknown): CharacterVoiceConfig | null {
   const rawConfig = ensureObject(value);
   const characterId = sanitizeString(rawConfig.characterId);
@@ -244,6 +290,11 @@ function normalizeVoiceConfig(value: unknown): CharacterVoiceConfig | null {
   };
 }
 
+/**
+ * 规范化完整世界观设定内容
+ * @param value - 原始世界观数据
+ * @returns 标准化的 WorldBibleContent
+ */
 export function normalizeWorldBibleContent(value: unknown): WorldBibleContent {
   const rawContent = ensureObject(value);
   const characters = Array.isArray(rawContent.characters)

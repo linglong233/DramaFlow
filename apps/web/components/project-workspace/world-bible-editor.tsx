@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 世界观设定编辑器
+ * @module web/components/project-workspace
+ *
+ * 角色、场景、风格指南等世界观要素的编辑管理。
+ */
+
 "use client";
 
 import { useCallback, useState } from "react";

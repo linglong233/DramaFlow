@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 参考图上传器
+ * @module web/components/tiptap
+ *
+ * 剧本编辑器中用于上传参考图片的组件。
+ */
+
 "use client";
 
 import { useRef, useState } from "react";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview DramaFlow API 服务启动入口
+ * @module api/main
+ *
+ * 初始化 NestJS 应用、配置 CORS、Swagger 文档、并启动 HTTP 服务。
+ */
+
 import "reflect-metadata";
 
 import { NestFactory } from "@nestjs/core";
@@ -6,6 +13,10 @@ import express from "express";
 
 import { AppModule } from "./app.module";
 
+/**
+ * 验证 JWT 密钥配置的安全性
+ * 生产环境下强制要求安全密钥，开发环境只警告
+ */
 function validateSecrets() {
   const accessSecret = process.env.JWT_ACCESS_SECRET;
   const refreshSecret = process.env.JWT_REFRESH_SECRET;
@@ -25,6 +36,7 @@ function validateSecrets() {
   }
 }
 
+/** 应用启动函数 */
 async function bootstrap() {
   validateSecrets();
   const app = await NestFactory.create(AppModule);

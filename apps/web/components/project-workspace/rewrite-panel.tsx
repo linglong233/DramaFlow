@@ -1,3 +1,10 @@
+/**
+ * @fileoverview AI 改写面板
+ * @module web/components/project-workspace
+ *
+ * 基于指令的 AI 文本改写工具。
+ */
+
 "use client";
 
 import { useRef, useState } from "react";

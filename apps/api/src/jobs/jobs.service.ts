@@ -1,3 +1,12 @@
+/**
+ * @fileoverview AI 任务服务
+ * @module api/jobs
+ *
+ * 管理所有 AI 生成任务的生命周期：入队、领取、执行、完成/失败。
+ * 支持剧本、分镜、大纲、图片、视频、TTS、导出等任务类型，
+ * 以及 SSE 流式生成和批量操作。
+ */
+
 import {
   BadRequestException,
   ForbiddenException,

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 通知列表页
+ * @module web/app/dashboard
+ *
+ * 展示用户的通知列表。
+ */
+
 "use client";
 
 import { useState } from "react";

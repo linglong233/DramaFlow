@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 首页
+ * @module web/app
+ *
+ * 平台介绍落地页，未登录用户的入口。
+ */
+
 "use client";
 
 import Link from "next/link";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 审核策略切换器
+ * @module web/components
+ *
+ * 项目审核策略的快捷切换组件。
+ */
+
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";

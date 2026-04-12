@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 登录面板
+ * @module web/components
+ *
+ * 登录/注册表单组件。
+ */
+
 "use client";
 
 import type { Route } from "next";

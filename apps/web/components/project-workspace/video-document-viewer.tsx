@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 视频文档查看器
+ * @module web/components/project-workspace
+ *
+ * 视频类文档的播放和预览。
+ */
+
 "use client";
 
 import { useMemo } from "react";

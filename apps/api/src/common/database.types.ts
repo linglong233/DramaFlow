@@ -1,3 +1,11 @@
+/**
+ * @fileoverview 开发态数据库类型定义
+ * @module api/common
+ *
+ * 定义 JSON 文件存储的数据库结构。
+ * 运行时使用 DevDatabaseService 操作此结构。
+ */
+
 import type {
   AuditConfigRecord,
   AuditRecordEntry,
@@ -19,6 +27,7 @@ import type {
   VersionRecord,
 } from "@dramaflow/shared";
 
+/** 项目邀请记录（开发态专用，未纳入 shared 层） */
 export interface ProjectInviteRecord {
   id: string;
   projectId: string;
@@ -29,6 +38,7 @@ export interface ProjectInviteRecord {
   createdAt: string;
 }
 
+/** 开发态 JSON 文件数据库的完整结构 */
 export interface DevDatabase {
   users: UserRecord[];
   refreshTokens: RefreshTokenRecord[];
@@ -52,6 +62,7 @@ export interface DevDatabase {
   updatedAt: string;
 }
 
+/** 创建空的数据库实例（用于首次启动时初始化文件） */
 export function createEmptyDatabase(): DevDatabase {
   return {
     users: [],

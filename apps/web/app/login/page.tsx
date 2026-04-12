@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 登录页
+ * @module web/app
+ *
+ * 用户登录页面。
+ */
+
 "use client";
 
 import { useI18n } from "../../lib/i18n";

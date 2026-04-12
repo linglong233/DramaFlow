@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 平台管理仪表盘
+ * @module web/components
+ *
+ * 平台超级管理员的统计和管理界面。
+ */
+
 "use client";
 
 import Link from "next/link";

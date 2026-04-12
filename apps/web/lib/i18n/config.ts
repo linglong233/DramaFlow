@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 国际化配置
+ * @module web/lib/i18n
+ *
+ * 支持的语言列表和默认语言配置。
+ */
+
 export const SUPPORTED_LOCALES = ["zh-CN", "en"] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];

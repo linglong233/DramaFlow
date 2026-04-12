@@ -1,3 +1,11 @@
+/**
+ * @fileoverview AI 任务模块
+ * @module api/jobs
+ *
+ * 组装 AI 生成任务相关的所有服务和 Provider：
+ * 剧本/分镜/大纲生成、图片生成、视频生成、TTS、导出等。
+ */
+
 import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module";

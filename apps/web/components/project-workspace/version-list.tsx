@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 版本列表
+ * @module web/components/project-workspace
+ *
+ * 文档版本的列表展示和选择。
+ */
+
 "use client";
 
 import { useState } from "react";

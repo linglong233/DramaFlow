@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 镜头卡片
+ * @module web/components/project-workspace
+ *
+ * 分镜工作台中的单个镜头视觉卡片。
+ */
+
 "use client";
 
 import type { StoryboardShot } from "@dramaflow/shared";

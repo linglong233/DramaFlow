@@ -1,3 +1,10 @@
+/**
+ * @fileoverview TipTap 内容转换器
+ * @module web/components/tiptap
+ *
+ * 剧本内容在 TipTap JSON 和领域模型之间的双向转换。
+ */
+
 import type { JSONContent } from "@tiptap/react";
 import type { ScriptContent, ScriptScene } from "@dramaflow/shared";
 

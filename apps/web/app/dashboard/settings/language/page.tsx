@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 语言设置页
+ * @module web/app/dashboard/settings
+ *
+ * 用户界面语言偏好设置。
+ */
+
 "use client";
 
 import { useI18n } from "../../../../lib/i18n";

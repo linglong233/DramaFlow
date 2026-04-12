@@ -1,3 +1,10 @@
+/**
+ * @fileoverview WebSocket 网关
+ * @module api/realtime
+ *
+ * 处理客户端 WebSocket 连接和项目频道订阅。
+ */
+
 import { Inject, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import {

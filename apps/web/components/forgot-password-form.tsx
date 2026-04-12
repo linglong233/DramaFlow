@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 忘记密码表单
+ * @module web/components
+ *
+ * 忘记密码的邮箱输入和提交表单。
+ */
+
 "use client";
 
 import Link from "next/link";

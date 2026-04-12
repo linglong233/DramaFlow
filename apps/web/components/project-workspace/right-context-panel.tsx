@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 右侧上下文面板
+ * @module web/components/project-workspace
+ *
+ * 工作区右侧的信息和操作面板容器。
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";

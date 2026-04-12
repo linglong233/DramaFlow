@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 版本差异视图
+ * @module web/components/project-workspace
+ *
+ * 两个版本之间的内容差异对比。
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";

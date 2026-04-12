@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 审核配置面板
+ * @module web/components/project-workspace
+ *
+ * 项目级别的审核策略配置 UI。
+ */
+
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 团队邀请接受页
+ * @module web/app
+ *
+ * 处理团队邀请链接的接受流程。
+ */
+
 "use client";
 
 import Link from "next/link";

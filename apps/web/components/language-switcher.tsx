@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 语言切换器
+ * @module web/components
+ *
+ * 界面语言切换下拉组件。
+ */
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";

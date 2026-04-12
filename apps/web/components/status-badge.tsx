@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 状态徽章
+ * @module web/components
+ *
+ * 版本状态和任务状态的彩色徽章组件。
+ */
+
 import type { ReactNode } from "react";
 
 interface StatusBadgeProps {

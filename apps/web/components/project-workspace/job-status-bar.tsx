@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 任务状态栏
+ * @module web/components/project-workspace
+ *
+ * 展示 AI 任务的实时状态和进度。
+ */
+
 "use client";
 
 import type { JobRecord } from "@dramaflow/shared";

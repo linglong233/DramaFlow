@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 分镜工作台
+ * @module web/components/project-workspace
+ *
+ * 完整的分镜管理工作台，包含场景列表、镜头卡片和详情面板。
+ */
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

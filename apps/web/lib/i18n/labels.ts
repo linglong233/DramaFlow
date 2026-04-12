@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 业务标签翻译
+ * @module web/lib/i18n
+ *
+ * 领域术语和枚举值的中英文翻译映射。
+ */
+
 import type {
   AnchorType,
   DocumentType,

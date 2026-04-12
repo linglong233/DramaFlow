@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 视频导出服务
+ * @module api/jobs
+ *
+ * 基于 FFmpeg 实现项目时间线的视频导出和拼接。
+ */
+
 import { Inject, Injectable, BadRequestException } from "@nestjs/common";
 import { spawn } from "node:child_process";
 import { mkdir, rm, stat, writeFile, readFile } from "node:fs/promises";

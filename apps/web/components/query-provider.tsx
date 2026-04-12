@@ -1,3 +1,10 @@
+/**
+ * @fileoverview React Query Provider
+ * @module web/components
+ *
+ * 全局 React Query 客户端配置。
+ */
+
 "use client";
 
 import type { ReactNode } from "react";

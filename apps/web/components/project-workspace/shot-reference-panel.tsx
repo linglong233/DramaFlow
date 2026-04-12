@@ -1,3 +1,10 @@
+/**
+ * @fileoverview 镜头参考面板
+ * @module web/components/project-workspace
+ *
+ * 镜头图片参考和资产管理。
+ */
+
 "use client";
 
 import type { StoryboardShot } from "@dramaflow/shared";
