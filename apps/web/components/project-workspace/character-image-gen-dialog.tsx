@@ -73,8 +73,8 @@ export function CharacterImageGenDialog({
               onChange={(e) => setConfigSource(e.target.value as "team" | "personal")}
               disabled={status === "generating"}
             >
-              <option value="team">Team</option>
-              <option value="personal">Personal</option>
+              <option value="team">{t("worldBible.generateRefImageConfigTeam")}</option>
+              <option value="personal">{t("worldBible.generateRefImageConfigPersonal")}</option>
             </select>
           </div>
 
