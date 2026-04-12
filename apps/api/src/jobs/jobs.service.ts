@@ -691,15 +691,21 @@ export class JobsService {
     prompt: string,
     configSource: ImageConfigSource,
   ): Promise<{ buffer: Buffer; mimeType: string; provider: string; model?: string }> {
+    await this.assertProjectReadable(userId, projectId);
     const config = await this.resolveImageGenerationConfig(userId, projectId, configSource);
     const sourceLabel = configSource === "team" ? "team" : "personal";
     if (!config) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is not set.`);
     }
-    if (!config.apiKey?.trim()) {
+    if (!config.provider) {
+      throw new BadRequestException(`The ${sourceLabel} image generation config is missing a provider.`);
+    }
+    // API key required for cloud providers, optional for local (SD WebUI, ComfyUI)
+    const needsApiKey = config.provider === "google-gemini" || config.provider === "openai-compatible";
+    if (needsApiKey && !config.apiKey?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing an API key.`);
     }
-    if (!config.model?.trim()) {
+    if (needsApiKey && !config.model?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing a model.`);
     }
     if (config.provider === "openai-compatible" && !config.baseUrl?.trim()) {
