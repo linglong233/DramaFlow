@@ -1525,15 +1525,30 @@ export class WorkspaceService {
     }
 
     const apiKey = Object.prototype.hasOwnProperty.call(nextConfig, "apiKey")
-      ? nextConfig.apiKey
+      ? nextConfig.apiKey?.trim() || undefined
       : savedConfig?.apiKey;
+    const baseUrl = Object.prototype.hasOwnProperty.call(nextConfig, "baseUrl")
+      ? nextConfig.baseUrl?.trim() || undefined
+      : savedConfig?.baseUrl;
+    const model = Object.prototype.hasOwnProperty.call(nextConfig, "model")
+      ? nextConfig.model?.trim() || undefined
+      : savedConfig?.model;
+    const sdConfig = nextConfig.provider === "stable-diffusion"
+      ? nextConfig.sdConfig
+      : undefined;
+    const comfyuiConfig = nextConfig.provider === "comfyui"
+      ? nextConfig.comfyuiConfig
+      : undefined;
     const merged: ImageGenerationConfig = {
-      ...nextConfig,
       provider: nextConfig.provider ?? savedConfig?.provider ?? "google-gemini",
       ...(apiKey ? { apiKey } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(model ? { model } : {}),
+      ...(sdConfig ? { sdConfig } : {}),
+      ...(comfyuiConfig ? { comfyuiConfig } : {}),
     };
 
-    if (!merged.apiKey && !merged.baseUrl && !merged.model) {
+    if (!merged.apiKey && !merged.baseUrl && !merged.model && !merged.sdConfig && !merged.comfyuiConfig) {
       return undefined;
     }
 
@@ -1603,6 +1618,8 @@ export class WorkspaceService {
       provider: config.provider,
       baseUrl: config.baseUrl,
       model: config.model,
+      sdConfig: config.sdConfig,
+      comfyuiConfig: config.comfyuiConfig,
       hasApiKey: Boolean(config.apiKey),
     };
   }

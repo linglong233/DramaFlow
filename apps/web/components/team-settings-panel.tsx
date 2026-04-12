@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  ImageGenerationConfig,
+  ImageGenerationProvider,
   LlmModelListResponse,
   LlmModelSummary,
   TeamSettingsResponse,
@@ -35,10 +37,18 @@ export function TeamSettingsPanel() {
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [llmModel, setLlmModel] = useState("");
   const [llmStreamEnabled, setLlmStreamEnabled] = useState(false);
-  const [imageProvider, setImageProvider] = useState<"google-gemini" | "openai-compatible">("google-gemini");
+  const [imageProvider, setImageProvider] = useState<ImageGenerationProvider>("google-gemini");
   const [imageApiKey, setImageApiKey] = useState("");
   const [imageBaseUrl, setImageBaseUrl] = useState("");
   const [imageModel, setImageModel] = useState("gemini-3.1-flash-image-preview");
+  const [sdSamplerName, setSdSamplerName] = useState("DPM++ 2M Karras");
+  const [sdSteps, setSdSteps] = useState(20);
+  const [sdCfgScale, setSdCfgScale] = useState(7);
+  const [sdClipSkip, setSdClipSkip] = useState(1);
+  const [comfyuiWorkflowJson, setComfyuiWorkflowJson] = useState("");
+  const [comfyuiSamplerName, setComfyuiSamplerName] = useState("euler");
+  const [comfyuiSteps, setComfyuiSteps] = useState(20);
+  const [comfyuiCfgScale, setComfyuiCfgScale] = useState(8);
   const [availableModels, setAvailableModels] = useState<LlmModelSummary[]>([]);
   const [hasFetchedModels, setHasFetchedModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
@@ -84,6 +94,14 @@ export function TeamSettingsPanel() {
     setImageApiKey(imageDraft.apiKey);
     setImageBaseUrl(imageDraft.baseUrl);
     setImageModel(imageDraft.model);
+    setSdSamplerName(teamQuery.data.imageGenerationConfig?.sdConfig?.samplerName ?? "DPM++ 2M Karras");
+    setSdSteps(teamQuery.data.imageGenerationConfig?.sdConfig?.steps ?? 20);
+    setSdCfgScale(teamQuery.data.imageGenerationConfig?.sdConfig?.cfgScale ?? 7);
+    setSdClipSkip(teamQuery.data.imageGenerationConfig?.sdConfig?.clipSkip ?? 1);
+    setComfyuiWorkflowJson(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.workflowJson ?? "");
+    setComfyuiSamplerName(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.samplerName ?? "euler");
+    setComfyuiSteps(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.steps ?? 20);
+    setComfyuiCfgScale(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.cfgScale ?? 8);
   }, [teamQuery.data]);
 
   useEffect(() => {
@@ -100,12 +118,28 @@ export function TeamSettingsPanel() {
     stream: llmStreamEnabled,
   }, teamQuery.data?.llmConfig);
 
-  const draftImageConfig = buildImageGenerationConfigPayload({
+  const draftImageConfig: ImageGenerationConfig = {
     provider: imageProvider,
-    apiKey: imageApiKey,
-    baseUrl: imageBaseUrl,
-    model: imageModel,
-  });
+    apiKey: imageApiKey || undefined,
+    baseUrl: imageBaseUrl || undefined,
+    model: imageModel || undefined,
+    ...(imageProvider === "stable-diffusion" ? {
+      sdConfig: {
+        samplerName: sdSamplerName || undefined,
+        steps: sdSteps || undefined,
+        cfgScale: sdCfgScale || undefined,
+        clipSkip: sdClipSkip || undefined,
+      }
+    } : {}),
+    ...(imageProvider === "comfyui" ? {
+      comfyuiConfig: {
+        workflowJson: comfyuiWorkflowJson || undefined,
+        samplerName: comfyuiSamplerName || undefined,
+        steps: comfyuiSteps || undefined,
+        cfgScale: comfyuiCfgScale || undefined,
+      }
+    } : {}),
+  };
 
   const updateMutation = useMutation({
     mutationFn: () => apiFetch(`/teams/${selectedTeamId}`, {
@@ -432,10 +466,12 @@ export function TeamSettingsPanel() {
                       id="team-image-provider"
                       className="input"
                       value={imageProvider}
-                      onChange={(event) => setImageProvider(event.target.value as "google-gemini" | "openai-compatible")}
+                      onChange={(event) => setImageProvider(event.target.value as ImageGenerationProvider)}
                     >
                       <option value="google-gemini">{t("settingsPages.teamSettings.imageProviderGoogle")}</option>
                       <option value="openai-compatible">{t("settingsPages.teamSettings.imageProviderOpenAi")}</option>
+                      <option value="stable-diffusion">{t("settingsPages.teamSettings.imageProviderSDWebUI")}</option>
+                      <option value="comfyui">{t("settingsPages.teamSettings.imageProviderComfyUI")}</option>
                     </select>
                   </div>
 
@@ -454,7 +490,7 @@ export function TeamSettingsPanel() {
                   </div>
                 </div>
 
-                {imageProvider === "openai-compatible" ? (
+                {imageProvider === "openai-compatible" || imageProvider === "stable-diffusion" || imageProvider === "comfyui" ? (
                   <div className="team-split-row">
                     <div className="form-group">
                       <label className="form-label" htmlFor="team-image-base-url">
@@ -495,6 +531,52 @@ export function TeamSettingsPanel() {
                     />
                   </div>
                 )}
+                {imageProvider === "stable-diffusion" ? (
+                  <div className="team-split-row">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="team-sd-sampler">{t("settingsPages.teamSettings.imageSdSamplerLabel")}</label>
+                      <input id="team-sd-sampler" className="input" value={sdSamplerName} onChange={(event) => setSdSamplerName(event.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="team-sd-steps">{t("settingsPages.teamSettings.imageSdStepsLabel")}</label>
+                      <input id="team-sd-steps" className="input" type="number" value={sdSteps} onChange={(event) => setSdSteps(Number(event.target.value))} />
+                    </div>
+                  </div>
+                ) : null}
+                {imageProvider === "stable-diffusion" ? (
+                  <div className="team-split-row">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="team-sd-cfg-scale">{t("settingsPages.teamSettings.imageSdCfgScaleLabel")}</label>
+                      <input id="team-sd-cfg-scale" className="input" type="number" value={sdCfgScale} onChange={(event) => setSdCfgScale(Number(event.target.value))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="team-sd-clip-skip">{t("settingsPages.teamSettings.imageSdClipSkipLabel")}</label>
+                      <input id="team-sd-clip-skip" className="input" type="number" value={sdClipSkip} onChange={(event) => setSdClipSkip(Number(event.target.value))} />
+                    </div>
+                  </div>
+                ) : null}
+                {imageProvider === "comfyui" ? (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="team-comfyui-workflow">{t("settingsPages.teamSettings.imageComfyuiWorkflowLabel")}</label>
+                      <textarea id="team-comfyui-workflow" className="input" rows={6} placeholder={t("settingsPages.teamSettings.imageComfyuiWorkflowPlaceholder")} value={comfyuiWorkflowJson} onChange={(event) => setComfyuiWorkflowJson(event.target.value)} />
+                    </div>
+                    <div className="team-split-row">
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="team-comfyui-sampler">{t("settingsPages.teamSettings.imageComfyuiSamplerLabel")}</label>
+                        <input id="team-comfyui-sampler" className="input" value={comfyuiSamplerName} onChange={(event) => setComfyuiSamplerName(event.target.value)} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="team-comfyui-steps">{t("settingsPages.teamSettings.imageComfyuiStepsLabel")}</label>
+                        <input id="team-comfyui-steps" className="input" type="number" value={comfyuiSteps} onChange={(event) => setComfyuiSteps(Number(event.target.value))} />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="team-comfyui-cfg-scale">{t("settingsPages.teamSettings.imageComfyuiCfgScaleLabel")}</label>
+                      <input id="team-comfyui-cfg-scale" className="input" type="number" value={comfyuiCfgScale} onChange={(event) => setComfyuiCfgScale(Number(event.target.value))} />
+                    </div>
+                  </>
+                ) : null}
               </div>
             </div>
           </section>

@@ -1313,9 +1313,11 @@ export class JobsService {
       apiKey: config.apiKey?.trim() || undefined,
       baseUrl: config.baseUrl?.trim() || undefined,
       model: config.model?.trim() || undefined,
+      sdConfig: config.provider === "stable-diffusion" ? config.sdConfig : undefined,
+      comfyuiConfig: config.provider === "comfyui" ? config.comfyuiConfig : undefined,
     };
 
-    if (!normalized.apiKey && !normalized.baseUrl && !normalized.model) {
+    if (!normalized.apiKey && !normalized.baseUrl && !normalized.model && !normalized.sdConfig && !normalized.comfyuiConfig) {
       return undefined;
     }
 
@@ -1361,10 +1363,11 @@ export class JobsService {
     if (!config) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is not set.`);
     }
-    if (!config.apiKey?.trim()) {
+    const needsApiKey = config.provider === "google-gemini" || config.provider === "openai-compatible";
+    if (needsApiKey && !config.apiKey?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing an API key.`);
     }
-    if (!config.model?.trim()) {
+    if (needsApiKey && !config.model?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing a model.`);
     }
     if (config.provider === "openai-compatible" && !config.baseUrl?.trim()) {

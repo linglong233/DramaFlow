@@ -53,7 +53,7 @@ export type ExportStatus = "pending" | "processing" | "completed" | "failed";
 
 export type LlmConfigSource = "team" | "personal";
 
-export type ImageGenerationProvider = "google-gemini" | "openai-compatible";
+export type ImageGenerationProvider = "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui";
 
 export type ImageConfigSource = LlmConfigSource;
 
@@ -75,11 +75,33 @@ export interface LlmProviderConfig {
   stream?: boolean;
 }
 
+export interface SdWebuiConfig {
+  samplerName?: string;
+  steps?: number;
+  cfgScale?: number;
+  width?: number;
+  height?: number;
+  sdModelCheckpoint?: string;
+  clipSkip?: number;
+}
+
+export interface ComfyuiConfig {
+  workflowJson?: string;
+  samplerName?: string;
+  steps?: number;
+  cfgScale?: number;
+  width?: number;
+  height?: number;
+  checkpointName?: string;
+}
+
 export interface ImageGenerationConfig {
   provider: ImageGenerationProvider;
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  sdConfig?: SdWebuiConfig;
+  comfyuiConfig?: ComfyuiConfig;
 }
 
 export interface UserRecord {

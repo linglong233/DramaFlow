@@ -17,11 +17,15 @@ function normalizeText(value: string) {
 }
 
 export function toImageGenerationConfigDraft(config?: ImageConfigSource): ImageGenerationConfigDraft {
+  const defaultModel = config?.provider === "google-gemini"
+    ? "gemini-3.1-flash-image-preview"
+    : "";
+
   return {
     provider: config?.provider ?? "google-gemini",
     apiKey: config?.apiKey ?? "",
     baseUrl: config?.baseUrl ?? "",
-    model: config?.model ?? (config?.provider === "openai-compatible" ? "" : "gemini-3.1-flash-image-preview"),
+    model: config?.model ?? defaultModel,
   };
 }
 

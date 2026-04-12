@@ -107,7 +107,7 @@ export interface TeamSettingsLlmConfig extends Pick<LlmProviderConfig, "provider
   hasApiKey: boolean;
 }
 
-export interface ImageGenerationSettingsConfig extends Pick<ImageGenerationConfig, "provider" | "baseUrl" | "model"> {
+export interface ImageGenerationSettingsConfig extends Pick<ImageGenerationConfig, "provider" | "baseUrl" | "model" | "sdConfig" | "comfyuiConfig"> {
   hasApiKey: boolean;
 }
 
