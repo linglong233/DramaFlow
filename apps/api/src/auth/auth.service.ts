@@ -268,7 +268,15 @@ export class AuthService {
   }
 
   /** 更新用户个人信息 */
-  async updateProfile(userId: string, input: { displayName?: string; llmConfig?: LlmProviderConfig; imageGenerationConfig?: ImageGenerationConfig }) {
+  async updateProfile(userId: string, input: {
+    displayName?: string;
+    llmConfig?: LlmProviderConfig;
+    imageGenerationConfig?: ImageGenerationConfig;
+    imageProviders?: import("@dramaflow/shared").ProviderEntry[];
+    videoProviders?: import("@dramaflow/shared").ProviderEntry[];
+    defaultImageProvider?: string;
+    defaultVideoProvider?: string;
+  }) {
     await this.database.mutate((db) => {
       const user = db.users.find((item) => item.id === userId);
       if (!user) {
@@ -285,6 +293,22 @@ export class AuthService {
 
       if (input.imageGenerationConfig !== undefined) {
         user.imageGenerationConfig = input.imageGenerationConfig;
+      }
+
+      if (input.imageProviders !== undefined) {
+        user.imageProviders = input.imageProviders;
+      }
+
+      if (input.videoProviders !== undefined) {
+        user.videoProviders = input.videoProviders;
+      }
+
+      if (input.defaultImageProvider !== undefined) {
+        user.defaultImageProvider = input.defaultImageProvider;
+      }
+
+      if (input.defaultVideoProvider !== undefined) {
+        user.defaultVideoProvider = input.defaultVideoProvider;
       }
 
       user.updatedAt = new Date().toISOString();
@@ -389,6 +413,10 @@ export class AuthService {
       globalRole: user.globalRole,
       llmConfig: user.llmConfig,
       imageGenerationConfig: user.imageGenerationConfig,
+      imageProviders: user.imageProviders,
+      videoProviders: user.videoProviders,
+      defaultImageProvider: user.defaultImageProvider,
+      defaultVideoProvider: user.defaultVideoProvider,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

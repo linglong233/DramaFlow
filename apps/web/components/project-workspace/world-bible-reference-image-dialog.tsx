@@ -15,6 +15,7 @@ import type {
 } from "@dramaflow/shared";
 import { apiFetch } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
+import { ProviderSelector, useProviderEntries } from "./provider-selector";
 
 type DialogStatus = "editing" | "generating" | "preview" | "error";
 
@@ -23,6 +24,7 @@ interface WorldBibleReferenceImageDialogProps {
   initialPrompt: string;
   onImageGenerated: (assetUrl: string) => void;
   onClose: () => void;
+  teamId?: string;
 }
 
 export function WorldBibleReferenceImageDialog({
@@ -30,11 +32,15 @@ export function WorldBibleReferenceImageDialog({
   initialPrompt,
   onImageGenerated,
   onClose,
+  teamId,
 }: WorldBibleReferenceImageDialogProps) {
   const { t } = useI18n();
   const [prompt, setPrompt] = useState(initialPrompt);
   const [configSource, setConfigSource] = useState<ImageConfigSource>("team");
+  const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
   const [status, setStatus] = useState<DialogStatus>("editing");
+
+  const providerEntries = useProviderEntries(configSource, teamId);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +56,7 @@ export function WorldBibleReferenceImageDialog({
       const body: WorldBibleReferenceImageGenerateRequest = {
         prompt: prompt.trim(),
         configSource,
+        providerId: selectedImageProvider,
       };
       const data = await apiFetch<WorldBibleReferenceImageGenerateResponse>(
         generatePath.startsWith("/") ? generatePath : `/${generatePath}`,
@@ -104,6 +111,19 @@ export function WorldBibleReferenceImageDialog({
               <option value="team">{t("worldBible.generateRefImageConfigTeam")}</option>
               <option value="personal">{t("worldBible.generateRefImageConfigPersonal")}</option>
             </select>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label className="wb-form__label" style={{ display: "block", marginBottom: 4 }}>
+              {"Provider"}
+            </label>
+            <ProviderSelector
+              type="image"
+              providers={providerEntries.imageProviders}
+              defaultProviderId={providerEntries.defaultImageProvider}
+              value={selectedImageProvider}
+              onChange={setSelectedImageProvider}
+            />
           </div>
 
           <div style={{ marginBottom: 12 }}>

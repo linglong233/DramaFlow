@@ -19,6 +19,7 @@ import {
 import { apiFetch } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
 import { queryKeys } from "../../lib/query-keys";
+import { ProviderSelector, useProviderEntries } from "./provider-selector";
 
 interface Props {
   projectId: string;
@@ -46,6 +47,10 @@ export function MediaCanvasPanel({ projectId, project }: Props) {
   const queryClient = useQueryClient();
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
   const [ttsState, setTtsState] = useState<Record<string, { text: string; characterId: string }>>({});
+  const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
+  const [selectedVideoProvider, setSelectedVideoProvider] = useState<string | undefined>();
+
+  const providerEntries = useProviderEntries(imageConfigSource, project.team?.id);
   const storyboardDoc = project.documents.find((document) => document.type === "storyboard");
   const storyboardVersion = project.versions.find((version) => version.id === storyboardDoc?.currentVersionId);
   const storyboardContent = useMemo(() => normalizeStoryboardContent(storyboardVersion?.content), [storyboardVersion?.content]);
@@ -108,6 +113,7 @@ export function MediaCanvasPanel({ projectId, project }: Props) {
         style: "cinematic",
         aspectRatio: "16:9",
         configSource: imageConfigSource,
+        providerId: selectedImageProvider,
       },
     }),
     onSuccess: () => invalidateWorkspace(),
@@ -116,7 +122,7 @@ export function MediaCanvasPanel({ projectId, project }: Props) {
   const generateVideo = useMutation({
     mutationFn: ({ shotId, referenceImageAssetId }: { shotId: string; referenceImageAssetId?: string }) => apiFetch(`/shots/${shotId}/video-jobs`, {
       method: "POST",
-      body: { projectId, style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, referenceImageAssetId },
+      body: { projectId, style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, referenceImageAssetId, providerId: selectedVideoProvider },
     }),
     onSuccess: () => invalidateWorkspace(),
   });
@@ -250,12 +256,18 @@ export function MediaCanvasPanel({ projectId, project }: Props) {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "var(--space-2)" }}>
-                  <button className="btn btn-secondary btn-sm" type="button" disabled={generateImage.isPending} onClick={() => generateImage.mutate({ shotId: shot.id })}>
-                    {generateImage.isPending ? t("common.submitting") : t("projectWorkspace.media.genImage")}
-                  </button>
-                  <button className="btn btn-primary btn-sm" type="button" disabled={generateVideo.isPending} onClick={() => generateVideo.mutate({ shotId: shot.id, referenceImageAssetId })}>
-                    {generateVideo.isPending ? t("common.submitting") : t("projectWorkspace.media.genVideo")}
-                  </button>
+                  <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+                    <button className="btn btn-secondary btn-sm" type="button" disabled={generateImage.isPending} onClick={() => generateImage.mutate({ shotId: shot.id })}>
+                      {generateImage.isPending ? t("common.submitting") : t("projectWorkspace.media.genImage")}
+                    </button>
+                    <ProviderSelector type="image" providers={providerEntries.imageProviders} defaultProviderId={providerEntries.defaultImageProvider} value={selectedImageProvider} onChange={setSelectedImageProvider} />
+                  </div>
+                  <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={generateVideo.isPending} onClick={() => generateVideo.mutate({ shotId: shot.id, referenceImageAssetId })}>
+                      {generateVideo.isPending ? t("common.submitting") : t("projectWorkspace.media.genVideo")}
+                    </button>
+                    <ProviderSelector type="video" providers={providerEntries.videoProviders} defaultProviderId={providerEntries.defaultVideoProvider} value={selectedVideoProvider} onChange={setSelectedVideoProvider} />
+                  </div>
                 </div>
 
                 {(jobs.image || jobs.video) ? (

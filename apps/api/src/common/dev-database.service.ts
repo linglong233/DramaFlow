@@ -11,6 +11,7 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
+import type { ImageGenerationConfig, ProviderEntry } from "@dramaflow/shared";
 
 import { createEmptyDatabase, type DevDatabase } from "./database.types";
 
@@ -112,6 +113,28 @@ export class DevDatabaseService implements OnModuleInit {
       }
     }
 
+    // 迁移旧 imageGenerationConfig → 新 imageProviders / videoProviders
+    for (const user of db.users) {
+      if (user.imageGenerationConfig && !user.imageProviders?.length) {
+        const migrated = this.migrateImageGenerationConfig(user.imageGenerationConfig);
+        user.imageProviders = migrated.imageProviders;
+        user.videoProviders = migrated.videoProviders;
+        user.defaultImageProvider = migrated.defaultImageProvider;
+        user.defaultVideoProvider = migrated.defaultVideoProvider;
+        changed = true;
+      }
+    }
+    for (const team of db.teams) {
+      if (team.imageGenerationConfig && !team.imageProviders?.length) {
+        const migrated = this.migrateImageGenerationConfig(team.imageGenerationConfig);
+        team.imageProviders = migrated.imageProviders;
+        team.videoProviders = migrated.videoProviders;
+        team.defaultImageProvider = migrated.defaultImageProvider;
+        team.defaultVideoProvider = migrated.defaultVideoProvider;
+        changed = true;
+      }
+    }
+
     return {
       normalized: db,
       changed,
@@ -142,6 +165,58 @@ export class DevDatabaseService implements OnModuleInit {
   /** 检测字符串是否包含乱码特征 */
   private looksCorrupted(value: string) {
     return value.includes("\u951f") || value.includes("\ufffd");
+  }
+
+  /** 将旧 ImageGenerationConfig 迁移为新的 imageProviders / videoProviders */
+  private migrateImageGenerationConfig(
+    old: ImageGenerationConfig,
+  ): { imageProviders: ProviderEntry[]; videoProviders: ProviderEntry[]; defaultImageProvider?: string; defaultVideoProvider?: string } {
+    const genId = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const imageEntry: ProviderEntry = {
+      id: genId("img"),
+      provider: old.provider,
+      name: `Default ${old.provider}`,
+      ...(old.apiKey ? { apiKey: old.apiKey } : {}),
+      ...(old.baseUrl ? { baseUrl: old.baseUrl } : {}),
+      ...(old.model ? { model: old.model } : {}),
+      ...(old.sdConfig ? { sdConfig: old.sdConfig } : {}),
+      ...(old.comfyuiConfig ? { comfyuiConfig: old.comfyuiConfig } : {}),
+      ...(old.grokConfig ? { grokConfig: old.grokConfig } : {}),
+    };
+
+    const result = {
+      imageProviders: [imageEntry],
+      defaultImageProvider: imageEntry.id,
+      videoProviders: [] as ProviderEntry[],
+      defaultVideoProvider: undefined as string | undefined,
+    };
+
+    if (old.provider === "grok" && old.grokConfig) {
+      const videoEntry: ProviderEntry = {
+        id: genId("vid"),
+        provider: "grok",
+        name: "Default Grok Video",
+        ...(old.apiKey ? { apiKey: old.apiKey } : {}),
+        ...(old.baseUrl ? { baseUrl: old.baseUrl } : {}),
+        grokConfig: old.grokConfig,
+      };
+      result.videoProviders = [videoEntry];
+      result.defaultVideoProvider = videoEntry.id;
+    } else if (old.provider === "openai-compatible") {
+      const videoEntry: ProviderEntry = {
+        id: genId("vid"),
+        provider: "openai-compatible",
+        name: "Default OpenAI Video",
+        ...(old.apiKey ? { apiKey: old.apiKey } : {}),
+        ...(old.baseUrl ? { baseUrl: old.baseUrl } : {}),
+        ...(old.model ? { model: old.model } : {}),
+      };
+      result.videoProviders = [videoEntry];
+      result.defaultVideoProvider = videoEntry.id;
+    }
+
+    return result;
   }
 
   /** 获取数据库 JSON 文件的绝对路径 */

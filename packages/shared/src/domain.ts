@@ -106,7 +106,10 @@ export type ExportStatus = "pending" | "processing" | "completed" | "failed";
 export type LlmConfigSource = "team" | "personal";
 
 /** 图片生成 Provider 类型 */
-export type ImageGenerationProvider = "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui";
+export type ImageGenerationProvider = "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui" | "grok";
+
+/** 视频生成 Provider 类型 */
+export type VideoGenerationProvider = "grok" | "openai-compatible";
 
 /** 图片配置来源（与 LLM 配置来源一致） */
 export type ImageConfigSource = LlmConfigSource;
@@ -180,6 +183,20 @@ export interface ComfyuiConfig {
   checkpointName?: string;
 }
 
+/** Grok (grok2api) 图片/视频生成配置 */
+export interface GrokConfig {
+  /** 图片生成模型（默认 grok-imagine-1.0） */
+  model?: string;
+  /** 视频生成模型（默认 grok-imagine-1.0-video） */
+  videoModel?: string;
+  /** 画面宽高比：16:9 | 9:16 | 1:1 | 2:3 | 3:2 */
+  aspectRatio?: string;
+  /** 视频时长（5-15 秒，默认 6） */
+  videoLength?: number;
+  /** 视频分辨率：SD | HD */
+  resolution?: "SD" | "HD";
+}
+
 /** 图片生成配置（统一封装各 Provider 的参数） */
 export interface ImageGenerationConfig {
   /** 图片生成 Provider 类型 */
@@ -194,6 +211,30 @@ export interface ImageGenerationConfig {
   sdConfig?: SdWebuiConfig;
   /** ComfyUI 专用配置 */
   comfyuiConfig?: ComfyuiConfig;
+  /** Grok (grok2api) 专用配置 */
+  grokConfig?: GrokConfig;
+}
+
+/** Provider 配置条目（用于多 provider 管理） */
+export interface ProviderEntry {
+  /** 唯一标识 */
+  id: string;
+  /** Provider 类型 */
+  provider: ImageGenerationProvider | VideoGenerationProvider;
+  /** 用户自定义名称 */
+  name?: string;
+  /** API 密钥 */
+  apiKey?: string;
+  /** API 基础 URL */
+  baseUrl?: string;
+  /** 模型名称 */
+  model?: string;
+  /** Stable Diffusion WebUI 专用配置 */
+  sdConfig?: SdWebuiConfig;
+  /** ComfyUI 专用配置 */
+  comfyuiConfig?: ComfyuiConfig;
+  /** Grok (grok2api) 专用配置 */
+  grokConfig?: GrokConfig;
 }
 
 // =============================================
@@ -212,8 +253,16 @@ export interface UserRecord {
   globalRole: GlobalRole;
   /** 用户个人 LLM 配置 */
   llmConfig?: LlmProviderConfig;
-  /** 用户个人图片生成配置 */
+  /** @deprecated 使用 imageProviders + defaultImageProvider 替代 */
   imageGenerationConfig?: ImageGenerationConfig;
+  /** 用户配置的图片 Provider 列表 */
+  imageProviders?: ProviderEntry[];
+  /** 用户配置的视频 Provider 列表 */
+  videoProviders?: ProviderEntry[];
+  /** 默认图片 Provider ID（指向 imageProviders 中某项） */
+  defaultImageProvider?: string;
+  /** 默认视频 Provider ID（指向 videoProviders 中某项） */
+  defaultVideoProvider?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -241,13 +290,19 @@ export interface TeamRecord {
   createdBy: string;
   /** 团队级 LLM 配置 */
   llmConfig?: LlmProviderConfig;
-  /** 团队级图片生成配置 */
+  /** @deprecated 使用 imageProviders + defaultImageProvider 替代 */
   imageGenerationConfig?: ImageGenerationConfig;
+  /** 团队配置的图片 Provider 列表 */
+  imageProviders?: ProviderEntry[];
+  /** 团队配置的视频 Provider 列表 */
+  videoProviders?: ProviderEntry[];
+  /** 默认图片 Provider ID（指向 imageProviders 中某项） */
+  defaultImageProvider?: string;
+  /** 默认视频 Provider ID（指向 videoProviders 中某项） */
+  defaultVideoProvider?: string;
   createdAt: string;
   updatedAt: string;
 }
-
-/** 团队成员记录 */
 export interface TeamMemberRecord {
   id: string;
   teamId: string;
@@ -623,6 +678,8 @@ export interface GenerateMediaInput {
   durationSeconds?: number;
   /** 参考图片资产 ID */
   referenceImageAssetId?: string;
+  /** 指定使用的 Provider ID（可选，未传则使用默认） */
+  providerId?: string;
 }
 
 // =============================================

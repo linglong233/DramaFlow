@@ -101,7 +101,15 @@ export class AuthController {
   @UseGuards(AuthGuard)
   updateMe(
     @CurrentUser() user: { id: string },
-    @Body() body: { displayName?: string; llmConfig?: import("@dramaflow/shared").LlmProviderConfig; imageGenerationConfig?: import("@dramaflow/shared").ImageGenerationConfig },
+    @Body() body: {
+      displayName?: string;
+      llmConfig?: import("@dramaflow/shared").LlmProviderConfig;
+      imageGenerationConfig?: import("@dramaflow/shared").ImageGenerationConfig;
+      imageProviders?: import("@dramaflow/shared").ProviderEntry[];
+      videoProviders?: import("@dramaflow/shared").ProviderEntry[];
+      defaultImageProvider?: string;
+      defaultVideoProvider?: string;
+    },
   ) {
     return this.authService.updateProfile(user.id, body);
   }

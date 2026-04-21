@@ -26,6 +26,7 @@ import { InlineFeedback } from "../inline-feedback";
 import { ShotCard } from "./shot-card";
 import { StoryboardToolbar } from "./storyboard-toolbar";
 import { ShotDetailDrawer } from "./shot-detail-drawer";
+import { useProviderEntries } from "./provider-selector";
 
 interface Props {
   content: StoryboardContent;
@@ -107,6 +108,10 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
   const [ttsDrafts, setTtsDrafts] = useState<Record<string, { text: string; characterId: string }>>({});
   const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
+  const [selectedVideoProvider, setSelectedVideoProvider] = useState<string | undefined>();
+
+  const providerEntries = useProviderEntries(imageConfigSource, project?.team?.id);
 
   const characters = safeWorldBible.characters;
   const voiceConfigs = safeWorldBible.voiceConfigs ?? [];
@@ -314,7 +319,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const generateImage = useMutation({
     mutationFn: async ({ shotId, prompt }: { shotId: string; prompt?: string }) => apiFetch(`/shots/${shotId}/image-jobs`, {
       method: "POST",
-      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", configSource: imageConfigSource, prompt: prompt || undefined },
+      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", configSource: imageConfigSource, prompt: prompt || undefined, providerId: selectedImageProvider },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "Image", jobId: "queued" }), error: null });
@@ -326,7 +331,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const generateVideo = useMutation({
     mutationFn: async ({ shotId, prompt, referenceImageAssetId }: { shotId: string; prompt?: string; referenceImageAssetId?: string }) => apiFetch(`/shots/${shotId}/video-jobs`, {
       method: "POST",
-      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, prompt: prompt || undefined, referenceImageAssetId },
+      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, prompt: prompt || undefined, referenceImageAssetId, providerId: selectedVideoProvider },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "Video", jobId: "queued" }), error: null });
@@ -479,6 +484,14 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           onClose={() => setDrawerOpen(false)}
           ttsDraft={selectedDraft}
           onTtsDraftChange={updateTtsDraft}
+          imageProviders={providerEntries.imageProviders}
+          videoProviders={providerEntries.videoProviders}
+          defaultImageProvider={providerEntries.defaultImageProvider}
+          defaultVideoProvider={providerEntries.defaultVideoProvider}
+          selectedImageProvider={selectedImageProvider}
+          selectedVideoProvider={selectedVideoProvider}
+          onSelectedImageProviderChange={setSelectedImageProvider}
+          onSelectedVideoProviderChange={setSelectedVideoProvider}
         />
       )}
     </div>

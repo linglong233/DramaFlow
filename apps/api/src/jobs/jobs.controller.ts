@@ -84,6 +84,7 @@ export class JobsController {
       characterId,
       body.prompt,
       body.configSource ?? "team",
+      body.providerId,
     );
   }
 
@@ -100,6 +101,7 @@ export class JobsController {
       locationId,
       body.prompt,
       body.configSource ?? "team",
+      body.providerId,
     );
   }
 
@@ -114,6 +116,7 @@ export class JobsController {
       projectId,
       body.prompt,
       body.configSource ?? "team",
+      body.providerId,
     );
   }
 

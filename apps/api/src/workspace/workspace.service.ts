@@ -168,7 +168,16 @@ export class WorkspaceService {
   async updateTeam(
     userId: string,
     teamId: string,
-    input: { name: string; defaultReviewPolicy: "required" | "bypass"; llmConfig?: LlmProviderConfig; imageGenerationConfig?: ImageGenerationConfig },
+    input: {
+      name: string;
+      defaultReviewPolicy: "required" | "bypass";
+      llmConfig?: LlmProviderConfig;
+      imageGenerationConfig?: ImageGenerationConfig;
+      imageProviders?: import("@dramaflow/shared").ProviderEntry[];
+      videoProviders?: import("@dramaflow/shared").ProviderEntry[];
+      defaultImageProvider?: string;
+      defaultVideoProvider?: string;
+    },
   ) {
     const actor = await this.getActor(userId, undefined, teamId);
     if (!canManageTenant(actor)) {
@@ -189,6 +198,18 @@ export class WorkspaceService {
       }
       if (input.imageGenerationConfig !== undefined) {
         team.imageGenerationConfig = this.mergePersistedImageGenerationConfig(team.imageGenerationConfig, input.imageGenerationConfig);
+      }
+      if (input.imageProviders !== undefined) {
+        team.imageProviders = input.imageProviders;
+      }
+      if (input.videoProviders !== undefined) {
+        team.videoProviders = input.videoProviders;
+      }
+      if (input.defaultImageProvider !== undefined) {
+        team.defaultImageProvider = input.defaultImageProvider;
+      }
+      if (input.defaultVideoProvider !== undefined) {
+        team.defaultVideoProvider = input.defaultVideoProvider;
       }
       team.updatedAt = new Date().toISOString();
       return this.buildTeamSettingsResponse(db, team, actor.userId, actor.globalRole);
@@ -1602,6 +1623,10 @@ export class WorkspaceService {
       ...this.buildTeamSummary(db, team, userId, globalRole),
       llmConfig: this.buildTeamSettingsLlmConfig(team.llmConfig),
       imageGenerationConfig: this.buildTeamSettingsImageGenerationConfig(team.imageGenerationConfig),
+      imageProviders: team.imageProviders,
+      videoProviders: team.videoProviders,
+      defaultImageProvider: team.defaultImageProvider,
+      defaultVideoProvider: team.defaultVideoProvider,
     };
   }
 

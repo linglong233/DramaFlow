@@ -11,6 +11,7 @@ import { useEffect, useCallback, useState } from "react";
 import type {
   ImageConfigSource,
   ProjectWorkspacePayload,
+  ProviderEntry,
   StoryboardShot,
 } from "@dramaflow/shared";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@dramaflow/shared";
 
 import { getJobStatusLabel, useI18n } from "../../lib/i18n";
+import { ProviderSelector } from "./provider-selector";
 
 interface MediaVersionContent {
   assetId?: string;
@@ -87,6 +89,14 @@ interface Props {
   onClose: () => void;
   ttsDraft: { text: string; characterId: string } | null;
   onTtsDraftChange: (field: "text" | "characterId", value: string) => void;
+  imageProviders?: ProviderEntry[];
+  videoProviders?: ProviderEntry[];
+  defaultImageProvider?: string;
+  defaultVideoProvider?: string;
+  selectedImageProvider?: string;
+  selectedVideoProvider?: string;
+  onSelectedImageProviderChange?: (id: string | undefined) => void;
+  onSelectedVideoProviderChange?: (id: string | undefined) => void;
 }
 
 function CloseIcon() {
@@ -155,6 +165,14 @@ export function ShotDetailDrawer({
   onClose,
   ttsDraft,
   onTtsDraftChange,
+  imageProviders,
+  videoProviders,
+  defaultImageProvider,
+  defaultVideoProvider,
+  selectedImageProvider,
+  selectedVideoProvider,
+  onSelectedImageProviderChange,
+  onSelectedVideoProviderChange,
 }: Props) {
   const { t, locale, formatDate } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
@@ -372,9 +390,23 @@ export function ShotDetailDrawer({
               <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
                 {isImagePending ? t("common.submitting") : "Generate Image"}
               </button>
+              <ProviderSelector
+                type="image"
+                providers={imageProviders ?? []}
+                defaultProviderId={defaultImageProvider}
+                value={selectedImageProvider}
+                onChange={(id) => onSelectedImageProviderChange?.(id)}
+              />
               <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
                 {isVideoPending ? t("common.submitting") : "Generate Video"}
               </button>
+              <ProviderSelector
+                type="video"
+                providers={videoProviders ?? []}
+                defaultProviderId={defaultVideoProvider}
+                value={selectedVideoProvider}
+                onChange={(id) => onSelectedVideoProviderChange?.(id)}
+              />
             </div>
           </div>
         )}
@@ -413,9 +445,23 @@ export function ShotDetailDrawer({
               <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
                 {isImagePending ? t("common.submitting") : "Regenerate Image"}
               </button>
+              <ProviderSelector
+                type="image"
+                providers={imageProviders ?? []}
+                defaultProviderId={defaultImageProvider}
+                value={selectedImageProvider}
+                onChange={(id) => onSelectedImageProviderChange?.(id)}
+              />
               <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
                 {isVideoPending ? t("common.submitting") : "Regenerate Video"}
               </button>
+              <ProviderSelector
+                type="video"
+                providers={videoProviders ?? []}
+                defaultProviderId={defaultVideoProvider}
+                value={selectedVideoProvider}
+                onChange={(id) => onSelectedVideoProviderChange?.(id)}
+              />
             </div>
           </div>
         )}

@@ -25,6 +25,7 @@ import type {
   GenerateTTSInput,
   ImageConfigSource,
   ImageGenerationConfig,
+  ImageGenerationProvider,
   JobRecord,
   LlmConfigSource,
   JobStatus,
@@ -32,6 +33,7 @@ import type {
   LlmProviderConfig,
   MediaContent,
   PromptPreviewResult,
+  ProviderEntry,
   RewriteSegmentInput,
   ScriptContent,
   StoryboardContent,
@@ -49,6 +51,7 @@ import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { SdWebuiImageProvider } from "./sd-webui-image.provider";
 import { ComfyuiImageProvider } from "./comfyui-image.provider";
+import { GrokMediaProvider } from "./grok-media.provider";
 import { PromptBuilderService } from "./prompt-builder.service";
 import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provider";
 import { TTSProviderService } from "./tts.provider";
@@ -96,7 +99,7 @@ interface VideoJobState extends Record<string, unknown> {
 }
 
 interface ResolvedImageExecution {
-  providerKind: "legacy-openai" | "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui";
+  providerKind: "legacy-openai" | "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui" | "grok";
   configSource?: ImageConfigSource;
   config?: ImageGenerationConfig;
   model?: string;
@@ -118,6 +121,7 @@ export class JobsService {
     @Inject(GoogleGeminiImageProvider) private readonly googleGeminiImageProvider: GoogleGeminiImageProvider,
     @Inject(SdWebuiImageProvider) private readonly sdWebuiProvider: SdWebuiImageProvider,
     @Inject(ComfyuiImageProvider) private readonly comfyuiProvider: ComfyuiImageProvider,
+    @Inject(GrokMediaProvider) private readonly grokMediaProvider: GrokMediaProvider,
     @Inject(PromptBuilderService) private readonly promptBuilder: PromptBuilderService,
     @Inject(NotificationService) private readonly notificationService: NotificationService,
     @Inject(RealtimeEventsService) private readonly realtimeEvents: RealtimeEventsService,
@@ -676,6 +680,11 @@ export class JobsService {
         { ...job.input, prompt },
         execution.config,
       ) as GeneratedMediaResult;
+    } else if (execution.providerKind === "grok") {
+      generated = await this.grokMediaProvider.generateImage(
+        { ...job.input, prompt },
+        this.toGrokLlmConfig(execution.config!),
+      ) as GeneratedMediaResult;
     } else {
       const config = await this.resolveLlmConfig(job.createdBy, job.projectId);
       generated = await this.mediaProvider.generateImage({ ...job.input, prompt }, config) as GeneratedMediaResult;
@@ -700,10 +709,19 @@ export class JobsService {
     projectId: string,
     prompt: string,
     configSource: ImageConfigSource,
+    providerId?: string,
   ): Promise<{ buffer: Buffer; mimeType: string; provider: string; model?: string }> {
     await this.assertProjectReadable(userId, projectId);
-    const config = await this.resolveImageGenerationConfig(userId, projectId, configSource);
     const sourceLabel = configSource === "team" ? "team" : "personal";
+
+    // 优先从新 provider 列表解析
+    let config: ImageGenerationConfig | undefined;
+    const entry = await this.resolveProviderEntry("image", providerId, userId, projectId, configSource);
+    if (entry) {
+      config = this.providerEntryToConfig(entry);
+    } else {
+      config = await this.resolveImageGenerationConfig(userId, projectId, configSource);
+    }
     if (!config) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is not set.`);
     }
@@ -711,7 +729,7 @@ export class JobsService {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing a provider.`);
     }
     // API key required for cloud providers, optional for local (SD WebUI, ComfyUI)
-    const needsApiKey = config.provider === "google-gemini" || config.provider === "openai-compatible";
+    const needsApiKey = config.provider === "google-gemini" || config.provider === "openai-compatible" || config.provider === "grok";
     if (needsApiKey && !config.apiKey?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing an API key.`);
     }
@@ -720,6 +738,9 @@ export class JobsService {
     }
     if (config.provider === "openai-compatible" && !config.baseUrl?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} OpenAI-compatible image config is missing a base URL.`);
+    }
+    if (config.provider === "grok" && !config.baseUrl?.trim()) {
+      throw new BadRequestException(`The ${sourceLabel} Grok image config is missing a base URL.`);
     }
 
     const input = { prompt, shotId: "char-ref", style: "portrait", aspectRatio: "1:1" };
@@ -733,6 +754,8 @@ export class JobsService {
       generated = await this.sdWebuiProvider.generateImage(input, config) as GeneratedMediaResult;
     } else if (config.provider === "comfyui") {
       generated = await this.comfyuiProvider.generateImage(input, config) as GeneratedMediaResult;
+    } else if (config.provider === "grok") {
+      generated = await this.grokMediaProvider.generateImage(input, this.toGrokLlmConfig(config)) as GeneratedMediaResult;
     } else {
       throw new BadRequestException(`Unsupported image provider: ${config.provider}`);
     }
@@ -763,6 +786,7 @@ export class JobsService {
     characterId: string,
     prompt: string,
     configSource: ImageConfigSource = "team",
+    providerId?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
     const wb = await this.workspaceService.getWorldBible(userId, projectId);
     const character = wb.characters.find((c) => c.id === characterId);
@@ -776,6 +800,7 @@ export class JobsService {
       `char-ref-${characterId}`,
       prompt,
       configSource,
+      providerId,
     );
   }
 
@@ -785,6 +810,7 @@ export class JobsService {
     locationId: string,
     prompt: string,
     configSource: ImageConfigSource = "team",
+    providerId?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
     const wb = await this.workspaceService.getWorldBible(userId, projectId);
     const location = wb.locations.find((item) => item.id === locationId);
@@ -798,6 +824,7 @@ export class JobsService {
       `location-ref-${locationId}`,
       prompt,
       configSource,
+      providerId,
     );
   }
 
@@ -806,6 +833,7 @@ export class JobsService {
     projectId: string,
     prompt: string,
     configSource: ImageConfigSource = "team",
+    providerId?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
     return this.generateWorldBibleReferenceImage(
       userId,
@@ -813,6 +841,7 @@ export class JobsService {
       "style-guide-ref",
       prompt,
       configSource,
+      providerId,
     );
   }
 
@@ -822,8 +851,9 @@ export class JobsService {
     filenamePrefix: string,
     prompt: string,
     configSource: ImageConfigSource,
+    providerId?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
-    const result = await this.generateImageFromPrompt(userId, projectId, prompt, configSource);
+    const result = await this.generateImageFromPrompt(userId, projectId, prompt, configSource, providerId);
 
     const filename = `${filenamePrefix}-${Date.now()}.${result.mimeType.split("/")[1] || "png"}`;
     const stored = await this.storageService.storeGeneratedAsset(userId, {
@@ -838,7 +868,65 @@ export class JobsService {
 
   private async processVideoJob(job: JobRecord<MediaJobInput>) {
     const prompt = job.input.prompt?.trim() || `${job.shotId} ${job.input.style} video`;
+
+    // 优先从新 video provider 列表解析
+    if (job.input.configSource) {
+      const videoEntry = await this.resolveProviderEntry("video", job.input.providerId, job.createdBy, job.projectId, job.input.configSource);
+      if (videoEntry) {
+        const videoConfig = this.providerEntryToConfig(videoEntry);
+        if (videoEntry.provider === "grok") {
+          const grokLlmConfig = this.toGrokLlmConfig(videoConfig);
+          const inputWithConfig = {
+            ...job.input,
+            prompt,
+            grokConfig: videoConfig.grokConfig,
+            referenceImageUrl: job.input.referenceImageAssetId
+              ? await this.resolveReferenceImageUrl(job.createdBy, job.input.referenceImageAssetId)
+              : undefined,
+          };
+          const generated = await this.grokMediaProvider.generateVideo(inputWithConfig, grokLlmConfig) as GeneratedMediaResult;
+          return this.finalizeMediaJob(job, "video", prompt, {
+            ...generated,
+            configSource: job.input.configSource,
+            parameters: { ...generated.parameters, configSource: job.input.configSource },
+          });
+        }
+        // OpenAI-compatible video path
+        const openAiConfig = this.toOpenAiImageLlmConfig(videoConfig);
+        return this.processVideoJobOpenAi(job, prompt, openAiConfig);
+      }
+
+      // 向下兼容：从旧 imageGenerationConfig 检查 Grok
+      const imageConfig = await this.resolveImageGenerationConfig(job.createdBy, job.projectId, job.input.configSource);
+      if (imageConfig?.provider === "grok") {
+        const grokLlmConfig = this.toGrokLlmConfig(imageConfig);
+        const inputWithConfig = {
+          ...job.input,
+          prompt,
+          grokConfig: imageConfig.grokConfig,
+          referenceImageUrl: job.input.referenceImageAssetId
+            ? await this.resolveReferenceImageUrl(job.createdBy, job.input.referenceImageAssetId)
+            : undefined,
+        };
+        const generated = await this.grokMediaProvider.generateVideo(inputWithConfig, grokLlmConfig) as GeneratedMediaResult;
+        return this.finalizeMediaJob(job, "video", prompt, {
+          ...generated,
+          configSource: job.input.configSource,
+          parameters: { ...generated.parameters, configSource: job.input.configSource },
+        });
+      }
+    }
+
+    // 原有 OpenAI 兼容视频生成路径（异步轮询）
     const config = await this.resolveLlmConfig(job.createdBy, job.projectId);
+    if (!config) {
+      throw new BadRequestException("LLM config is required for video generation.");
+    }
+    return this.processVideoJobOpenAi(job, prompt, config);
+  }
+
+  /** OpenAI 兼容视频生成路径（异步轮询） */
+  private async processVideoJobOpenAi(job: JobRecord<MediaJobInput>, prompt: string, config: LlmProviderConfig) {
     const currentState = await this.database.query((db) => {
       const liveJob = db.jobs.find((item) => item.id === job.id);
       return liveJob ? this.toVideoJobState(liveJob.result, prompt, job.input) : null;
@@ -1410,6 +1498,56 @@ export class JobsService {
     });
   }
 
+  /** 从新的 provider 列表中解析 ProviderEntry */
+  private async resolveProviderEntry(
+    type: "image" | "video",
+    providerId: string | undefined,
+    userId: string,
+    projectId: string,
+    configSource: ImageConfigSource,
+  ): Promise<ProviderEntry | undefined> {
+    return this.database.query((db) => {
+      const isPersonal = configSource === "personal";
+      const record = isPersonal
+        ? db.users.find((user) => user.id === userId)
+        : (() => {
+            const project = db.projects.find((item) => item.id === projectId);
+            if (!project) throw new NotFoundException("Project not found");
+            return db.teams.find((team) => team.id === project.teamId);
+          })();
+
+      if (!record) return undefined;
+
+      const providers = type === "image" ? record.imageProviders : record.videoProviders;
+      const defaultId = type === "image" ? record.defaultImageProvider : record.defaultVideoProvider;
+
+      if (!providers?.length) return undefined;
+
+      if (providerId) {
+        return providers.find((p) => p.id === providerId);
+      }
+
+      if (defaultId) {
+        return providers.find((p) => p.id === defaultId);
+      }
+
+      return providers[0];
+    });
+  }
+
+  /** 将 ProviderEntry 转换为 ImageGenerationConfig（兼容现有 provider 实例） */
+  private providerEntryToConfig(entry: ProviderEntry): ImageGenerationConfig {
+    return {
+      provider: entry.provider as ImageGenerationProvider,
+      apiKey: entry.apiKey,
+      baseUrl: entry.baseUrl,
+      model: entry.model,
+      sdConfig: entry.sdConfig,
+      comfyuiConfig: entry.comfyuiConfig,
+      grokConfig: entry.grokConfig,
+    };
+  }
+
   private async resolveImageExecution(job: JobRecord<MediaJobInput>): Promise<ResolvedImageExecution> {
     if (!job.input.configSource) {
       if (job.input.referenceImageAssetId) {
@@ -1421,12 +1559,20 @@ export class JobsService {
       };
     }
 
-    const config = await this.resolveImageGenerationConfig(job.createdBy, job.projectId, job.input.configSource);
+    // 优先从新 provider 列表解析
+    let config: ImageGenerationConfig | undefined;
+    const entry = await this.resolveProviderEntry("image", job.input.providerId, job.createdBy, job.projectId, job.input.configSource);
+    if (entry) {
+      config = this.providerEntryToConfig(entry);
+    } else {
+      config = await this.resolveImageGenerationConfig(job.createdBy, job.projectId, job.input.configSource);
+    }
+
     const sourceLabel = job.input.configSource === "team" ? "team" : "personal";
     if (!config) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is not set.`);
     }
-    const needsApiKey = config.provider === "google-gemini" || config.provider === "openai-compatible";
+    const needsApiKey = config.provider === "google-gemini" || config.provider === "openai-compatible" || config.provider === "grok";
     if (needsApiKey && !config.apiKey?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} image generation config is missing an API key.`);
     }
@@ -1435,6 +1581,9 @@ export class JobsService {
     }
     if (config.provider === "openai-compatible" && !config.baseUrl?.trim()) {
       throw new BadRequestException(`The ${sourceLabel} OpenAI-compatible image config is missing a base URL.`);
+    }
+    if (config.provider === "grok" && !config.baseUrl?.trim()) {
+      throw new BadRequestException(`The ${sourceLabel} Grok image config is missing a base URL.`);
     }
 
     let referenceImage: ResolvedImageExecution["referenceImage"];
@@ -1480,6 +1629,24 @@ export class JobsService {
       baseUrl: config.baseUrl,
       model: config.model,
     };
+  }
+
+  private toGrokLlmConfig(config: ImageGenerationConfig): LlmProviderConfig {
+    return {
+      provider: "grok",
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      model: config.model || config.grokConfig?.model || "grok-imagine-1.0",
+    };
+  }
+
+  private async resolveReferenceImageUrl(userId: string, assetId: string): Promise<string | undefined> {
+    try {
+      const result = await this.storageService.getAssetUrl(userId, assetId);
+      return result.url;
+    } catch {
+      return undefined;
+    }
   }
 
   // ===== TTS Jobs =====

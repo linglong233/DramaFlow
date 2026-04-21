@@ -153,7 +153,7 @@ export interface TeamSettingsLlmConfig extends Pick<LlmProviderConfig, "provider
 }
 
 /** 团队设置中的图片生成配置摘要（隐藏 API 密钥） */
-export interface ImageGenerationSettingsConfig extends Pick<ImageGenerationConfig, "provider" | "baseUrl" | "model" | "sdConfig" | "comfyuiConfig"> {
+export interface ImageGenerationSettingsConfig extends Pick<ImageGenerationConfig, "provider" | "baseUrl" | "model" | "sdConfig" | "comfyuiConfig" | "grokConfig"> {
   /** 是否已配置 API 密钥 */
   hasApiKey: boolean;
 }
@@ -162,6 +162,10 @@ export interface ImageGenerationSettingsConfig extends Pick<ImageGenerationConfi
 export interface TeamSettingsResponse extends TeamSummary {
   llmConfig?: TeamSettingsLlmConfig;
   imageGenerationConfig?: ImageGenerationSettingsConfig;
+  imageProviders?: import("./domain").ProviderEntry[];
+  videoProviders?: import("./domain").ProviderEntry[];
+  defaultImageProvider?: string;
+  defaultVideoProvider?: string;
 }
 
 /** 团队管理后台概览响应 */
@@ -412,6 +416,8 @@ export interface StyleGuideUpdatePayload {
 export interface WorldBibleReferenceImageGenerateRequest {
   prompt: string;
   configSource?: ImageConfigSource;
+  /** 指定使用的 Provider ID（可选，未传则使用默认） */
+  providerId?: string;
 }
 
 /** 世界观参考图片生成响应 */

@@ -2,7 +2,7 @@
  * @fileoverview 个人设置面板
  * @module web/components
  *
- * 用户个人信息、LLM 和图片生成配置管理。
+ * 用户个人信息、LLM 和图片/视频 Provider 配置管理。
  */
 
 "use client";
@@ -15,23 +15,37 @@ import type {
   LlmModelListResponse,
   LlmModelSummary,
   LlmProviderConfig,
+  ProviderEntry,
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../lib/api";
 import {
+  IMAGE_PROVIDER_LABELS,
+  VIDEO_PROVIDER_LABELS,
   buildImageGenerationConfigPayload,
+  buildProviderEntry,
+  createImageProviderDraft,
+  createVideoProviderDraft,
+  migrateImageGenerationConfig,
   toImageGenerationConfigDraft,
+  toProviderEntryDraft,
 } from "../lib/image-config";
+import type { ProviderEntryDraft } from "../lib/image-config";
 import { useI18n } from "../lib/i18n";
 import { buildLlmConfigPayload, toLlmConfigDraft } from "../lib/llm-config";
 import { ErrorState } from "./error-state";
 import { InlineFeedback } from "./inline-feedback";
 import { LoadingSkeleton } from "./loading-skeleton";
+import { ProviderEntryForm } from "./provider-entry-form";
 
 interface ProfileSettingsResponse {
   displayName: string;
   llmConfig?: LlmProviderConfig;
   imageGenerationConfig?: ImageGenerationConfig;
+  imageProviders?: ProviderEntry[];
+  videoProviders?: ProviderEntry[];
+  defaultImageProvider?: string;
+  defaultVideoProvider?: string;
 }
 
 function UserIcon() {
@@ -61,11 +75,28 @@ function ImageIcon() {
   );
 }
 
+function VideoIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="2" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M14 8l4-2.5v9L14 12" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function RefreshIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <path d="M1.5 7a5.5 5.5 0 019.81-3.39M12.5 7a5.5 5.5 0 01-9.81 3.39" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       <path d="M11.5 1v3h-3M2.5 13v-3h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill={filled ? "currentColor" : "none"} aria-hidden="true" style={{ color: filled ? "var(--warning)" : "var(--text-tertiary)" }}>
+      <path d="M8 1.5l1.85 3.75 4.15.6-3 2.93.71 4.12L8 10.87 4.29 12.9 5 8.78l-3-2.93 4.15-.6L8 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -79,6 +110,16 @@ export function ProfileSettingsPanel() {
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [llmModel, setLlmModel] = useState("");
   const [llmStreamEnabled, setLlmStreamEnabled] = useState(false);
+
+  // --- Multi-provider state ---
+  const [imageDrafts, setImageDrafts] = useState<ProviderEntryDraft[]>([]);
+  const [videoDrafts, setVideoDrafts] = useState<ProviderEntryDraft[]>([]);
+  const [defaultImageProvider, setDefaultImageProvider] = useState<string>("");
+  const [defaultVideoProvider, setDefaultVideoProvider] = useState<string>("");
+  const [editingImageId, setEditingImageId] = useState<string | null>(null);
+  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+
+  // Legacy image config state (kept for backward-compat on save)
   const [imageProvider, setImageProvider] = useState<ImageGenerationProvider>("google-gemini");
   const [imageApiKey, setImageApiKey] = useState("");
   const [imageBaseUrl, setImageBaseUrl] = useState("");
@@ -91,6 +132,11 @@ export function ProfileSettingsPanel() {
   const [comfyuiSamplerName, setComfyuiSamplerName] = useState("euler");
   const [comfyuiSteps, setComfyuiSteps] = useState(20);
   const [comfyuiCfgScale, setComfyuiCfgScale] = useState(8);
+  const [grokVideoModel, setGrokVideoModel] = useState("grok-imagine-1.0-video");
+  const [grokAspectRatio, setGrokAspectRatio] = useState("16:9");
+  const [grokVideoLength, setGrokVideoLength] = useState(6);
+  const [grokResolution, setGrokResolution] = useState<"SD" | "HD">("HD");
+
   const [availableModels, setAvailableModels] = useState<LlmModelSummary[]>([]);
   const [hasFetchedModels, setHasFetchedModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
@@ -103,26 +149,54 @@ export function ProfileSettingsPanel() {
 
   useEffect(() => {
     if (!profileQuery.data) return;
-    const llmDraft = toLlmConfigDraft(profileQuery.data.llmConfig);
-    const imageDraft = toImageGenerationConfigDraft(profileQuery.data.imageGenerationConfig);
-    setDisplayName(profileQuery.data.displayName || "");
+
+    const data = profileQuery.data;
+    const llmDraft = toLlmConfigDraft(data.llmConfig);
+    setDisplayName(data.displayName || "");
     setLlmProvider(llmDraft.provider);
     setLlmApiKey(llmDraft.apiKey);
     setLlmBaseUrl(llmDraft.baseUrl);
     setLlmModel(llmDraft.model);
     setLlmStreamEnabled(llmDraft.stream);
+
+    // Load new multi-provider fields
+    if (data.imageProviders && data.imageProviders.length > 0) {
+      setImageDrafts(data.imageProviders.map(toProviderEntryDraft));
+      setDefaultImageProvider(data.defaultImageProvider ?? "");
+    } else {
+      // Migrate from old config
+      const migrated = migrateImageGenerationConfig(data.imageGenerationConfig);
+      setImageDrafts(migrated.imageProviders.map(toProviderEntryDraft));
+      setDefaultImageProvider(migrated.defaultImageProvider ?? "");
+    }
+
+    if (data.videoProviders && data.videoProviders.length > 0) {
+      setVideoDrafts(data.videoProviders.map(toProviderEntryDraft));
+      setDefaultVideoProvider(data.defaultVideoProvider ?? "");
+    } else {
+      const migrated = migrateImageGenerationConfig(data.imageGenerationConfig);
+      setVideoDrafts(migrated.videoProviders.map(toProviderEntryDraft));
+      setDefaultVideoProvider(migrated.defaultVideoProvider ?? "");
+    }
+
+    // Legacy image config (kept for backward-compat)
+    const imageDraft = toImageGenerationConfigDraft(data.imageGenerationConfig);
     setImageProvider(imageDraft.provider);
     setImageApiKey(imageDraft.apiKey);
     setImageBaseUrl(imageDraft.baseUrl);
     setImageModel(imageDraft.model);
-    setSdSamplerName(profileQuery.data.imageGenerationConfig?.sdConfig?.samplerName ?? "DPM++ 2M Karras");
-    setSdSteps(profileQuery.data.imageGenerationConfig?.sdConfig?.steps ?? 20);
-    setSdCfgScale(profileQuery.data.imageGenerationConfig?.sdConfig?.cfgScale ?? 7);
-    setSdClipSkip(profileQuery.data.imageGenerationConfig?.sdConfig?.clipSkip ?? 1);
-    setComfyuiWorkflowJson(profileQuery.data.imageGenerationConfig?.comfyuiConfig?.workflowJson ?? "");
-    setComfyuiSamplerName(profileQuery.data.imageGenerationConfig?.comfyuiConfig?.samplerName ?? "euler");
-    setComfyuiSteps(profileQuery.data.imageGenerationConfig?.comfyuiConfig?.steps ?? 20);
-    setComfyuiCfgScale(profileQuery.data.imageGenerationConfig?.comfyuiConfig?.cfgScale ?? 8);
+    setSdSamplerName(data.imageGenerationConfig?.sdConfig?.samplerName ?? "DPM++ 2M Karras");
+    setSdSteps(data.imageGenerationConfig?.sdConfig?.steps ?? 20);
+    setSdCfgScale(data.imageGenerationConfig?.sdConfig?.cfgScale ?? 7);
+    setSdClipSkip(data.imageGenerationConfig?.sdConfig?.clipSkip ?? 1);
+    setComfyuiWorkflowJson(data.imageGenerationConfig?.comfyuiConfig?.workflowJson ?? "");
+    setComfyuiSamplerName(data.imageGenerationConfig?.comfyuiConfig?.samplerName ?? "euler");
+    setComfyuiSteps(data.imageGenerationConfig?.comfyuiConfig?.steps ?? 20);
+    setComfyuiCfgScale(data.imageGenerationConfig?.comfyuiConfig?.cfgScale ?? 8);
+    setGrokVideoModel(data.imageGenerationConfig?.grokConfig?.videoModel ?? "grok-imagine-1.0-video");
+    setGrokAspectRatio(data.imageGenerationConfig?.grokConfig?.aspectRatio ?? "16:9");
+    setGrokVideoLength(data.imageGenerationConfig?.grokConfig?.videoLength ?? 6);
+    setGrokResolution(data.imageGenerationConfig?.grokConfig?.resolution ?? "HD");
   }, [profileQuery.data]);
 
   useEffect(() => {
@@ -139,6 +213,7 @@ export function ProfileSettingsPanel() {
     stream: llmStreamEnabled,
   }, profileQuery.data?.llmConfig);
 
+  // Legacy image config payload (for backward-compat)
   const draftImageConfig: ImageGenerationConfig = {
     provider: imageProvider,
     apiKey: imageApiKey || undefined,
@@ -160,13 +235,48 @@ export function ProfileSettingsPanel() {
         cfgScale: comfyuiCfgScale || undefined,
       }
     } : {}),
+    ...(imageProvider === "grok" ? {
+      grokConfig: {
+        videoModel: grokVideoModel || undefined,
+        aspectRatio: grokAspectRatio || undefined,
+        videoLength: grokVideoLength || undefined,
+        resolution: grokResolution || undefined,
+      }
+    } : {}),
   };
 
+  // Build backward-compat imageGenerationConfig from the default image provider
+  function buildLegacyImageConfig(): ImageGenerationConfig | undefined {
+    const defaultDraft = imageDrafts.find((d) => d.id === defaultImageProvider);
+    if (!defaultDraft) return buildImageGenerationConfigPayload(toImageGenerationConfigDraft(profileQuery.data?.imageGenerationConfig));
+    return {
+      provider: defaultDraft.provider as ImageGenerationProvider,
+      ...(defaultDraft.apiKey.trim() ? { apiKey: defaultDraft.apiKey.trim() } : {}),
+      ...(defaultDraft.baseUrl.trim() ? { baseUrl: defaultDraft.baseUrl.trim() } : {}),
+      ...(defaultDraft.model.trim() ? { model: defaultDraft.model.trim() } : {}),
+      ...(defaultDraft.provider === "stable-diffusion" && Object.values(defaultDraft.sdConfig as Record<string, unknown>).some((v) => v) ? { sdConfig: defaultDraft.sdConfig } : {}),
+      ...(defaultDraft.provider === "comfyui" && Object.values(defaultDraft.comfyuiConfig as Record<string, unknown>).some((v) => v) ? { comfyuiConfig: defaultDraft.comfyuiConfig } : {}),
+      ...(defaultDraft.provider === "grok" && Object.values(defaultDraft.grokConfig as Record<string, unknown>).some((v) => v) ? { grokConfig: defaultDraft.grokConfig } : {}),
+    };
+  }
+
   const updateMutation = useMutation({
-    mutationFn: () => apiFetch("/auth/me", {
-      method: "PATCH",
-      body: { displayName, llmConfig: draftLlmConfig, imageGenerationConfig: draftImageConfig },
-    }),
+    mutationFn: () => {
+      const imageEntries = imageDrafts.map(buildProviderEntry);
+      const videoEntries = videoDrafts.map(buildProviderEntry);
+      return apiFetch("/auth/me", {
+        method: "PATCH",
+        body: {
+          displayName,
+          llmConfig: draftLlmConfig,
+          imageGenerationConfig: buildLegacyImageConfig(),
+          imageProviders: imageEntries,
+          videoProviders: videoEntries,
+          defaultImageProvider,
+          defaultVideoProvider,
+        },
+      });
+    },
     onSuccess: async () => {
       setFeedback({ message: t("settingsPages.profileSettings.saveSuccess"), error: null });
       await queryClient.invalidateQueries({ queryKey: ["auth_me"] });
@@ -190,6 +300,46 @@ export function ProfileSettingsPanel() {
 
   const selectedCatalogModel = availableModels.some((model) => model.id === llmModel) ? llmModel : "";
 
+  // --- Provider list management helpers ---
+  function addImageProvider() {
+    const draft = createImageProviderDraft();
+    setImageDrafts((prev) => [...prev, draft]);
+    setEditingImageId(draft.id);
+  }
+
+  function addVideoProvider() {
+    const draft = createVideoProviderDraft();
+    setVideoDrafts((prev) => [...prev, draft]);
+    setEditingVideoId(draft.id);
+  }
+
+  function removeImageProvider(id: string) {
+    setImageDrafts((prev) => prev.filter((d) => d.id !== id));
+    if (defaultImageProvider === id) setDefaultImageProvider("");
+    if (editingImageId === id) setEditingImageId(null);
+  }
+
+  function removeVideoProvider(id: string) {
+    setVideoDrafts((prev) => prev.filter((d) => d.id !== id));
+    if (defaultVideoProvider === id) setDefaultVideoProvider("");
+    if (editingVideoId === id) setEditingVideoId(null);
+  }
+
+  function updateImageDraft(id: string, updated: ProviderEntryDraft) {
+    setImageDrafts((prev) => prev.map((d) => d.id === id ? updated : d));
+  }
+
+  function updateVideoDraft(id: string, updated: ProviderEntryDraft) {
+    setVideoDrafts((prev) => prev.map((d) => d.id === id ? updated : d));
+  }
+
+  function getProviderLabel(draft: ProviderEntryDraft): string {
+    if (draft.name.trim()) return draft.name.trim();
+    const imageLabel = IMAGE_PROVIDER_LABELS[draft.provider as ImageGenerationProvider];
+    const videoLabel = VIDEO_PROVIDER_LABELS[draft.provider as keyof typeof VIDEO_PROVIDER_LABELS];
+    return imageLabel ?? videoLabel ?? String(draft.provider);
+  }
+
   return (
     <div className="sp-root animate-fade-in">
       <header className="sp-header">
@@ -210,6 +360,7 @@ export function ProfileSettingsPanel() {
         />
       ) : (
         <div className="sp-body">
+          {/* --- 个人信息 --- */}
           <section className="sp-card animate-slide-up" style={{ animationDelay: "0.06s" }}>
             <div className="sp-card-head">
               <div className="sp-card-icon"><UserIcon /></div>
@@ -226,6 +377,7 @@ export function ProfileSettingsPanel() {
             </div>
           </section>
 
+          {/* --- LLM 配置 --- */}
           <section className="sp-card animate-slide-up" style={{ animationDelay: "0.12s" }}>
             <div className="sp-card-head">
               <div className="sp-card-icon" style={{ background: "linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(167, 139, 250, 0.05))", color: "#c4b5fd", boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 10px -2px rgba(167, 139, 250, 0.3)" }}><AiIcon /></div>
@@ -302,106 +454,127 @@ export function ProfileSettingsPanel() {
             </div>
           </section>
 
+          {/* --- 图片 Provider 列表 --- */}
           <section className="sp-card animate-slide-up" style={{ animationDelay: "0.15s" }}>
             <div className="sp-card-head">
               <div className="sp-card-icon" style={{ background: "linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0.05))", color: "#7dd3fc", boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 10px -2px rgba(56, 189, 248, 0.3)" }}><ImageIcon /></div>
               <div>
-                <h2 className="sp-card-title">{t("settingsPages.profileSettings.imageTitle")}</h2>
-                <p className="sp-card-desc">{t("settingsPages.profileSettings.imageDescription")}</p>
+                <h2 className="sp-card-title">图片生成 Provider</h2>
+                <p className="sp-card-desc">配置一个或多个图片生成服务，点击星标设为默认</p>
               </div>
             </div>
-            <div className="stack stack-gap-5">
-              <div className="form-group">
-                <label className="form-label text-sm" htmlFor="profile-image-provider">{t("settingsPages.profileSettings.imageProviderLabel")}</label>
-                <select
-                  id="profile-image-provider"
-                  className="input"
-                  value={imageProvider}
-                  onChange={(event) => setImageProvider(event.target.value as ImageGenerationProvider)}
-                >
-                  <option value="google-gemini">{t("settingsPages.profileSettings.imageProviderGoogle")}</option>
-                  <option value="openai-compatible">{t("settingsPages.profileSettings.imageProviderOpenAi")}</option>
-                  <option value="stable-diffusion">{t("settingsPages.profileSettings.imageProviderSDWebUI")}</option>
-                  <option value="comfyui">{t("settingsPages.profileSettings.imageProviderComfyUI")}</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label text-sm" htmlFor="profile-image-api-key">{t("settingsPages.profileSettings.imageApiKeyLabel")}</label>
-                <input
-                  id="profile-image-api-key"
-                  className="input"
-                  type="password"
-                  placeholder={t("settingsPages.profileSettings.imageApiKeyPlaceholder")}
-                  value={imageApiKey}
-                  onChange={(event) => setImageApiKey(event.target.value)}
-                />
-              </div>
-              {imageProvider === "openai-compatible" || imageProvider === "stable-diffusion" || imageProvider === "comfyui" ? (
-                <div className="form-group">
-                  <label className="form-label text-sm" htmlFor="profile-image-base-url">{t("settingsPages.profileSettings.imageBaseUrlLabel")}</label>
-                  <input
-                    id="profile-image-base-url"
-                    className="input"
-                    placeholder={t("settingsPages.profileSettings.imageBaseUrlPlaceholder")}
-                    value={imageBaseUrl}
-                    onChange={(event) => setImageBaseUrl(event.target.value)}
-                  />
-                </div>
-              ) : null}
-              <div className="form-group">
-                <label className="form-label text-sm" htmlFor="profile-image-model">{t("settingsPages.profileSettings.imageModelLabel")}</label>
-                <input
-                  id="profile-image-model"
-                  className="input"
-                  placeholder={t("settingsPages.profileSettings.imageModelPlaceholder")}
-                  value={imageModel}
-                  onChange={(event) => setImageModel(event.target.value)}
-                />
-              </div>
-              {imageProvider === "stable-diffusion" ? (
-                <>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-sd-sampler">{t("settingsPages.profileSettings.imageSdSamplerLabel")}</label>
-                    <input id="profile-sd-sampler" className="input" value={sdSamplerName} onChange={(event) => setSdSamplerName(event.target.value)} />
+            <div className="stack stack-gap-4">
+              {imageDrafts.length === 0 ? (
+                <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无图片 Provider 配置，点击下方按钮添加</p>
+              ) : (
+                imageDrafts.map((draft) => (
+                  <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingImageId === draft.id ? "var(--space-4)" : 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setDefaultImageProvider(defaultImageProvider === draft.id ? "" : draft.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        title={defaultImageProvider === draft.id ? "取消默认" : "设为默认"}
+                      >
+                        <StarIcon filled={defaultImageProvider === draft.id} />
+                      </button>
+                      <span className="text-sm" style={{ fontWeight: 500, flex: 1 }}>{getProviderLabel(draft)}</span>
+                      <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                        {IMAGE_PROVIDER_LABELS[draft.provider as ImageGenerationProvider] ?? String(draft.provider)}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingImageId(editingImageId === draft.id ? null : draft.id)}
+                      >
+                        {editingImageId === draft.id ? "收起" : "编辑"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ color: "var(--danger-text)" }}
+                        onClick={() => removeImageProvider(draft.id)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                    {editingImageId === draft.id ? (
+                      <ProviderEntryForm
+                        draft={draft}
+                        onChange={(updated) => updateImageDraft(draft.id, updated)}
+                        type="image"
+                      />
+                    ) : null}
                   </div>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-sd-steps">{t("settingsPages.profileSettings.imageSdStepsLabel")}</label>
-                    <input id="profile-sd-steps" className="input" type="number" value={sdSteps} onChange={(event) => setSdSteps(Number(event.target.value))} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-sd-cfg-scale">{t("settingsPages.profileSettings.imageSdCfgScaleLabel")}</label>
-                    <input id="profile-sd-cfg-scale" className="input" type="number" value={sdCfgScale} onChange={(event) => setSdCfgScale(Number(event.target.value))} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-sd-clip-skip">{t("settingsPages.profileSettings.imageSdClipSkipLabel")}</label>
-                    <input id="profile-sd-clip-skip" className="input" type="number" value={sdClipSkip} onChange={(event) => setSdClipSkip(Number(event.target.value))} />
-                  </div>
-                </>
-              ) : null}
-              {imageProvider === "comfyui" ? (
-                <>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-comfyui-workflow">{t("settingsPages.profileSettings.imageComfyuiWorkflowLabel")}</label>
-                    <textarea id="profile-comfyui-workflow" className="input" rows={6} placeholder={t("settingsPages.profileSettings.imageComfyuiWorkflowPlaceholder")} value={comfyuiWorkflowJson} onChange={(event) => setComfyuiWorkflowJson(event.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-comfyui-sampler">{t("settingsPages.profileSettings.imageComfyuiSamplerLabel")}</label>
-                    <input id="profile-comfyui-sampler" className="input" value={comfyuiSamplerName} onChange={(event) => setComfyuiSamplerName(event.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-comfyui-steps">{t("settingsPages.profileSettings.imageComfyuiStepsLabel")}</label>
-                    <input id="profile-comfyui-steps" className="input" type="number" value={comfyuiSteps} onChange={(event) => setComfyuiSteps(Number(event.target.value))} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label text-sm" htmlFor="profile-comfyui-cfg-scale">{t("settingsPages.profileSettings.imageComfyuiCfgScaleLabel")}</label>
-                    <input id="profile-comfyui-cfg-scale" className="input" type="number" value={comfyuiCfgScale} onChange={(event) => setComfyuiCfgScale(Number(event.target.value))} />
-                  </div>
-                </>
-              ) : null}
+                ))
+              )}
+              <button type="button" className="btn btn-secondary" onClick={addImageProvider}>
+                + 添加图片 Provider
+              </button>
             </div>
           </section>
 
-          <div className="sp-save-area animate-slide-up" style={{ animationDelay: "0.18s" }}>
+          {/* --- 视频 Provider 列表 --- */}
+          <section className="sp-card animate-slide-up" style={{ animationDelay: "0.18s" }}>
+            <div className="sp-card-head">
+              <div className="sp-card-icon" style={{ background: "linear-gradient(135deg, rgba(251, 146, 60, 0.2), rgba(251, 146, 60, 0.05))", color: "#fb923c", boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 10px -2px rgba(251, 146, 60, 0.3)" }}><VideoIcon /></div>
+              <div>
+                <h2 className="sp-card-title">视频生成 Provider</h2>
+                <p className="sp-card-desc">配置一个或多个视频生成服务，点击星标设为默认</p>
+              </div>
+            </div>
+            <div className="stack stack-gap-4">
+              {videoDrafts.length === 0 ? (
+                <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无视频 Provider 配置，点击下方按钮添加</p>
+              ) : (
+                videoDrafts.map((draft) => (
+                  <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingVideoId === draft.id ? "var(--space-4)" : 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setDefaultVideoProvider(defaultVideoProvider === draft.id ? "" : draft.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        title={defaultVideoProvider === draft.id ? "取消默认" : "设为默认"}
+                      >
+                        <StarIcon filled={defaultVideoProvider === draft.id} />
+                      </button>
+                      <span className="text-sm" style={{ fontWeight: 500, flex: 1 }}>{getProviderLabel(draft)}</span>
+                      <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                        {VIDEO_PROVIDER_LABELS[draft.provider as keyof typeof VIDEO_PROVIDER_LABELS] ?? String(draft.provider)}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingVideoId(editingVideoId === draft.id ? null : draft.id)}
+                      >
+                        {editingVideoId === draft.id ? "收起" : "编辑"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ color: "var(--danger-text)" }}
+                        onClick={() => removeVideoProvider(draft.id)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                    {editingVideoId === draft.id ? (
+                      <ProviderEntryForm
+                        draft={draft}
+                        onChange={(updated) => updateVideoDraft(draft.id, updated)}
+                        type="video"
+                      />
+                    ) : null}
+                  </div>
+                ))
+              )}
+              <button type="button" className="btn btn-secondary" onClick={addVideoProvider}>
+                + 添加视频 Provider
+              </button>
+            </div>
+          </section>
+
+          <div className="sp-save-area animate-slide-up" style={{ animationDelay: "0.21s" }}>
             <button className="btn btn-primary" type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || !displayName.trim()}>
               {updateMutation.isPending ? t("common.submitting") : t("settingsPages.profileSettings.saveAction")}
             </button>

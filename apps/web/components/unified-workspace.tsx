@@ -296,7 +296,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       return;
     }
 
-    function handleJobUpdated(event: RealtimeJobUpdatedEvent) {
+    async function handleJobUpdated(event: RealtimeJobUpdatedEvent) {
       if (event.projectId !== projectId) {
         return;
       }
@@ -309,8 +309,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       }
 
       if (event.job.status === "completed" || event.job.status === "failed") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+        ]);
       }
     }
 

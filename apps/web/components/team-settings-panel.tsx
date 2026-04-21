@@ -2,7 +2,7 @@
  * @fileoverview 团队设置面板
  * @module web/components
  *
- * 团队名称、审核策略、LLM 和图片生成配置管理。
+ * 团队名称、审核策略、LLM 和图片/视频 Provider 配置管理。
  */
 
 "use client";
@@ -15,15 +15,24 @@ import type {
   ImageGenerationProvider,
   LlmModelListResponse,
   LlmModelSummary,
+  ProviderEntry,
   TeamSettingsResponse,
   TeamSummary,
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../lib/api";
 import {
+  IMAGE_PROVIDER_LABELS,
+  VIDEO_PROVIDER_LABELS,
   buildImageGenerationConfigPayload,
+  buildProviderEntry,
+  createImageProviderDraft,
+  createVideoProviderDraft,
+  migrateImageGenerationConfig,
   toImageGenerationConfigDraft,
+  toProviderEntryDraft,
 } from "../lib/image-config";
+import type { ProviderEntryDraft } from "../lib/image-config";
 import { getReviewPolicyLabel, useI18n } from "../lib/i18n";
 import { buildLlmConfigPayload, toLlmConfigDraft } from "../lib/llm-config";
 import { queryKeys } from "../lib/query-keys";
@@ -31,6 +40,15 @@ import { ConfirmAction } from "./confirm-action";
 import { ErrorState } from "./error-state";
 import { InlineFeedback } from "./inline-feedback";
 import { LoadingSkeleton } from "./loading-skeleton";
+import { ProviderEntryForm } from "./provider-entry-form";
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill={filled ? "currentColor" : "none"} aria-hidden="true" style={{ color: filled ? "var(--warning)" : "var(--text-tertiary)" }}>
+      <path d="M8 1.5l1.85 3.75 4.15.6-3 2.93.71 4.12L8 10.87 4.29 12.9 5 8.78l-3-2.93 4.15-.6L8 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 export function TeamSettingsPanel() {
   const queryClient = useQueryClient();
@@ -44,6 +62,16 @@ export function TeamSettingsPanel() {
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [llmModel, setLlmModel] = useState("");
   const [llmStreamEnabled, setLlmStreamEnabled] = useState(false);
+
+  // --- Multi-provider state ---
+  const [imageDrafts, setImageDrafts] = useState<ProviderEntryDraft[]>([]);
+  const [videoDrafts, setVideoDrafts] = useState<ProviderEntryDraft[]>([]);
+  const [defaultImageProvider, setDefaultImageProvider] = useState<string>("");
+  const [defaultVideoProvider, setDefaultVideoProvider] = useState<string>("");
+  const [editingImageId, setEditingImageId] = useState<string | null>(null);
+  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+
+  // Legacy image config state (kept for backward-compat on save)
   const [imageProvider, setImageProvider] = useState<ImageGenerationProvider>("google-gemini");
   const [imageApiKey, setImageApiKey] = useState("");
   const [imageBaseUrl, setImageBaseUrl] = useState("");
@@ -56,6 +84,11 @@ export function TeamSettingsPanel() {
   const [comfyuiSamplerName, setComfyuiSamplerName] = useState("euler");
   const [comfyuiSteps, setComfyuiSteps] = useState(20);
   const [comfyuiCfgScale, setComfyuiCfgScale] = useState(8);
+  const [grokVideoModel, setGrokVideoModel] = useState("grok-imagine-1.0-video");
+  const [grokAspectRatio, setGrokAspectRatio] = useState("16:9");
+  const [grokVideoLength, setGrokVideoLength] = useState(6);
+  const [grokResolution, setGrokResolution] = useState<"SD" | "HD">("HD");
+
   const [availableModels, setAvailableModels] = useState<LlmModelSummary[]>([]);
   const [hasFetchedModels, setHasFetchedModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
@@ -88,27 +121,54 @@ export function TeamSettingsPanel() {
       return;
     }
 
-    const llmDraft = toLlmConfigDraft(teamQuery.data.llmConfig);
-    const imageDraft = toImageGenerationConfigDraft(teamQuery.data.imageGenerationConfig);
-    setName(teamQuery.data.name);
-    setDefaultReviewPolicy(teamQuery.data.defaultReviewPolicy);
+    const data = teamQuery.data;
+    const llmDraft = toLlmConfigDraft(data.llmConfig);
+    const imageDraft = toImageGenerationConfigDraft(data.imageGenerationConfig);
+
+    setName(data.name);
+    setDefaultReviewPolicy(data.defaultReviewPolicy);
     setLlmProvider(llmDraft.provider);
     setLlmApiKey(llmDraft.apiKey);
     setLlmBaseUrl(llmDraft.baseUrl);
     setLlmModel(llmDraft.model);
     setLlmStreamEnabled(llmDraft.stream);
+
+    // Load new multi-provider fields
+    if (data.imageProviders && data.imageProviders.length > 0) {
+      setImageDrafts(data.imageProviders.map(toProviderEntryDraft));
+      setDefaultImageProvider(data.defaultImageProvider ?? "");
+    } else {
+      const migrated = migrateImageGenerationConfig(data.imageGenerationConfig as ImageGenerationConfig | undefined);
+      setImageDrafts(migrated.imageProviders.map(toProviderEntryDraft));
+      setDefaultImageProvider(migrated.defaultImageProvider ?? "");
+    }
+
+    if (data.videoProviders && data.videoProviders.length > 0) {
+      setVideoDrafts(data.videoProviders.map(toProviderEntryDraft));
+      setDefaultVideoProvider(data.defaultVideoProvider ?? "");
+    } else {
+      const migrated = migrateImageGenerationConfig(data.imageGenerationConfig as ImageGenerationConfig | undefined);
+      setVideoDrafts(migrated.videoProviders.map(toProviderEntryDraft));
+      setDefaultVideoProvider(migrated.defaultVideoProvider ?? "");
+    }
+
+    // Legacy image config (kept for backward-compat)
     setImageProvider(imageDraft.provider);
     setImageApiKey(imageDraft.apiKey);
     setImageBaseUrl(imageDraft.baseUrl);
     setImageModel(imageDraft.model);
-    setSdSamplerName(teamQuery.data.imageGenerationConfig?.sdConfig?.samplerName ?? "DPM++ 2M Karras");
-    setSdSteps(teamQuery.data.imageGenerationConfig?.sdConfig?.steps ?? 20);
-    setSdCfgScale(teamQuery.data.imageGenerationConfig?.sdConfig?.cfgScale ?? 7);
-    setSdClipSkip(teamQuery.data.imageGenerationConfig?.sdConfig?.clipSkip ?? 1);
-    setComfyuiWorkflowJson(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.workflowJson ?? "");
-    setComfyuiSamplerName(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.samplerName ?? "euler");
-    setComfyuiSteps(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.steps ?? 20);
-    setComfyuiCfgScale(teamQuery.data.imageGenerationConfig?.comfyuiConfig?.cfgScale ?? 8);
+    setSdSamplerName(data.imageGenerationConfig?.sdConfig?.samplerName ?? "DPM++ 2M Karras");
+    setSdSteps(data.imageGenerationConfig?.sdConfig?.steps ?? 20);
+    setSdCfgScale(data.imageGenerationConfig?.sdConfig?.cfgScale ?? 7);
+    setSdClipSkip(data.imageGenerationConfig?.sdConfig?.clipSkip ?? 1);
+    setComfyuiWorkflowJson(data.imageGenerationConfig?.comfyuiConfig?.workflowJson ?? "");
+    setComfyuiSamplerName(data.imageGenerationConfig?.comfyuiConfig?.samplerName ?? "euler");
+    setComfyuiSteps(data.imageGenerationConfig?.comfyuiConfig?.steps ?? 20);
+    setComfyuiCfgScale(data.imageGenerationConfig?.comfyuiConfig?.cfgScale ?? 8);
+    setGrokVideoModel(data.imageGenerationConfig?.grokConfig?.videoModel ?? "grok-imagine-1.0-video");
+    setGrokAspectRatio(data.imageGenerationConfig?.grokConfig?.aspectRatio ?? "16:9");
+    setGrokVideoLength(data.imageGenerationConfig?.grokConfig?.videoLength ?? 6);
+    setGrokResolution(data.imageGenerationConfig?.grokConfig?.resolution ?? "HD");
   }, [teamQuery.data]);
 
   useEffect(() => {
@@ -125,6 +185,7 @@ export function TeamSettingsPanel() {
     stream: llmStreamEnabled,
   }, teamQuery.data?.llmConfig);
 
+  // Legacy image config payload (for backward-compat)
   const draftImageConfig: ImageGenerationConfig = {
     provider: imageProvider,
     apiKey: imageApiKey || undefined,
@@ -146,18 +207,49 @@ export function TeamSettingsPanel() {
         cfgScale: comfyuiCfgScale || undefined,
       }
     } : {}),
+    ...(imageProvider === "grok" ? {
+      grokConfig: {
+        videoModel: grokVideoModel || undefined,
+        aspectRatio: grokAspectRatio || undefined,
+        videoLength: grokVideoLength || undefined,
+        resolution: grokResolution || undefined,
+      }
+    } : {}),
   };
 
+  // Build backward-compat imageGenerationConfig from the default image provider
+  function buildLegacyImageConfig(): ImageGenerationConfig | undefined {
+    const defaultDraft = imageDrafts.find((d) => d.id === defaultImageProvider);
+    if (!defaultDraft) return buildImageGenerationConfigPayload(toImageGenerationConfigDraft(teamQuery.data?.imageGenerationConfig));
+    return {
+      provider: defaultDraft.provider as ImageGenerationProvider,
+      ...(defaultDraft.apiKey.trim() ? { apiKey: defaultDraft.apiKey.trim() } : {}),
+      ...(defaultDraft.baseUrl.trim() ? { baseUrl: defaultDraft.baseUrl.trim() } : {}),
+      ...(defaultDraft.model.trim() ? { model: defaultDraft.model.trim() } : {}),
+      ...(defaultDraft.provider === "stable-diffusion" && Object.values(defaultDraft.sdConfig as Record<string, unknown>).some((v) => v) ? { sdConfig: defaultDraft.sdConfig } : {}),
+      ...(defaultDraft.provider === "comfyui" && Object.values(defaultDraft.comfyuiConfig as Record<string, unknown>).some((v) => v) ? { comfyuiConfig: defaultDraft.comfyuiConfig } : {}),
+      ...(defaultDraft.provider === "grok" && Object.values(defaultDraft.grokConfig as Record<string, unknown>).some((v) => v) ? { grokConfig: defaultDraft.grokConfig } : {}),
+    };
+  }
+
   const updateMutation = useMutation({
-    mutationFn: () => apiFetch(`/teams/${selectedTeamId}`, {
-      method: "PATCH",
-      body: {
-        name,
-        defaultReviewPolicy,
-        llmConfig: draftLlmConfig,
-        imageGenerationConfig: draftImageConfig,
-      },
-    }),
+    mutationFn: () => {
+      const imageEntries = imageDrafts.map(buildProviderEntry);
+      const videoEntries = videoDrafts.map(buildProviderEntry);
+      return apiFetch(`/teams/${selectedTeamId}`, {
+        method: "PATCH",
+        body: {
+          name,
+          defaultReviewPolicy,
+          llmConfig: draftLlmConfig,
+          imageGenerationConfig: buildLegacyImageConfig(),
+          imageProviders: imageEntries,
+          videoProviders: videoEntries,
+          defaultImageProvider,
+          defaultVideoProvider,
+        },
+      });
+    },
     onSuccess: async () => {
       setFeedback({ message: t("settingsPages.teamSettings.saveSuccess"), error: null });
       await queryClient.invalidateQueries({ queryKey: queryKeys.teamSettings(selectedTeamId) });
@@ -206,6 +298,46 @@ export function TeamSettingsPanel() {
   const selectedCatalogModel = availableModels.some((model) => model.id === llmModel)
     ? llmModel
     : "";
+
+  // --- Provider list management helpers ---
+  function addImageProvider() {
+    const draft = createImageProviderDraft();
+    setImageDrafts((prev) => [...prev, draft]);
+    setEditingImageId(draft.id);
+  }
+
+  function addVideoProvider() {
+    const draft = createVideoProviderDraft();
+    setVideoDrafts((prev) => [...prev, draft]);
+    setEditingVideoId(draft.id);
+  }
+
+  function removeImageProvider(id: string) {
+    setImageDrafts((prev) => prev.filter((d) => d.id !== id));
+    if (defaultImageProvider === id) setDefaultImageProvider("");
+    if (editingImageId === id) setEditingImageId(null);
+  }
+
+  function removeVideoProvider(id: string) {
+    setVideoDrafts((prev) => prev.filter((d) => d.id !== id));
+    if (defaultVideoProvider === id) setDefaultVideoProvider("");
+    if (editingVideoId === id) setEditingVideoId(null);
+  }
+
+  function updateImageDraft(id: string, updated: ProviderEntryDraft) {
+    setImageDrafts((prev) => prev.map((d) => d.id === id ? updated : d));
+  }
+
+  function updateVideoDraft(id: string, updated: ProviderEntryDraft) {
+    setVideoDrafts((prev) => prev.map((d) => d.id === id ? updated : d));
+  }
+
+  function getProviderLabel(draft: ProviderEntryDraft): string {
+    if (draft.name.trim()) return draft.name.trim();
+    const imageLabel = IMAGE_PROVIDER_LABELS[draft.provider as ImageGenerationProvider];
+    const videoLabel = VIDEO_PROVIDER_LABELS[draft.provider as keyof typeof VIDEO_PROVIDER_LABELS];
+    return imageLabel ?? videoLabel ?? String(draft.provider);
+  }
 
   if (teamsQuery.isPending) {
     return <LoadingSkeleton variant="hero" rows={8} />;
@@ -271,6 +403,7 @@ export function TeamSettingsPanel() {
         <LoadingSkeleton rows={6} />
       ) : (
         <div className="stack stack-gap-6">
+          {/* --- 团队基本信息 --- */}
           <section className="team-section">
             <div className="team-section-header">
               <h2 className="team-section-title">
@@ -313,6 +446,7 @@ export function TeamSettingsPanel() {
             </div>
           </section>
 
+          {/* --- LLM 配置 --- */}
           <section className="team-section">
             <div className="team-section-header">
               <h2 className="team-section-title">
@@ -452,142 +586,129 @@ export function TeamSettingsPanel() {
             </div>
           </section>
 
+          {/* --- 图片 Provider 列表 --- */}
           <section className="team-section">
             <div className="team-section-header">
-              <h2 className="team-section-title">
-                {t("settingsPages.teamSettings.imageTitle")}
-              </h2>
-              <p className="team-section-desc">
-                {t("settingsPages.teamSettings.imageDescription")}
-              </p>
+              <h2 className="team-section-title">图片生成 Provider</h2>
+              <p className="team-section-desc">配置一个或多个图片生成服务，点击星标设为默认</p>
             </div>
 
             <div className="team-form-card">
-              <div className="stack stack-gap-6">
-                <div className="team-split-row">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="team-image-provider">
-                      {t("settingsPages.teamSettings.imageProviderLabel")}
-                    </label>
-                    <select
-                      id="team-image-provider"
-                      className="input"
-                      value={imageProvider}
-                      onChange={(event) => setImageProvider(event.target.value as ImageGenerationProvider)}
-                    >
-                      <option value="google-gemini">{t("settingsPages.teamSettings.imageProviderGoogle")}</option>
-                      <option value="openai-compatible">{t("settingsPages.teamSettings.imageProviderOpenAi")}</option>
-                      <option value="stable-diffusion">{t("settingsPages.teamSettings.imageProviderSDWebUI")}</option>
-                      <option value="comfyui">{t("settingsPages.teamSettings.imageProviderComfyUI")}</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="team-image-api-key">
-                      {t("settingsPages.teamSettings.imageApiKeyLabel")}
-                    </label>
-                    <input
-                      id="team-image-api-key"
-                      className="input"
-                      type="password"
-                      placeholder={t("settingsPages.teamSettings.imageApiKeyPlaceholder")}
-                      value={imageApiKey}
-                      onChange={(event) => setImageApiKey(event.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {imageProvider === "openai-compatible" || imageProvider === "stable-diffusion" || imageProvider === "comfyui" ? (
-                  <div className="team-split-row">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-image-base-url">
-                        {t("settingsPages.teamSettings.imageBaseUrlLabel")}
-                      </label>
-                      <input
-                        id="team-image-base-url"
-                        className="input"
-                        placeholder={t("settingsPages.teamSettings.imageBaseUrlPlaceholder")}
-                        value={imageBaseUrl}
-                        onChange={(event) => setImageBaseUrl(event.target.value)}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-image-model">
-                        {t("settingsPages.teamSettings.imageModelLabel")}
-                      </label>
-                      <input
-                        id="team-image-model"
-                        className="input"
-                        placeholder={t("settingsPages.teamSettings.imageModelPlaceholder")}
-                        value={imageModel}
-                        onChange={(event) => setImageModel(event.target.value)}
-                      />
-                    </div>
-                  </div>
+              <div className="stack stack-gap-4">
+                {imageDrafts.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无图片 Provider 配置，点击下方按钮添加</p>
                 ) : (
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="team-image-model">
-                      {t("settingsPages.teamSettings.imageModelLabel")}
-                    </label>
-                    <input
-                      id="team-image-model"
-                      className="input"
-                      placeholder={t("settingsPages.teamSettings.imageModelPlaceholder")}
-                      value={imageModel}
-                      onChange={(event) => setImageModel(event.target.value)}
-                    />
-                  </div>
+                  imageDrafts.map((draft) => (
+                    <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingImageId === draft.id ? "var(--space-4)" : 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setDefaultImageProvider(defaultImageProvider === draft.id ? "" : draft.id)}
+                          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                          title={defaultImageProvider === draft.id ? "取消默认" : "设为默认"}
+                        >
+                          <StarIcon filled={defaultImageProvider === draft.id} />
+                        </button>
+                        <span className="text-sm" style={{ fontWeight: 500, flex: 1 }}>{getProviderLabel(draft)}</span>
+                        <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                          {IMAGE_PROVIDER_LABELS[draft.provider as ImageGenerationProvider] ?? String(draft.provider)}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setEditingImageId(editingImageId === draft.id ? null : draft.id)}
+                        >
+                          {editingImageId === draft.id ? "收起" : "编辑"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ color: "var(--danger-text)" }}
+                          onClick={() => removeImageProvider(draft.id)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                      {editingImageId === draft.id ? (
+                        <ProviderEntryForm
+                          draft={draft}
+                          onChange={(updated) => updateImageDraft(draft.id, updated)}
+                          type="image"
+                          maskedApiKey
+                        />
+                      ) : null}
+                    </div>
+                  ))
                 )}
-                {imageProvider === "stable-diffusion" ? (
-                  <div className="team-split-row">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-sd-sampler">{t("settingsPages.teamSettings.imageSdSamplerLabel")}</label>
-                      <input id="team-sd-sampler" className="input" value={sdSamplerName} onChange={(event) => setSdSamplerName(event.target.value)} />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-sd-steps">{t("settingsPages.teamSettings.imageSdStepsLabel")}</label>
-                      <input id="team-sd-steps" className="input" type="number" value={sdSteps} onChange={(event) => setSdSteps(Number(event.target.value))} />
-                    </div>
-                  </div>
-                ) : null}
-                {imageProvider === "stable-diffusion" ? (
-                  <div className="team-split-row">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-sd-cfg-scale">{t("settingsPages.teamSettings.imageSdCfgScaleLabel")}</label>
-                      <input id="team-sd-cfg-scale" className="input" type="number" value={sdCfgScale} onChange={(event) => setSdCfgScale(Number(event.target.value))} />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-sd-clip-skip">{t("settingsPages.teamSettings.imageSdClipSkipLabel")}</label>
-                      <input id="team-sd-clip-skip" className="input" type="number" value={sdClipSkip} onChange={(event) => setSdClipSkip(Number(event.target.value))} />
-                    </div>
-                  </div>
-                ) : null}
-                {imageProvider === "comfyui" ? (
-                  <>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-comfyui-workflow">{t("settingsPages.teamSettings.imageComfyuiWorkflowLabel")}</label>
-                      <textarea id="team-comfyui-workflow" className="input" rows={6} placeholder={t("settingsPages.teamSettings.imageComfyuiWorkflowPlaceholder")} value={comfyuiWorkflowJson} onChange={(event) => setComfyuiWorkflowJson(event.target.value)} />
-                    </div>
-                    <div className="team-split-row">
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="team-comfyui-sampler">{t("settingsPages.teamSettings.imageComfyuiSamplerLabel")}</label>
-                        <input id="team-comfyui-sampler" className="input" value={comfyuiSamplerName} onChange={(event) => setComfyuiSamplerName(event.target.value)} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="team-comfyui-steps">{t("settingsPages.teamSettings.imageComfyuiStepsLabel")}</label>
-                        <input id="team-comfyui-steps" className="input" type="number" value={comfyuiSteps} onChange={(event) => setComfyuiSteps(Number(event.target.value))} />
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="team-comfyui-cfg-scale">{t("settingsPages.teamSettings.imageComfyuiCfgScaleLabel")}</label>
-                      <input id="team-comfyui-cfg-scale" className="input" type="number" value={comfyuiCfgScale} onChange={(event) => setComfyuiCfgScale(Number(event.target.value))} />
-                    </div>
-                  </>
-                ) : null}
+                <button type="button" className="btn btn-secondary" onClick={addImageProvider}>
+                  + 添加图片 Provider
+                </button>
               </div>
             </div>
           </section>
 
+          {/* --- 视频 Provider 列表 --- */}
+          <section className="team-section">
+            <div className="team-section-header">
+              <h2 className="team-section-title">视频生成 Provider</h2>
+              <p className="team-section-desc">配置一个或多个视频生成服务，点击星标设为默认</p>
+            </div>
+
+            <div className="team-form-card">
+              <div className="stack stack-gap-4">
+                {videoDrafts.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无视频 Provider 配置，点击下方按钮添加</p>
+                ) : (
+                  videoDrafts.map((draft) => (
+                    <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingVideoId === draft.id ? "var(--space-4)" : 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setDefaultVideoProvider(defaultVideoProvider === draft.id ? "" : draft.id)}
+                          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                          title={defaultVideoProvider === draft.id ? "取消默认" : "设为默认"}
+                        >
+                          <StarIcon filled={defaultVideoProvider === draft.id} />
+                        </button>
+                        <span className="text-sm" style={{ fontWeight: 500, flex: 1 }}>{getProviderLabel(draft)}</span>
+                        <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                          {VIDEO_PROVIDER_LABELS[draft.provider as keyof typeof VIDEO_PROVIDER_LABELS] ?? String(draft.provider)}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setEditingVideoId(editingVideoId === draft.id ? null : draft.id)}
+                        >
+                          {editingVideoId === draft.id ? "收起" : "编辑"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ color: "var(--danger-text)" }}
+                          onClick={() => removeVideoProvider(draft.id)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                      {editingVideoId === draft.id ? (
+                        <ProviderEntryForm
+                          draft={draft}
+                          onChange={(updated) => updateVideoDraft(draft.id, updated)}
+                          type="video"
+                          maskedApiKey
+                        />
+                      ) : null}
+                    </div>
+                  ))
+                )}
+                <button type="button" className="btn btn-secondary" onClick={addVideoProvider}>
+                  + 添加视频 Provider
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* --- 团队摘要 --- */}
           <section className="team-section">
             <div className="team-section-header">
               <h2 className="team-section-title">
