@@ -64,6 +64,7 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
   const [activeTab, setActiveTab] = useState<AssetTab>("video");
   const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allAssets = extractAssets(data);
@@ -92,6 +93,7 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
+    setUploadError(null);
 
     try {
       const { asset, target } = await apiFetch<{ asset: { id: string }; target: { driver: string; key: string; url?: string; publicUrl?: string } }>(
@@ -110,7 +112,8 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
       const uploadUrl = target.driver === "local"
         ? `/api/uploads/direct/${target.key}`
         : target.url;
-      await fetch(uploadUrl!, { method: "PUT", body: file });
+      if (!uploadUrl) throw new Error("No upload URL returned");
+      await fetch(uploadUrl, { method: "PUT", body: file });
 
       await apiFetch(`/projects/${projectId}/assets`, {
         method: "POST",
@@ -127,7 +130,7 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
 
       onRefresh();
     } catch (err) {
-      console.error("Upload failed:", err);
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -253,6 +256,9 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
         >
           {isUploading ? "..." : t("projectWorkspace.mediaLibrary.upload")}
         </button>
+        {uploadError && (
+          <div style={{ color: "var(--color-red-600)", fontSize: 11, marginTop: 4 }}>{uploadError}</div>
+        )}
       </div>
     </div>
   );

@@ -2277,6 +2277,16 @@ export class WorkspaceService {
       sizeInBytes: number;
     },
   ) {
+    const actor = await this.getActor(userId, projectId);
+    if (!canEditProject(actor)) {
+      throw new ForbiddenException("You do not have permission to register assets");
+    }
+
+    const validTypes: string[] = ["video", "audio", "subtitle", "image"];
+    if (!validTypes.includes(input.type)) {
+      throw new BadRequestException(`Invalid asset type: ${input.type}`);
+    }
+
     const document = await this.ensureDocumentForProject({
       projectId,
       type: input.type as any,

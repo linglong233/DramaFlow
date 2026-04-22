@@ -265,7 +265,13 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
     e.preventDefault();
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
-    const asset: { id?: string; type?: string; title?: string; assetUrl?: string; duration?: number } = JSON.parse(raw);
+    let asset: { id?: string; type?: string; title?: string; assetUrl?: string; duration?: number };
+    try {
+      asset = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!asset || typeof asset !== "object") return;
 
     const scrollEl = (e.currentTarget as HTMLElement).closest(".timeline-scroll");
     const rect = scrollEl?.getBoundingClientRect();
@@ -281,7 +287,7 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
         clips: [
           ...track.clips,
           {
-            id: `clip-${Date.now()}`,
+            id: `clip-${crypto.randomUUID().slice(0, 8)}`,
             startTime,
             duration,
             inPoint: 0,
