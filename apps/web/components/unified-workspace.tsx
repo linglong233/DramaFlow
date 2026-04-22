@@ -69,6 +69,8 @@ const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
   timeline: "timeline",
 };
 
+const VIRTUAL_VIDEO_DOC_ID = "__video_timeline__";
+
 interface DocumentWithVersions {
   id: string;
   type: string;
@@ -324,9 +326,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, socket]);
 
   const documents: DocumentWithVersions[] = useMemo(() => {
-    const docTypes = new Set(["script", "storyboard", "video", "world_bible"]);
+    const docTypes = new Set(["script", "storyboard", "world_bible"]);
     const typeOrder: Record<string, number> = { world_bible: 0, script: 1, storyboard: 2, video: 3 };
-    return rawDocuments
+    const realDocs = rawDocuments
       .filter((doc) => docTypes.has(doc.type))
       .sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99))
       .map((doc) => {
@@ -342,6 +344,18 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         versions: docVersions,
       };
     });
+
+    // Append virtual video entry that navigates to timeline mode
+    realDocs.push({
+      id: VIRTUAL_VIDEO_DOC_ID,
+      type: "video",
+      title: "视频",
+      shotId: undefined,
+      currentVersionId: undefined,
+      versions: [],
+    });
+
+    return realDocs;
   }, [rawDocuments, rawVersions]);
 
   // Auto-select first document/version
@@ -659,6 +673,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 selectedDocId={selectedDocId || documents[0]?.id || ""}
                 selectedVersionId={selectedVersionId}
                 onSelectDoc={(id) => {
+                  if (id === VIRTUAL_VIDEO_DOC_ID) {
+                    handleModeChange("timeline");
+                    return;
+                  }
                   setSelectedDocId(id);
                   if (docSubTab === "edit") setDocSubTab("view");
                   const doc = documents.find((d) => d.id === id);
@@ -850,6 +868,11 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 selectedDocId={selectedDocId || documents[0]?.id || ""}
                 selectedVersionId={selectedVersionId}
                 onSelectDoc={(id) => {
+                  if (id === VIRTUAL_VIDEO_DOC_ID) {
+                    handleModeChange("timeline");
+                    setLeftDrawerOpen(false);
+                    return;
+                  }
                   setSelectedDocId(id);
                   if (isEditing) setIsEditing(false);
                   const doc = documents.find((d) => d.id === id);
