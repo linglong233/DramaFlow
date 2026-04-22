@@ -21,6 +21,7 @@ interface AssetItem {
   assetUrl?: string;
   mimeType?: string;
   duration?: number;
+  textContent?: string;
   source: "ai" | "upload";
 }
 
@@ -51,6 +52,7 @@ function extractAssets(data: ProjectWorkspacePayload): AssetItem[] {
       assetUrl: (content?.assetUrl as string) ?? undefined,
       mimeType: (content?.mimeType as string) ?? undefined,
       duration: (content?.duration as number) ?? undefined,
+      textContent: (content?.text as string) ?? (typeof version?.content === "string" ? version.content as string : undefined),
       source: (content?.provider as string) === "upload" ? "upload" : "ai",
     });
   }
@@ -224,6 +226,11 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
             )}
             {previewAsset.type === "image" && previewAsset.assetUrl && (
               <img src={previewAsset.assetUrl} alt={previewAsset.title} style={{ width: "100%" }} />
+            )}
+            {previewAsset.type === "subtitle" && previewAsset.textContent && (
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 120, overflow: "auto" }}>
+                {previewAsset.textContent}
+              </div>
             )}
           </div>
         </div>
