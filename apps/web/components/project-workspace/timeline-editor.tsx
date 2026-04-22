@@ -14,6 +14,7 @@ import type { TimelineRecord, TimelineTrackRecord, TimelineClipRecord, ExportRec
 import { useI18n } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
 import { InlineFeedback } from "../inline-feedback";
+import { MediaLibrary } from "./media-library";
 
 /* ── Types ── */
 interface TimelineEditorProps {
@@ -110,6 +111,7 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
   const [exportFps, setExportFps] = useState(30);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showMockConfirm, setShowMockConfirm] = useState(false);
+  const [mediaPanelOpen, setMediaPanelOpen] = useState(true);
 
   // Timeline data from parent or API
   const timeline: TimelineRecord | undefined = data.timeline as TimelineRecord | undefined;
@@ -258,6 +260,48 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
     });
   };
 
+  // Drop handler for media assets onto track lanes
+  function handleTrackDrop(e: React.DragEvent, trackType: string) {
+    e.preventDefault();
+    const raw = e.dataTransfer.getData("application/json");
+    if (!raw) return;
+    const asset: { id?: string; type?: string; title?: string; assetUrl?: string; duration?: number } = JSON.parse(raw);
+
+    const scrollEl = (e.currentTarget as HTMLElement).closest(".timeline-scroll");
+    const rect = scrollEl?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left + (scrollEl?.scrollLeft ?? 0);
+    const startTime = Math.max(0, x / zoom);
+    const duration = asset.duration ?? 5;
+
+    const updatedTracks = tracks.map((track) => {
+      if (track.type !== trackType) return track;
+      return {
+        ...track,
+        clips: [
+          ...track.clips,
+          {
+            id: `clip-${Date.now()}`,
+            startTime,
+            duration,
+            inPoint: 0,
+            outPoint: duration,
+            assetUrl: asset.assetUrl,
+            label: asset.title ?? "",
+            sortOrder: track.clips.length,
+          },
+        ],
+      };
+    });
+
+    saveMutation.mutate({
+      duration: totalDuration,
+      fps: timeline?.fps ?? 30,
+      resolution: timeline?.resolution ?? "1080x1920",
+      tracks: updatedTracks,
+    });
+  }
+
   return (
     <div className="timeline-editor">
       {/* Toolbar */}
@@ -309,6 +353,17 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
         </div>
 
         <div className="timeline-toolbar-right">
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            onClick={() => setMediaPanelOpen(!mediaPanelOpen)}
+            title={mediaPanelOpen ? "Hide media library" : "Show media library"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+            </svg>
+          </button>
           <button className="timeline-btn timeline-btn-icon" onClick={() => handleZoom(-10)} title="缩小">
             <ZoomOutIcon />
           </button>
@@ -328,6 +383,9 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
 
       <InlineFeedback message={feedback.message} error={feedback.error} />
 
+      <div className="timeline-content-row">
+        {mediaPanelOpen && <MediaLibrary projectId={projectId} data={data} onRefresh={onRefresh} />}
+        <div className="timeline-editor-main" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
       {/* Timeline body */}
       <div className="timeline-body">
         {/* Track headers */}
@@ -382,6 +440,8 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
                 key={track.id}
                 className={`timeline-track-lane ${track.isMuted ? "muted" : ""}`}
                 style={{ height: TRACK_HEIGHT }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+                onDrop={(e) => handleTrackDrop(e, track.type)}
               >
                 {track.clips.map((clip) => (
                   <div
@@ -557,6 +617,8 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
           </div>
         </div>
       ) : null}
+        </div>
+      </div>
     </div>
   );
 }
