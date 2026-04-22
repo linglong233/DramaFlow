@@ -364,6 +364,22 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     onError: setMutationError,
   });
 
+  const batchSceneTts = useMutation({
+    mutationFn: async () => {
+      const sceneShots = safeContent.shots.filter((s) => s.sceneId === selectedSceneId);
+      const eligibleShotIds = sceneShots.filter((s) => s.dialogue?.trim() && s.characterIds?.[0]).map((s) => s.id);
+      return apiFetch(`/scenes/${selectedSceneId}/batch-tts-jobs`, {
+        method: "POST",
+        body: { projectId: requireProjectId(), shotIds: eligibleShotIds },
+      });
+    },
+    onSuccess: async () => {
+      setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "TTS", jobId: "queued" }), error: null });
+      await invalidateWorkspace();
+    },
+    onError: setMutationError,
+  });
+
   const adoptVersion = useMutation({
     mutationFn: async ({ documentId, versionId }: { documentId: string; versionId: string }) => apiFetch(`/documents/${documentId}/adopt-version`, {
       method: "POST",
@@ -401,6 +417,9 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           const firstShot = visibleShots.find((s) => s.sceneId === sceneId);
           if (firstShot) setSelectedShotId(firstShot.id);
         }}
+        onBatchSceneTts={() => batchSceneTts.mutate()}
+        isBatchTtsPending={batchSceneTts.isPending}
+        hasEligibleTtsShots={safeContent.shots.filter((s) => s.sceneId === selectedSceneId).some((s) => s.dialogue?.trim() && s.characterIds?.[0])}
       />
 
       {/* Card grid */}

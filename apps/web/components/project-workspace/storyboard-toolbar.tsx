@@ -36,6 +36,9 @@ interface Props {
   sceneGroups: SceneGroup[];
   selectedSceneId: string;
   onSceneSelect: (sceneId: string) => void;
+  onBatchSceneTts: () => void;
+  isBatchTtsPending: boolean;
+  hasEligibleTtsShots: boolean;
 }
 
 function ChevronDownIcon() {
@@ -79,6 +82,9 @@ export function StoryboardToolbar({
   sceneGroups,
   selectedSceneId,
   onSceneSelect,
+  onBatchSceneTts,
+  isBatchTtsPending,
+  hasEligibleTtsShots,
 }: Props) {
   const { t, locale } = useI18n();
   const isZh = locale !== "en";
@@ -230,6 +236,17 @@ export function StoryboardToolbar({
                   {isBatchPending
                     ? t("common.submitting")
                     : t("projectWorkspace.media.batchGenerateMissingImages") || "Batch generate images"}
+                </button>
+                <button
+                  className="swb-toolbar__dropdown-item"
+                  type="button"
+                  disabled={isBatchTtsPending || !hasEligibleTtsShots}
+                  onClick={() => {
+                    onBatchSceneTts();
+                    setBatchDropdownOpen(false);
+                  }}
+                >
+                  {isBatchTtsPending ? t("common.submitting") : t("storyboardEditor.batchSceneTts") || "Batch generate scene TTS"}
                 </button>
               </div>
             )}

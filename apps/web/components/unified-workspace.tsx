@@ -42,7 +42,6 @@ import { VersionDiffView } from "./project-workspace/version-diff-view";
 import { RichScriptEditor } from "./project-workspace/rich-script-editor";
 import { StoryboardEditor } from "./project-workspace/storyboard-editor";
 import { TextGeneratorPanel } from "./project-workspace/text-generator-panel";
-import { MediaCanvasPanel } from "./project-workspace/media-canvas-panel";
 import { JobStatusBar } from "./project-workspace/job-status-bar";
 import { RightContextPanel } from "./project-workspace/right-context-panel";
 import { ReviewPolicySwitcher } from "./review-policy-switcher";
@@ -52,8 +51,8 @@ import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { useRealtime } from "./realtime-provider";
 
-// Workspace modes: document (with sub-tabs: view/edit/generate), media, info, tasks, timeline
-type WorkspaceMode = "document" | "media" | "info" | "tasks" | "timeline";
+// Workspace modes: document (with sub-tabs: view/edit/generate), info, tasks, timeline
+type WorkspaceMode = "document" | "info" | "tasks" | "timeline";
 
 // Sub-tabs within document mode
 type DocSubTab = "view" | "edit" | "generate";
@@ -64,7 +63,6 @@ const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
   edit: "document",
   document: "document",
   generate: "document",
-  media: "media",
   info: "info",
   worldbible: "document",
   tasks: "tasks",
@@ -110,16 +108,6 @@ function SparkleIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <path d="M7 1l1.5 3.5L12 6l-3.5 1.5L7 11 5.5 7.5 2 6l3.5-1.5L7 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function MediaIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <rect x="1.5" y="2.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-      <circle cx="5" cy="6" r="1.2" stroke="currentColor" strokeWidth="1" />
-      <path d="M1.5 9.5l3-2.5 2 2 3-3 3 3" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -489,7 +477,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const modeConfig = [
     { key: "info" as const, label: t("projectWorkspace.workspace.modeInfo"), icon: InfoIcon },
     { key: "document" as const, label: t("projectWorkspace.workspace.modeDocument"), icon: DocumentIcon },
-    { key: "media" as const, label: t("projectWorkspace.workspace.modeMedia"), icon: MediaIcon },
     { key: "tasks" as const, label: t("projectWorkspace.workspace.modeTasks"), icon: TaskIcon },
     { key: "timeline" as const, label: t("projectWorkspace.workspace.modeTimeline"), icon: TimelineIcon },
   ];
@@ -825,9 +812,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   <TextGeneratorPanel projectId={projectId} project={payload} onEditResult={handleEditResult} />
                 </div>
 
-                {mode === "media" && (
-                  <MediaCanvasPanel projectId={projectId} project={payload} />
-                )}
               </div>
             </div>
           </div>
