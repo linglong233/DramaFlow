@@ -544,6 +544,15 @@ export const zhCNMessages = {
       submitImageAction: "提交生图任务",
       submitVideoAction: "提交生视频任务"
     },
+    mediaLibrary: {
+      title: "素材库",
+      tabs: { video: "视频", audio: "音频", subtitle: "字幕", image: "图片" },
+      upload: "上传素材",
+      empty: "暂无素材",
+      sourceAI: "AI",
+      sourceUpload: "上传",
+      preview: "预览",
+    },
     collaboration: {
       teamTitle: "项目团队上下文",
       teamDescription: "先确认所属团队和继承的审核节奏，再给项目分配具体协作者。",
@@ -1743,6 +1752,15 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       durationLabel: "Video duration (seconds)",
       submitImageAction: "Queue image job",
       submitVideoAction: "Queue video job"
+    },
+    mediaLibrary: {
+      title: "Media Library",
+      tabs: { video: "Video", audio: "Audio", subtitle: "Subtitle", image: "Image" },
+      upload: "Upload",
+      empty: "No assets",
+      sourceAI: "AI",
+      sourceUpload: "Upload",
+      preview: "Preview",
     },
     collaboration: {
       teamTitle: "Project Team Context",
