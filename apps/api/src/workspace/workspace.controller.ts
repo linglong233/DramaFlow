@@ -453,6 +453,27 @@ export class WorkspaceController {
     return this.workspaceService.updateCharacterVoice(user.id, projectId, characterId, body);
   }
 
+  @Post("projects/:id/assets")
+  registerAsset(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: {
+      type: string;
+      title: string;
+      filename: string;
+      assetId: string;
+      assetUrl: string;
+      mimeType: string;
+      sizeInBytes: number;
+    },
+  ) {
+    return this.workspaceService.registerProjectAsset(
+      projectId,
+      user.id,
+      body,
+    );
+  }
+
   // ===== 导出 =====
 
   @Get("projects/:id/exports")

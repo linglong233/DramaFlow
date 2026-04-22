@@ -2264,6 +2264,50 @@ export class WorkspaceService {
     });
   }
 
+  async registerProjectAsset(
+    projectId: string,
+    userId: string,
+    input: {
+      type: string;
+      title: string;
+      filename: string;
+      assetId: string;
+      assetUrl: string;
+      mimeType: string;
+      sizeInBytes: number;
+    },
+  ) {
+    const document = await this.ensureDocumentForProject({
+      projectId,
+      type: input.type as any,
+      title: input.title,
+      createdBy: userId,
+    });
+
+    const version = await this.createVersionForDocument({
+      documentId: document.id,
+      title: input.title,
+      content: {
+        prompt: "",
+        assetId: input.assetId,
+        assetUrl: input.assetUrl,
+        mimeType: input.mimeType,
+        provider: "upload",
+        mode: "upload",
+        note: "用户上传",
+        parameters: {},
+      },
+      metadata: {
+        source: "media-library-upload",
+        filename: input.filename,
+        sizeInBytes: input.sizeInBytes,
+      },
+      createdBy: userId,
+    });
+
+    return { document, version };
+  }
+
   async updateCharacterVoice(
     userId: string,
     projectId: string,
