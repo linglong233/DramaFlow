@@ -327,7 +327,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   const documents: DocumentWithVersions[] = useMemo(() => {
     const docTypes = new Set(["script", "storyboard", "world_bible"]);
-    const typeOrder: Record<string, number> = { world_bible: 0, script: 1, storyboard: 2, video: 3 };
+    const typeOrder: Record<string, number> = { world_bible: 0, script: 1, storyboard: 2 };
     const realDocs = rawDocuments
       .filter((doc) => docTypes.has(doc.type))
       .sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99))
@@ -349,7 +349,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     realDocs.push({
       id: VIRTUAL_VIDEO_DOC_ID,
       type: "video",
-      title: "视频",
+      title: "",
       shotId: undefined,
       currentVersionId: undefined,
       versions: [],
@@ -358,17 +358,18 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     return realDocs;
   }, [rawDocuments, rawVersions]);
 
-  // Auto-select first document/version
+  // Auto-select first document/version (skip virtual video entry)
   useEffect(() => {
-    if (!documents.length) return;
-    const activeDoc = selectedDocId ? documents.find((d) => d.id === selectedDocId) : documents[0];
-    if (!activeDoc) return;
+    const realDocs = documents.filter((d) => d.id !== VIRTUAL_VIDEO_DOC_ID);
+    if (!realDocs.length) return;
+    const activeDoc = selectedDocId ? documents.find((d) => d.id === selectedDocId) : realDocs[0];
+    if (!activeDoc || activeDoc.id === VIRTUAL_VIDEO_DOC_ID) return;
     if (!selectedDocId) setSelectedDocId(activeDoc.id);
     if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.versions[0].id);
   }, [documents, selectedDocId, selectedVersionId]);
 
   const selectedDoc = useMemo(
-    () => documents.find((d) => d.id === selectedDocId) ?? documents[0] ?? null,
+    () => documents.find((d) => d.id === selectedDocId) ?? documents.find((d) => d.id !== VIRTUAL_VIDEO_DOC_ID) ?? null,
     [documents, selectedDocId],
   );
 
