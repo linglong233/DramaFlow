@@ -203,10 +203,10 @@ export function ShotDetailDrawer({
   const currentVoiceName = (state?.currentAudio?.content as MediaVersionContent | undefined)?.voiceName ?? selectedVoice?.voiceName;
 
   const tabLabels: { key: DrawerTab; label: string }[] = [
-    { key: "text", label: "Text" },
-    { key: "media", label: "Media" },
-    { key: "prompts", label: "Prompts" },
-    { key: "tts", label: "TTS" },
+    { key: "text", label: t("shotDetailDrawer.tabText") },
+    { key: "media", label: t("shotDetailDrawer.tabMedia") },
+    { key: "prompts", label: t("shotDetailDrawer.tabPrompts") },
+    { key: "tts", label: t("shotDetailDrawer.tabTts") },
   ];
 
   function renderField(label: string, value: string, field: keyof StoryboardShot, rows = 3) {
@@ -279,7 +279,7 @@ export function ShotDetailDrawer({
                   disabled={!canMutateProject || isAdoptPending || adopted}
                   onClick={() => documentId && onAdoptVersion(documentId, candidate.id)}
                 >
-                  {adopted ? "Adopted" : "Adopt"}
+                  {adopted ? t("shotDetailDrawer.adopted") : t("shotDetailDrawer.adopt")}
                 </button>
               </div>
             );
@@ -338,17 +338,17 @@ export function ShotDetailDrawer({
 
         {/* Text fields */}
         <div className="drawer-section">
-          {renderField(lang !== "en" ? "画面描述" : "Visual", shot.visualDescription, "visualDescription", 4)}
-          {renderField(lang !== "en" ? "动作描述" : "Action", shot.actionDescription ?? "", "actionDescription", 3)}
-          {renderField(t("storyboardEditor.dialoguePlaceholder") || "Dialogue", shot.dialogue ?? "", "dialogue", 3)}
-          {renderField(t("storyboardEditor.soundDesignPlaceholder") || "Sound", shot.soundDesign ?? "", "soundDesign", 2)}
-          {renderField("Notes", shot.notes ?? "", "notes", 2)}
+          {renderField(t("shotReference.visualLabel"), shot.visualDescription, "visualDescription", 4)}
+          {renderField(t("shotReference.actionLabel"), shot.actionDescription ?? "", "actionDescription", 3)}
+          {renderField(t("storyboardEditor.dialogueLabel"), shot.dialogue ?? "", "dialogue", 3)}
+          {renderField(t("storyboardEditor.soundDesignLabel"), shot.soundDesign ?? "", "soundDesign", 2)}
+          {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
         </div>
 
         {/* Characters */}
         <div className="drawer-section">
           <label className="drawer-field">
-            <span className="drawer-field__label">Characters</span>
+            <span className="drawer-field__label">{t("shotDetailDrawer.charactersLabel")}</span>
             {editable ? (
               <input className="input" value={shot.characterIds?.join(", ") ?? ""} onChange={(e) => onShotUpdate(shot.id, { characterIds: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
             ) : (
@@ -367,7 +367,7 @@ export function ShotDetailDrawer({
       <div className="drawer-scroll">
         {/* Preview */}
         <div className="drawer-section">
-          <h4 className="drawer-section__title">Preview</h4>
+          <h4 className="drawer-section__title">{t("shotDetailDrawer.previewTitle")}</h4>
           <div className="drawer-preview">
             {currentVideoUrl ? (
               <video controls playsInline className="drawer-preview__media">
@@ -376,7 +376,7 @@ export function ShotDetailDrawer({
             ) : currentImageUrl ? (
               <img className="drawer-preview__media" src={currentImageUrl} alt={shot.shotLabel} />
             ) : (
-              <div className="drawer-preview__empty">No media adopted yet.</div>
+              <div className="drawer-preview__empty">{t("shotDetailDrawer.noMediaYet")}</div>
             )}
           </div>
           {currentAudioUrl && <audio controls src={currentAudioUrl} className="drawer-audio-player" />}
@@ -385,10 +385,10 @@ export function ShotDetailDrawer({
         {/* Generate buttons */}
         {canUseProject && (
           <div className="drawer-section">
-            <h4 className="drawer-section__title">Generate</h4>
+            <h4 className="drawer-section__title">{t("shotDetailDrawer.generateTitle")}</h4>
             <div className="drawer-actions">
               <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
-                {isImagePending ? t("common.submitting") : "Generate Image"}
+                {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
               </button>
               <ProviderSelector
                 type="image"
@@ -398,7 +398,7 @@ export function ShotDetailDrawer({
                 onChange={(id) => onSelectedImageProviderChange?.(id)}
               />
               <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
-                {isVideoPending ? t("common.submitting") : "Generate Video"}
+                {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
               </button>
               <ProviderSelector
                 type="video"
@@ -414,18 +414,18 @@ export function ShotDetailDrawer({
         {/* Job status */}
         {canUseProject && (
           <div className="drawer-section">
-            <h4 className="drawer-section__title">Job Status</h4>
-            {renderJobRow("Image", state?.jobs.image)}
-            {renderJobRow("Video", state?.jobs.video)}
-            {renderJobRow("TTS", state?.jobs.tts)}
+            <h4 className="drawer-section__title">{t("shotDetailDrawer.jobStatusTitle")}</h4>
+            {renderJobRow(t("shotDetailDrawer.imageJob"), state?.jobs.image)}
+            {renderJobRow(t("shotDetailDrawer.videoJob"), state?.jobs.video)}
+            {renderJobRow(t("shotDetailDrawer.ttsJob"), state?.jobs.tts)}
           </div>
         )}
 
         {/* Candidates */}
         {canUseProject && (
           <>
-            {renderCandidates("Image Candidates", state?.imageCandidates ?? [], state?.imageDocument?.currentVersionId, state?.imageDocument?.id)}
-            {renderCandidates("Video Candidates", state?.videoCandidates ?? [], state?.videoDocument?.currentVersionId, state?.videoDocument?.id)}
+            {renderCandidates(t("shotDetailDrawer.imageCandidates"), state?.imageCandidates ?? [], state?.imageDocument?.currentVersionId, state?.imageDocument?.id)}
+            {renderCandidates(t("shotDetailDrawer.videoCandidates"), state?.videoCandidates ?? [], state?.videoDocument?.currentVersionId, state?.videoDocument?.id)}
           </>
         )}
       </div>
@@ -436,14 +436,14 @@ export function ShotDetailDrawer({
     return (
       <div className="drawer-scroll">
         <div className="drawer-section">
-          {renderField("Image Prompt", shot.imagePrompt ?? "", "imagePrompt", 5)}
-          {renderField("Video Prompt", shot.videoPrompt ?? "", "videoPrompt", 5)}
+          {renderField(t("shotDetailDrawer.imagePrompt"), shot.imagePrompt ?? "", "imagePrompt", 5)}
+          {renderField(t("shotDetailDrawer.videoPrompt"), shot.videoPrompt ?? "", "videoPrompt", 5)}
         </div>
         {canUseProject && editable && (
           <div className="drawer-section">
             <div className="drawer-actions">
               <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
-                {isImagePending ? t("common.submitting") : "Regenerate Image"}
+                {isImagePending ? t("common.submitting") : t("shotDetailDrawer.regenerateImage")}
               </button>
               <ProviderSelector
                 type="image"
@@ -453,7 +453,7 @@ export function ShotDetailDrawer({
                 onChange={(id) => onSelectedImageProviderChange?.(id)}
               />
               <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
-                {isVideoPending ? t("common.submitting") : "Regenerate Video"}
+                {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.regenerateVideo")}
               </button>
               <ProviderSelector
                 type="video"
@@ -474,25 +474,25 @@ export function ShotDetailDrawer({
       <div className="drawer-scroll">
         <div className="drawer-section">
           <label className="drawer-field">
-            <span className="drawer-field__label">Character</span>
+            <span className="drawer-field__label">{t("shotDetailDrawer.characterLabel")}</span>
             <select
               className="input"
               value={ttsDraft?.characterId ?? ""}
               onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
               disabled={!editable}
             >
-              {selectedCharacters.length === 0 && <option value="">No character</option>}
+              {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
               {selectedCharacters.map((cid) => (
                 <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
               ))}
             </select>
           </label>
           <label className="drawer-field">
-            <span className="drawer-field__label">Voice</span>
-            <div className="drawer-field__static">{currentVoiceName || "No character"}</div>
+            <span className="drawer-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
+            <div className="drawer-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
           </label>
           <label className="drawer-field">
-            <span className="drawer-field__label">TTS Text</span>
+            <span className="drawer-field__label">{t("shotDetailDrawer.ttsTextLabel")}</span>
             <textarea
               className="input"
               rows={4}
@@ -513,16 +513,16 @@ export function ShotDetailDrawer({
                 disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
                 onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
               >
-                {isTtsPending ? t("common.submitting") : "Generate TTS"}
+                {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
               </button>
             </div>
-            {renderJobRow("TTS", state?.jobs.tts)}
+            {renderJobRow(t("shotDetailDrawer.ttsJob"), state?.jobs.tts)}
           </div>
         )}
 
         {currentAudioUrl && (
           <div className="drawer-section">
-            <h4 className="drawer-section__title">Preview</h4>
+            <h4 className="drawer-section__title">{t("shotDetailDrawer.previewTitle")}</h4>
             <audio controls src={currentAudioUrl} className="drawer-audio-player" />
           </div>
         )}
@@ -576,13 +576,13 @@ export function ShotDetailDrawer({
             disabled={!hasPrev}
             onClick={onPrev}
           >
-            <ChevronLeftIcon /> Prev
+            <ChevronLeftIcon /> {t("shotDetailDrawer.prev")}
           </button>
           {editable && (
             <div style={{ display: "flex", gap: "var(--space-1)" }}>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, -1)}>Up</button>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, 1)}>Down</button>
-              <button className="btn btn-danger btn-sm" type="button" onClick={() => onRemoveShot(shot.id)}>Delete</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, -1)}>{t("shotDetailDrawer.up")}</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, 1)}>{t("shotDetailDrawer.down")}</button>
+              <button className="btn btn-danger btn-sm" type="button" onClick={() => onRemoveShot(shot.id)}>{t("shotDetailDrawer.delete")}</button>
             </div>
           )}
           <button
@@ -591,7 +591,7 @@ export function ShotDetailDrawer({
             disabled={!hasNext}
             onClick={onNext}
           >
-            Next <ChevronRightIcon />
+            {t("shotDetailDrawer.next")} <ChevronRightIcon />
           </button>
         </div>
       </div>

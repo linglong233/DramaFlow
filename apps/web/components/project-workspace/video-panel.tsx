@@ -20,6 +20,7 @@ type VersionItem = Pick<
 >;
 
 import { apiFetch } from "../../lib/api";
+import { useI18n } from "../../lib/i18n";
 import { queryKeys } from "../../lib/query-keys";
 
 interface MediaVersionContent {
@@ -55,6 +56,7 @@ export function VideoPanel({
   videoJob,
   referenceImageAssetId,
 }: Props) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
@@ -148,7 +150,7 @@ export function VideoPanel({
             mimeType: file.type,
             provider: "upload",
             mode: "upload",
-            note: "用户上传",
+            note: t("videoPanel.uploadNote"),
             parameters: {},
           },
         },
@@ -178,7 +180,7 @@ export function VideoPanel({
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.25 }}>
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
-            <p>Upload a video or generate one to get started</p>
+            <p>{t("videoPanel.emptyHint")}</p>
           </div>
         )}
       </div>
@@ -187,7 +189,7 @@ export function VideoPanel({
       {previewContent.assetUrl && (
         <div className="video-panel__meta">
           <span className="video-panel__meta-tag">
-            {previewContent.mode === "upload" ? "Upload" : `AI${previewContent.model ? ` - ${previewContent.model}` : ""}`}
+            {previewContent.mode === "upload" ? t("videoPanel.uploadTag") : `${t("videoPanel.aiTag")}${previewContent.model ? ` - ${previewContent.model}` : ""}`}
           </span>
           {previewContent.duration && (
             <span className="video-panel__meta-tag">{previewContent.duration}s</span>
@@ -213,7 +215,7 @@ export function VideoPanel({
           disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
         >
-          {uploading ? "Uploading..." : "Upload Video"}
+          {uploading ? t("videoPanel.uploading") : t("videoPanel.uploadAction")}
         </button>
         {shotId && (
           <button
@@ -222,7 +224,7 @@ export function VideoPanel({
             disabled={isVideoJobPending}
             onClick={() => generateVideo.mutate()}
           >
-            {isVideoJobPending ? "Submitting..." : "Generate Video"}
+            {isVideoJobPending ? t("videoPanel.submitting") : t("videoPanel.generateAction")}
           </button>
         )}
       </div>
@@ -232,7 +234,7 @@ export function VideoPanel({
         <div className="video-panel__job-status">
           <span className={`video-panel__job-dot video-panel__job-dot--${jobStatus}`} />
           <span className="video-panel__job-label">
-            Video job: {jobStatus}
+            {t("videoPanel.jobStatus", { status: jobStatus ?? "" })}
             {typeof jobProgress === "number" ? ` (${jobProgress}%)` : ""}
           </span>
           {typeof jobProgress === "number" && jobProgress < 100 && (
@@ -246,7 +248,7 @@ export function VideoPanel({
       {/* Candidates list */}
       {candidates.length > 1 && (
         <div className="video-panel__candidates">
-          <h4 className="video-panel__candidates-title">Versions ({candidates.length})</h4>
+          <h4 className="video-panel__candidates-title">{t("videoPanel.versionsTitle", { count: candidates.length })}</h4>
           <div className="video-panel__candidates-list">
             {candidates.map((candidate) => {
               const content = (candidate.content ?? {}) as MediaVersionContent;
@@ -261,7 +263,7 @@ export function VideoPanel({
                 >
                   <div className="video-panel__candidate-info">
                     <span className="video-panel__candidate-source">
-                      {content.mode === "upload" ? "Upload" : `AI${content.model ? ` - ${content.model}` : ""}`}
+                      {content.mode === "upload" ? t("videoPanel.uploadTag") : `${t("videoPanel.aiTag")}${content.model ? ` - ${content.model}` : ""}`}
                     </span>
                     <span className="video-panel__candidate-time">
                       v{candidate.versionNumber} &middot; {new Date(candidate.createdAt).toLocaleDateString()}
@@ -276,7 +278,7 @@ export function VideoPanel({
                       adoptVersion.mutate({ versionId: candidate.id });
                     }}
                   >
-                    {isAdopted ? "Adopted" : "Adopt"}
+                    {isAdopted ? t("videoPanel.adoptedAction") : t("videoPanel.adoptAction")}
                   </button>
                 </div>
               );

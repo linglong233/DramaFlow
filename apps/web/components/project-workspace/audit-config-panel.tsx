@@ -10,6 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "../../lib/api";
+import { useI18n } from "../../lib/i18n";
 import { queryKeys } from "../../lib/query-keys";
 
 interface AuditConfig {
@@ -17,18 +18,14 @@ interface AuditConfig {
   reviewRequired: boolean;
 }
 
-const CONTENT_TYPES = [
-  { key: "script", labelZh: "剧本", labelEn: "Script" },
-  { key: "storyboard", labelZh: "分镜", labelEn: "Storyboard" },
-  { key: "image", labelZh: "图片", labelEn: "Image" },
-  { key: "video", labelZh: "视频", labelEn: "Video" },
-] as const;
+const CONTENT_TYPE_KEYS = ["script", "storyboard", "image", "video"] as const;
 
 interface Props {
   projectId: string;
 }
 
 export function AuditConfigPanel({ projectId }: Props) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   const { data: configs = [], isLoading } = useQuery<AuditConfig[]>({
@@ -54,20 +51,20 @@ export function AuditConfigPanel({ projectId }: Props) {
 
   return (
     <section className="pip-section">
-      <h3 className="pip-section__title">{"审核设置 / Audit Settings"}</h3>
+      <h3 className="pip-section__title">{t("auditConfig.title")}</h3>
       {isLoading ? (
         <div className="skeleton" style={{ height: 120 }} />
       ) : (
         <div className="pip-list" style={{ gap: "var(--space-2)" }}>
-          {CONTENT_TYPES.map((ct) => {
-            const checked = isReviewRequired(ct.key);
+          {CONTENT_TYPE_KEYS.map((ct) => {
+            const checked = isReviewRequired(ct);
             return (
               <label
-                key={ct.key}
+                key={ct}
                 className="pip-row"
                 style={{ cursor: "pointer", justifyContent: "space-between", padding: "var(--space-3) var(--space-4)" }}
               >
-                <span className="pip-row__name">{ct.labelZh} / {ct.labelEn}</span>
+                <span className="pip-row__name">{t(`auditConfig.contentTypes.${ct}`)}</span>
                 <span
                   role="switch"
                   aria-checked={checked}
@@ -101,7 +98,7 @@ export function AuditConfigPanel({ projectId }: Props) {
                   type="checkbox"
                   checked={checked}
                   onChange={() =>
-                    toggleMutation.mutate({ contentType: ct.key, reviewRequired: !checked })
+                    toggleMutation.mutate({ contentType: ct, reviewRequired: !checked })
                   }
                   style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
                 />

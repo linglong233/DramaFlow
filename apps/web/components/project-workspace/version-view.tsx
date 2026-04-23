@@ -50,6 +50,7 @@ export function isWorldBibleContent(content: unknown): content is WorldBibleCont
 }
 
 function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; index: number; expanded: boolean; onToggle: () => void }) {
+  const { t } = useI18n();
   const hasDialogue = scene.dialogue.length > 0;
   const hasDetails = hasDialogue || Boolean(scene.directorNote);
 
@@ -64,10 +65,10 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
     >
       <div className="vv-scene__head">
         <div className="vv-scene__head-left">
-          <span className="vv-scene__number">Scene {index + 1}</span>
+          <span className="vv-scene__number">{t("versionView.sceneNumber", { index: String(index + 1) })}</span>
           <h3 className="vv-scene__heading">
-            {scene.heading || `Untitled Scene ${index + 1}`}
-            {scene.locationId ? <span className="vv-sync-badge" title="Linked world-bible location">Link</span> : null}
+            {scene.heading || t("versionView.untitledSceneNumber", { index: String(index + 1) })}
+            {scene.locationId ? <span className="vv-sync-badge" title={t("versionView.linkedLocation")}>{t("versionView.linkBadge")}</span> : null}
           </h3>
         </div>
         <div className="vv-scene__head-right">
@@ -90,7 +91,7 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
       </div>
 
       <p className={`vv-scene__synopsis${expanded ? "" : " vv-scene__synopsis--clamped"}`}>
-        {scene.synopsis || "No synopsis yet."}
+        {scene.synopsis || t("versionView.noSynopsis")}
       </p>
 
       {/* Always-visible character tags (compact row) */}
@@ -109,7 +110,7 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
             <div className="vv-dialogue-list">
               {scene.dialogue.map((dialogue, itemIndex) => (
                 <div key={`${scene.id}-dialogue-${itemIndex}`} className="vv-dialogue">
-                  <span className="vv-dialogue__speaker">{dialogue.speaker || "Narration"}</span>
+                  <span className="vv-dialogue__speaker">{dialogue.speaker || t("versionView.narration")}</span>
                   <span className="vv-dialogue__line">{dialogue.line}</span>
                 </div>
               ))}
@@ -119,7 +120,7 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
             <div className="vv-scene__director-note">
               <span className="vv-scene__director-note-label">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                Director Note
+                {t("versionView.directorNote")}
               </span>
               <span className="vv-scene__director-note-value">{scene.directorNote}</span>
             </div>
@@ -129,7 +130,7 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
 
       {/* Expand hint */}
       {!expanded && hasDetails ? (
-        <div className="vv-scene__expand-hint">Click to expand details</div>
+        <div className="vv-scene__expand-hint">{t("versionView.clickToExpand")}</div>
       ) : null}
     </div>
   );
@@ -167,7 +168,7 @@ export function StoryboardView({
    ────────────────────────────────────────── */
 
 function ShotPreviewCard({ shot, index }: { shot: StoryboardShot; index: number }) {
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
   const [expanded, setExpanded] = useState(false);
 
@@ -211,37 +212,37 @@ function ShotPreviewCard({ shot, index }: { shot: StoryboardShot; index: number 
         <div className="sbp-card__details">
           {shot.actionDescription ? (
             <div className="sbp-card__field">
-              <span className="sbp-card__field-label">Action</span>
+              <span className="sbp-card__field-label">{t("shotReference.actionLabel")}</span>
               <span className="sbp-card__field-value">{shot.actionDescription}</span>
             </div>
           ) : null}
           {shot.dialogue ? (
             <div className="sbp-card__field">
-              <span className="sbp-card__field-label">Dialogue</span>
+              <span className="sbp-card__field-label">{t("shotReference.dialogueLabel")}</span>
               <span className="sbp-card__field-value">{shot.dialogue}</span>
             </div>
           ) : null}
           {shot.soundDesign ? (
             <div className="sbp-card__field">
-              <span className="sbp-card__field-label">Sound</span>
+              <span className="sbp-card__field-label">{t("shotReference.soundLabel")}</span>
               <span className="sbp-card__field-value">{shot.soundDesign}</span>
             </div>
           ) : null}
           {shot.notes ? (
             <div className="sbp-card__field">
-              <span className="sbp-card__field-label">Notes</span>
+              <span className="sbp-card__field-label">{t("shotReference.notesLabel")}</span>
               <span className="sbp-card__field-value">{shot.notes}</span>
             </div>
           ) : null}
           {shot.imagePrompt ? (
             <div className="sbp-card__field sbp-card__field--prompt">
-              <span className="sbp-card__field-label">Image Prompt</span>
+              <span className="sbp-card__field-label">{t("versionView.imagePromptLabel")}</span>
               <span className="sbp-card__field-value">{shot.imagePrompt}</span>
             </div>
           ) : null}
           {shot.videoPrompt ? (
             <div className="sbp-card__field sbp-card__field--prompt">
-              <span className="sbp-card__field-label">Video Prompt</span>
+              <span className="sbp-card__field-label">{t("versionView.videoPromptLabel")}</span>
               <span className="sbp-card__field-value">{shot.videoPrompt}</span>
             </div>
           ) : null}
@@ -260,7 +261,7 @@ function ShotPreviewCard({ shot, index }: { shot: StoryboardShot; index: number 
 
 export function StoryboardPreview({ content }: { content: StoryboardContent }) {
   const safeContent = normalizeStoryboardContent(content);
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
 
   const sceneGroups = useMemo(() => {
@@ -294,18 +295,18 @@ export function StoryboardPreview({ content }: { content: StoryboardContent }) {
 
       {/* Stats bar */}
       <div className="sbp-stats">
-        <div className="sbp-stat"><span>{lang === "en" ? "Scenes" : "场次"}</span><strong>{stats.scenes}</strong></div>
-        <div className="sbp-stat"><span>{lang === "en" ? "Shots" : "镜头"}</span><strong>{stats.shots}</strong></div>
-        <div className="sbp-stat"><span>{lang === "en" ? "Duration" : "时长"}</span><strong>{durationStr}</strong></div>
+        <div className="sbp-stat"><span>{t("versionView.scenesLabel")}</span><strong>{stats.scenes}</strong></div>
+        <div className="sbp-stat"><span>{t("versionView.shotsLabel")}</span><strong>{stats.shots}</strong></div>
+        <div className="sbp-stat"><span>{t("versionView.durationLabel")}</span><strong>{durationStr}</strong></div>
       </div>
 
       {/* Scene groups */}
       {sceneGroups.map(([sceneId, shots], groupIndex) => (
         <div key={sceneId} className="sbp-scene">
           <div className="sbp-scene__head">
-            <span className="sbp-scene__num">{lang === "en" ? "Scene" : "场次"} {groupIndex + 1}</span>
+            <span className="sbp-scene__num">{t("versionView.scenePrefix", { index: String(groupIndex + 1) })}</span>
             <span className="sbp-scene__id">{sceneId}</span>
-            <span className="sbp-scene__count">{shots.length} {lang === "en" ? "shots" : "镜头"}</span>
+            <span className="sbp-scene__count">{shots.length} {t("versionView.shotsCountUnit")}</span>
           </div>
           <div className="sbp-scene__shots">
             {shots.map((shot, shotIndex) => (
@@ -316,12 +317,13 @@ export function StoryboardPreview({ content }: { content: StoryboardContent }) {
       ))}
 
       {safeContent.shots.length === 0 ? (
-        <div className="sbp-empty">{lang === "en" ? "No storyboard shots generated yet." : "暂无分镜数据。"}</div>
+        <div className="sbp-empty">{t("versionView.noShotsYet")}</div>
       ) : null}
     </div>
   );
 }
 export function ScriptView({ content }: { content: ScriptContent }) {
+  const { t } = useI18n();
   const safeContent = normalizeScriptContent(content);
   const [expandedScenes, setExpandedScenes] = useState<Set<string>>(new Set());
   const allExpanded = safeContent.scenes.length > 0 && expandedScenes.size === safeContent.scenes.length;
@@ -350,27 +352,27 @@ export function ScriptView({ content }: { content: ScriptContent }) {
     <div className="vv-content">
       {safeContent.logline ? (
         <div className="vv-hero-field">
-          <span className="vv-hero-field__label">Logline</span>
+          <span className="vv-hero-field__label">{t("versionView.logline")}</span>
           <p className="vv-hero-field__value">{safeContent.logline}</p>
         </div>
       ) : null}
       {safeContent.premise ? (
         <div className="vv-hero-field">
-          <span className="vv-hero-field__label">Premise</span>
+          <span className="vv-hero-field__label">{t("versionView.premise")}</span>
           <p className="vv-hero-field__value">{safeContent.premise}</p>
         </div>
       ) : null}
       {safeContent.characters.length > 0 ? (
         <div className="vv-hero-field">
-          <span className="vv-hero-field__label">Characters</span>
+          <span className="vv-hero-field__label">{t("versionView.characters")}</span>
           <div className="vv-char-list">
             {safeContent.characters.map((character, index) => (
               <div key={`${character.name}-${index}`} className="vv-char">
                 <strong>
-                  {character.name || `Character ${index + 1}`}
-                  {character.worldBibleCharId ? <span className="vv-sync-badge" title="Linked world-bible character">Link</span> : null}
+                  {character.name || t("versionView.characterFallback", { index: String(index + 1) })}
+                  {character.worldBibleCharId ? <span className="vv-sync-badge" title={t("versionView.linkedCharacter")}>{t("versionView.linkBadge")}</span> : null}
                 </strong>
-                <span className="muted">{character.profile || "No profile yet."}</span>
+                <span className="muted">{character.profile || t("versionView.noProfile")}</span>
               </div>
             ))}
           </div>
@@ -381,7 +383,7 @@ export function ScriptView({ content }: { content: ScriptContent }) {
       <div className="vv-scenes-header">
         <div className="vv-scenes-header__left">
           <span className="vv-scenes-header__count">{safeContent.scenes.length}</span>
-          <span className="vv-scenes-header__label">Scenes</span>
+          <span className="vv-scenes-header__label">{t("versionView.scenes")}</span>
         </div>
         {safeContent.scenes.length > 1 ? (
           <button className="vv-scenes-header__toggle" type="button" onClick={toggleAll}>
@@ -392,7 +394,7 @@ export function ScriptView({ content }: { content: ScriptContent }) {
                 <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>
               )}
             </svg>
-            {allExpanded ? "Collapse All" : "Expand All"}
+            {allExpanded ? t("versionView.collapseAll") : t("versionView.expandAll")}
           </button>
         ) : null}
       </div>
@@ -413,6 +415,7 @@ export function ScriptView({ content }: { content: ScriptContent }) {
 }
 
 function CharacterCard({ character, index }: { character: CharacterProfile; index: number }) {
+  const { t } = useI18n();
   return (
     <div className="vv-shot" style={{ animationDelay: `${index * 0.06}s` }}>
       <div className="vv-shot__head">
@@ -430,18 +433,18 @@ function CharacterCard({ character, index }: { character: CharacterProfile; inde
       ) : null}
       <div className="vv-shot__extras">
         <div className="vv-shot__field">
-          <span className="vv-shot__field-label">Appearance</span>
-          <span className="vv-shot__field-value">{character.appearance || "No appearance note yet."}</span>
+          <span className="vv-shot__field-label">{t("versionView.appearance")}</span>
+          <span className="vv-shot__field-value">{character.appearance || t("versionView.noAppearance")}</span>
         </div>
         {character.personality ? (
           <div className="vv-shot__field">
-            <span className="vv-shot__field-label">Personality</span>
+            <span className="vv-shot__field-label">{t("versionView.personality")}</span>
             <span className="vv-shot__field-value">{character.personality}</span>
           </div>
         ) : null}
         {character.costumes && Object.keys(character.costumes).length > 0 ? (
           <div className="vv-shot__field">
-            <span className="vv-shot__field-label">Costumes</span>
+            <span className="vv-shot__field-label">{t("versionView.costumes")}</span>
             <span className="vv-shot__field-value">{Object.entries(character.costumes).map(([key, value]) => `${key}: ${value}`).join(", ")}</span>
           </div>
         ) : null}
@@ -451,6 +454,7 @@ function CharacterCard({ character, index }: { character: CharacterProfile; inde
 }
 
 function LocationCard({ location, index }: { location: LocationProfile; index: number }) {
+  const { t } = useI18n();
   return (
     <div className="vv-shot" style={{ animationDelay: `${index * 0.06}s` }}>
       <div className="vv-shot__head">
@@ -460,11 +464,11 @@ function LocationCard({ location, index }: { location: LocationProfile; index: n
         </div>
         {location.timeOfDay ? <span className="vv-shot__duration">{location.timeOfDay}</span> : null}
       </div>
-      <p className="vv-shot__desc">{location.description || "No location description yet."}</p>
+      <p className="vv-shot__desc">{location.description || t("versionView.noLocationDesc")}</p>
       {location.lighting ? (
         <div className="vv-shot__extras">
           <div className="vv-shot__field">
-            <span className="vv-shot__field-label">Lighting</span>
+            <span className="vv-shot__field-label">{t("versionView.lighting")}</span>
             <span className="vv-shot__field-value">{location.lighting}</span>
           </div>
         </div>
@@ -474,6 +478,7 @@ function LocationCard({ location, index }: { location: LocationProfile; index: n
 }
 
 export function WorldBibleView({ content }: { content: WorldBibleContent }) {
+  const { t } = useI18n();
   const safeContent = normalizeWorldBibleContent(content);
 
   return (
@@ -481,8 +486,8 @@ export function WorldBibleView({ content }: { content: WorldBibleContent }) {
       {safeContent.characters.length > 0 ? (
         <div className="vv-scene-group">
           <div className="vv-scene-group__header">
-            <span className="vv-scene-group__label">Character Profiles</span>
-            <span className="vv-scene-group__count">{safeContent.characters.length} characters</span>
+            <span className="vv-scene-group__label">{t("versionView.characterProfiles")}</span>
+            <span className="vv-scene-group__count">{t("versionView.characterCount", { count: safeContent.characters.length })}</span>
           </div>
           <div className="vv-shot-grid">
             {safeContent.characters.map((character, index) => (
@@ -495,8 +500,8 @@ export function WorldBibleView({ content }: { content: WorldBibleContent }) {
       {safeContent.locations.length > 0 ? (
         <div className="vv-scene-group" style={{ marginTop: "var(--space-4)" }}>
           <div className="vv-scene-group__header">
-            <span className="vv-scene-group__label">Location Profiles</span>
-            <span className="vv-scene-group__count">{safeContent.locations.length} locations</span>
+            <span className="vv-scene-group__label">{t("versionView.locationProfiles")}</span>
+            <span className="vv-scene-group__count">{t("versionView.locationCount", { count: safeContent.locations.length })}</span>
           </div>
           <div className="vv-shot-grid">
             {safeContent.locations.map((location, index) => (
@@ -509,29 +514,29 @@ export function WorldBibleView({ content }: { content: WorldBibleContent }) {
       {safeContent.styleGuide ? (
         <div className="vv-scene-group" style={{ marginTop: "var(--space-4)" }}>
           <div className="vv-scene-group__header">
-            <span className="vv-scene-group__label">Style Guide</span>
+            <span className="vv-scene-group__label">{t("versionView.styleGuideTitle")}</span>
           </div>
           <div className="vv-shot">
             <div className="vv-shot__extras">
               <div className="vv-shot__field">
-                <span className="vv-shot__field-label">Visual Style</span>
-                <span className="vv-shot__field-value">{safeContent.styleGuide.visualStyle || "No style guide note yet."}</span>
+                <span className="vv-shot__field-label">{t("versionView.visualStyle")}</span>
+                <span className="vv-shot__field-value">{safeContent.styleGuide.visualStyle || t("versionView.noStyleGuide")}</span>
               </div>
               {safeContent.styleGuide.colorPalette ? (
                 <div className="vv-shot__field">
-                  <span className="vv-shot__field-label">Color Palette</span>
+                  <span className="vv-shot__field-label">{t("versionView.colorPalette")}</span>
                   <span className="vv-shot__field-value">{safeContent.styleGuide.colorPalette}</span>
                 </div>
               ) : null}
               {safeContent.styleGuide.compositionNote ? (
                 <div className="vv-shot__field">
-                  <span className="vv-shot__field-label">Composition</span>
+                  <span className="vv-shot__field-label">{t("versionView.composition")}</span>
                   <span className="vv-shot__field-value">{safeContent.styleGuide.compositionNote}</span>
                 </div>
               ) : null}
               {safeContent.styleGuide.negativePrompt ? (
                 <div className="vv-shot__field">
-                  <span className="vv-shot__field-label">Negative Prompt</span>
+                  <span className="vv-shot__field-label">{t("versionView.negativePrompt")}</span>
                   <span className="vv-shot__field-value">{safeContent.styleGuide.negativePrompt}</span>
                 </div>
               ) : null}

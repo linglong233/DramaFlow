@@ -15,6 +15,7 @@ import {
   IMAGE_PROVIDER_LABELS,
   VIDEO_PROVIDER_LABELS,
 } from "../lib/image-config";
+import { useI18n } from "../lib/i18n";
 
 interface ProviderEntryFormProps {
   draft: ProviderEntryDraft;
@@ -28,6 +29,7 @@ const IMAGE_PROVIDER_OPTIONS = Object.entries(IMAGE_PROVIDER_LABELS);
 const VIDEO_PROVIDER_OPTIONS = Object.entries(VIDEO_PROVIDER_LABELS);
 
 export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: ProviderEntryFormProps) {
+  const { t } = useI18n();
   const providerOptions = type === "image" ? IMAGE_PROVIDER_OPTIONS : VIDEO_PROVIDER_OPTIONS;
 
   function update(partial: Partial<ProviderEntryDraft>) {
@@ -50,17 +52,17 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
   return (
     <div className="stack stack-gap-4">
       <div className="form-group">
-        <label className="form-label text-sm">名称</label>
+        <label className="form-label text-sm">{t("providerEntryForm.nameLabel")}</label>
         <input
           className="input"
-          placeholder="可选，为此配置取一个名称"
+          placeholder={t("providerEntryForm.namePlaceholder")}
           value={draft.name}
           onChange={(e) => update({ name: e.target.value })}
         />
       </div>
 
       <div className="form-group">
-        <label className="form-label text-sm">Provider 类型</label>
+        <label className="form-label text-sm">{t("providerEntryForm.providerTypeLabel")}</label>
         <select
           className="input"
           value={draft.provider}
@@ -74,19 +76,19 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
 
       {maskedApiKey ? (
         <div className="form-group">
-          <label className="form-label text-sm">API 密钥</label>
+          <label className="form-label text-sm">{t("providerEntryForm.apiKeyLabel")}</label>
           <div className="input" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-secondary)" }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
-            <span>已配置 API 密钥</span>
+            <span>{t("providerEntryForm.apiKeyConfigured")}</span>
           </div>
         </div>
       ) : (
         <div className="form-group">
-          <label className="form-label text-sm">API 密钥</label>
+          <label className="form-label text-sm">{t("providerEntryForm.apiKeyLabel")}</label>
           <input
             className="input"
             type="password"
-            placeholder="输入 API 密钥"
+            placeholder={t("providerEntryForm.apiKeyPlaceholder")}
             value={draft.apiKey}
             onChange={(e) => update({ apiKey: e.target.value })}
           />
@@ -95,10 +97,10 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
 
       {showBaseUrl ? (
         <div className="form-group">
-          <label className="form-label text-sm">基础 URL</label>
+          <label className="form-label text-sm">{t("providerEntryForm.baseUrlLabel")}</label>
           <input
             className="input"
-            placeholder="API 基础地址"
+            placeholder={t("providerEntryForm.baseUrlPlaceholder")}
             value={draft.baseUrl}
             onChange={(e) => update({ baseUrl: e.target.value })}
           />
@@ -106,10 +108,10 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
       ) : null}
 
       <div className="form-group">
-        <label className="form-label text-sm">模型</label>
+        <label className="form-label text-sm">{t("providerEntryForm.modelLabel")}</label>
         <input
           className="input"
-          placeholder="模型名称"
+          placeholder={t("providerEntryForm.modelPlaceholder")}
           value={draft.model}
           onChange={(e) => update({ model: e.target.value })}
         />
@@ -118,7 +120,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
       {draft.provider === "stable-diffusion" ? (
         <>
           <div className="form-group">
-            <label className="form-label text-sm">采样器</label>
+            <label className="form-label text-sm">{t("providerEntryForm.samplerLabel")}</label>
             <input
               className="input"
               value={draft.sdConfig.samplerName ?? ""}
@@ -126,7 +128,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">采样步数</label>
+            <label className="form-label text-sm">{t("providerEntryForm.stepsLabel")}</label>
             <input
               className="input"
               type="number"
@@ -135,7 +137,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">CFG 引导系数</label>
+            <label className="form-label text-sm">{t("providerEntryForm.cfgScaleLabel")}</label>
             <input
               className="input"
               type="number"
@@ -144,7 +146,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">CLIP Skip</label>
+            <label className="form-label text-sm">{t("providerEntryForm.clipSkipLabel")}</label>
             <input
               className="input"
               type="number"
@@ -158,17 +160,17 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
       {draft.provider === "comfyui" ? (
         <>
           <div className="form-group">
-            <label className="form-label text-sm">工作流 JSON</label>
+            <label className="form-label text-sm">{t("providerEntryForm.workflowJsonLabel")}</label>
             <textarea
               className="input"
               rows={6}
-              placeholder="粘贴 ComfyUI 工作流 JSON"
+              placeholder={t("providerEntryForm.workflowJsonPlaceholder")}
               value={draft.comfyuiConfig.workflowJson ?? ""}
               onChange={(e) => update({ comfyuiConfig: { ...draft.comfyuiConfig, workflowJson: e.target.value || undefined } })}
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">采样器</label>
+            <label className="form-label text-sm">{t("providerEntryForm.samplerLabel")}</label>
             <input
               className="input"
               value={draft.comfyuiConfig.samplerName ?? ""}
@@ -176,7 +178,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">采样步数</label>
+            <label className="form-label text-sm">{t("providerEntryForm.stepsLabel")}</label>
             <input
               className="input"
               type="number"
@@ -185,7 +187,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">CFG 引导系数</label>
+            <label className="form-label text-sm">{t("providerEntryForm.cfgScaleLabel")}</label>
             <input
               className="input"
               type="number"
@@ -199,7 +201,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
       {draft.provider === "grok" ? (
         <>
           <div className="form-group">
-            <label className="form-label text-sm">视频生成模型</label>
+            <label className="form-label text-sm">{t("providerEntryForm.videoModelLabel")}</label>
             <input
               className="input"
               value={draft.grokConfig.videoModel ?? ""}
@@ -208,7 +210,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">画面比例</label>
+            <label className="form-label text-sm">{t("providerEntryForm.aspectRatioLabel")}</label>
             <select
               className="input"
               value={draft.grokConfig.aspectRatio ?? "16:9"}
@@ -222,7 +224,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">视频时长（秒）</label>
+            <label className="form-label text-sm">{t("providerEntryForm.videoDurationLabel")}</label>
             <input
               className="input"
               type="number"
@@ -233,7 +235,7 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-sm">视频分辨率</label>
+            <label className="form-label text-sm">{t("providerEntryForm.videoResolutionLabel")}</label>
             <select
               className="input"
               value={draft.grokConfig.resolution ?? "HD"}

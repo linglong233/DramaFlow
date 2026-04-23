@@ -9,12 +9,16 @@
 
 import type { StoryboardShot } from "@dramaflow/shared";
 
+import { useI18n } from "../../lib/i18n";
+
 interface Props {
   shot: StoryboardShot | null;
   imageUrl?: string;
 }
 
 export function ShotReferencePanel({ shot, imageUrl }: Props) {
+  const { t } = useI18n();
+
   if (!shot) {
     return (
       <div className="shot-ref-panel shot-ref-panel--empty">
@@ -24,7 +28,7 @@ export function ShotReferencePanel({ shot, imageUrl }: Props) {
             <circle cx="12" cy="12" r="3" />
           </svg>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", textAlign: "center" }}>
-            No linked storyboard shot for this video document.
+            {t("shotReference.emptyHint")}
           </p>
         </div>
       </div>
@@ -32,15 +36,15 @@ export function ShotReferencePanel({ shot, imageUrl }: Props) {
   }
 
   const fields: Array<{ label: string; value?: string | number | null }> = [
-    { label: "Shot", value: shot.shotLabel },
-    { label: "Framing", value: shot.framing },
-    { label: "Camera Move", value: shot.cameraMove },
-    { label: "Duration", value: shot.durationSeconds ? `${shot.durationSeconds}s` : null },
-    { label: "Visual", value: shot.visualDescription },
-    { label: "Action", value: shot.actionDescription },
-    { label: "Dialogue", value: shot.dialogue },
-    { label: "Sound", value: shot.soundDesign },
-    { label: "Notes", value: shot.notes },
+    { label: t("shotReference.shotLabel"), value: shot.shotLabel },
+    { label: t("shotReference.framingLabel"), value: shot.framing },
+    { label: t("shotReference.cameraMoveLabel"), value: shot.cameraMove },
+    { label: t("shotReference.durationLabel"), value: shot.durationSeconds ? `${shot.durationSeconds}s` : null },
+    { label: t("shotReference.visualLabel"), value: shot.visualDescription },
+    { label: t("shotReference.actionLabel"), value: shot.actionDescription },
+    { label: t("shotReference.dialogueLabel"), value: shot.dialogue },
+    { label: t("shotReference.soundLabel"), value: shot.soundDesign },
+    { label: t("shotReference.notesLabel"), value: shot.notes },
   ];
 
   return (

@@ -86,8 +86,7 @@ export function StoryboardToolbar({
   isBatchTtsPending,
   hasEligibleTtsShots,
 }: Props) {
-  const { t, locale } = useI18n();
-  const isZh = locale !== "en";
+  const { t } = useI18n();
   const [sceneDropdownOpen, setSceneDropdownOpen] = useState(false);
   const [batchDropdownOpen, setBatchDropdownOpen] = useState(false);
   const sceneDropdownRef = useRef<HTMLDivElement>(null);
@@ -117,9 +116,9 @@ export function StoryboardToolbar({
   }, []);
 
   const filters: { key: ShotFilter; label: string }[] = [
-    { key: "all", label: isZh ? "全部" : "All" },
-    { key: "unfinished", label: isZh ? "未完成" : "Unfinished" },
-    { key: "candidates", label: isZh ? "有候选" : "Has candidates" },
+    { key: "all", label: t("storyboardToolbar.filterAll") },
+    { key: "unfinished", label: t("storyboardToolbar.filterUnfinished") },
+    { key: "candidates", label: t("storyboardToolbar.filterCandidates") },
   ];
 
   return (
@@ -147,7 +146,7 @@ export function StoryboardToolbar({
                     setSceneDropdownOpen(false);
                   }}
                 >
-                  Scene {index + 1}: {group.heading || group.sceneId}
+                  {t("storyboardToolbar.scenePrefix", { index: String(index + 1) })}: {group.heading || group.sceneId}
                 </button>
               ))}
               {editable && (
@@ -162,7 +161,7 @@ export function StoryboardToolbar({
                       setSceneDropdownOpen(false);
                     }}
                   >
-                    <PlusIcon /> {t("storyboardEditor.addScene") || "Add scene"}
+                    <PlusIcon /> {t("storyboardEditor.addScene")}
                   </button>
                 </>
               )}
@@ -172,7 +171,7 @@ export function StoryboardToolbar({
 
         {/* Stats */}
         <span className="swb-toolbar__stat">
-          {shotCount} {isZh ? "镜头" : "shots"} · {durationText}
+          {shotCount} {t("storyboardToolbar.shotsUnit")} · {durationText}
         </span>
 
         {/* Filter chips */}
@@ -198,7 +197,7 @@ export function StoryboardToolbar({
             type="button"
             onClick={() => onAddShot(selectedSceneId)}
           >
-            <PlusIcon /> {t("storyboardEditor.addShot") || "Add shot"}
+            <PlusIcon /> {t("storyboardEditor.addShot")}
           </button>
         )}
 
@@ -235,7 +234,7 @@ export function StoryboardToolbar({
                 >
                   {isBatchPending
                     ? t("common.submitting")
-                    : t("projectWorkspace.media.batchGenerateMissingImages") || "Batch generate images"}
+                    : t("projectWorkspace.media.batchGenerateMissingImages")}
                 </button>
                 <button
                   className="swb-toolbar__dropdown-item"
@@ -246,7 +245,7 @@ export function StoryboardToolbar({
                     setBatchDropdownOpen(false);
                   }}
                 >
-                  {isBatchTtsPending ? t("common.submitting") : t("storyboardEditor.batchSceneTts") || "Batch generate scene TTS"}
+                  {isBatchTtsPending ? t("common.submitting") : t("storyboardEditor.batchSceneTts")}
                 </button>
               </div>
             )}

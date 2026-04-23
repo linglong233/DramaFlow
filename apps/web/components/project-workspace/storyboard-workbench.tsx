@@ -94,7 +94,7 @@ function createEmptyShot(sceneId: string, index: number): StoryboardShot {
 }
 
 export function StoryboardWorkbench({ content, onChange, projectId, project, allowProjectMutations = true }: Props) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const editable = Boolean(onChange);
   const canUseProject = Boolean(projectId && project);
@@ -426,10 +426,10 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       <div className="swb-grid-scroll">
         {visibleSceneGroups.length === 0 ? (
           <div className="swb-empty">
-            <p>{safeContent.shots.length === 0 ? "No storyboard shots yet." : "No shots match the current filter."}</p>
+            <p>{safeContent.shots.length === 0 ? t("storyboardWorkbench.noShotsYet") : t("storyboardWorkbench.noShotsMatchFilter")}</p>
             {editable && safeContent.shots.length === 0 && (
               <button className="btn btn-primary btn-sm" type="button" onClick={() => addScene(`scene-1`)}>
-                Create first shot
+                {t("storyboardWorkbench.createFirstShot")}
               </button>
             )}
           </div>
@@ -437,11 +437,11 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           visibleSceneGroups.map((group, groupIndex) => (
             <div key={group.sceneId} className="swb-scene-group">
               <div className="swb-scene-group__header">
-                <span className="swb-scene-group__index">Scene {groupIndex + 1}</span>
-                <h4 className="swb-scene-group__heading">{group.heading || "Untitled Scene"}</h4>
+                <span className="swb-scene-group__index">{t("storyboardToolbar.scenePrefix", { index: String(groupIndex + 1) })}</span>
+                <h4 className="swb-scene-group__heading">{group.heading || t("storyboardToolbar.untitledScene")}</h4>
                 {editable && (
                   <button className="btn btn-ghost btn-sm" type="button" onClick={() => addShot(group.sceneId)}>
-                    + Add shot
+                    {t("storyboardWorkbench.addShot")}
                   </button>
                 )}
               </div>
