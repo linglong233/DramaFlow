@@ -42,7 +42,7 @@ export type ReviewPolicyMode = "inherit" | "required" | "bypass";
 export type ProjectStatus = "draft" | "in_progress" | "completed" | "archived";
 
 /** 文档类型：剧本、分镜、图片、视频、音频、世界观设定 */
-export type DocumentType = "script" | "storyboard" | "image" | "video" | "audio" | "world_bible";
+export type DocumentType = "script" | "storyboard" | "image" | "video" | "audio" | "subtitle" | "world_bible";
 
 /** 版本状态：草稿、已提交、待审核、已批准、已拒绝 */
 export type VersionStatus =

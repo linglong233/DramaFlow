@@ -154,7 +154,6 @@ export function SidebarLayout({ children, variant, projectId, flush }: SidebarLa
       children: [
         { id: "p-info", type: "link", label: t("projectWorkspace.workspace.modeInfo"), href: `/projects/${projectId}/workspace?mode=info` },
         { id: "p-workspace", type: "link", label: t("projectWorkspace.workspace.modeDocument"), href: `/projects/${projectId}/workspace?mode=document` },
-        { id: "p-media", type: "link", label: t("projectWorkspace.workspace.modeMedia"), href: `/projects/${projectId}/workspace?mode=media` },
       ],
     }
   ] : dashboardNav;

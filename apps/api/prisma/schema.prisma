@@ -46,6 +46,7 @@ enum DocumentType {
   image
   video
   audio
+  subtitle
   world_bible
 }
 
