@@ -8,7 +8,10 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n, getDocumentTypeLabel, getVersionStatusLabel } from "../../lib/i18n";
+import { apiFetch, formatApiError } from "../../lib/api";
+import { queryKeys } from "../../lib/query-keys";
 
 interface Version {
   id: string;
@@ -34,6 +37,7 @@ interface Props {
   onSelectVersion: (versionId: string, docId: string) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  projectId?: string;
 }
 
 // Status indicator dot color
@@ -74,9 +78,25 @@ export function VersionList({
   onSelectVersion,
   isCollapsed,
   onToggleCollapse,
+  projectId,
 }: Props) {
   const { t } = useI18n();
+  const queryClient = useQueryClient();
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set(documents.map(d => d.id)));
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const deleteVersionMutation = useMutation({
+    mutationFn: async (versionId: string) => apiFetch(`/versions/${versionId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setConfirmDeleteId(null);
+      if (projectId) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+        ]);
+      }
+    },
+  });
 
   const toggleDoc = (docId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -152,9 +172,9 @@ export function VersionList({
           </div>
         )}
         {onToggleCollapse && (
-          <button 
-            type="button" 
-            className="btn btn-ghost btn-sm" 
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
             onClick={onToggleCollapse}
             style={{ padding: '0 4px', margin: isCollapsed ? '0 auto' : '0' }}
             title={isCollapsed ? t("projectWorkspace.generate.expandSettings") : t("projectWorkspace.generate.collapseSettings")}
@@ -172,93 +192,127 @@ export function VersionList({
 
       {!isCollapsed && (
         <div className="vl-list">
-        {documents.length === 0 ? (
-          <div className="vl-empty">
-            {t("projectWorkspace.versions.emptyCurrentDescription")}
-          </div>
-        ) : (
-          documents.map((doc) => {
-            const isExpanded = expandedDocs.has(doc.id);
-            const isSelectedDoc = doc.id === selectedDocId;
-            const hasVersions = doc.versions.length > 0;
+          {documents.length === 0 ? (
+            <div className="vl-empty">
+              {t("projectWorkspace.versions.emptyCurrentDescription")}
+            </div>
+          ) : (
+            documents.map((doc) => {
+              const isExpanded = expandedDocs.has(doc.id);
+              const isSelectedDoc = doc.id === selectedDocId;
+              const hasVersions = doc.versions.length > 0;
 
-            return (
-              <div key={doc.id} className="vl-doc">
-                {/* Document header */}
-                <button
-                  className={`vl-doc-header ${isSelectedDoc ? "vl-doc-header--active" : ""}`}
-                  onClick={() => handleSelectDoc(doc.id)}
-                >
-                  <div className="vl-doc-header-left">
-                    {hasVersions && (
+              return (
+                <div key={doc.id} className="vl-doc">
+                  {/* Document header */}
+                  <button
+                    className={`vl-doc-header ${isSelectedDoc ? "vl-doc-header--active" : ""}`}
+                    onClick={() => handleSelectDoc(doc.id)}
+                  >
+                    <div className="vl-doc-header-left">
+                      {hasVersions && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className={`vl-chevron ${isExpanded ? "vl-chevron--expanded" : ""}`}
+                          onClick={(e) => toggleDoc(doc.id, e)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDoc(doc.id); } }}
+                          aria-label={isExpanded ? "Collapse" : "Expand"}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </span>
+                      )}
                       <span
-                        role="button"
-                        tabIndex={0}
-                        className={`vl-chevron ${isExpanded ? "vl-chevron--expanded" : ""}`}
-                        onClick={(e) => toggleDoc(doc.id, e)}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDoc(doc.id); } }}
-                        aria-label={isExpanded ? "Collapse" : "Expand"}
+                        className={`vl-doc-icon ${isSelectedDoc ? "vl-doc-icon--active" : ""}`}
                       >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
+                        {getDocIcon(doc.type)}
+                      </span>
+                      <span className="vl-doc-name">
+                        {getDocumentTypeLabel(t, doc.type as any)}
+                      </span>
+                    </div>
+                    {doc.currentVersionId && (
+                      <span className="vl-doc-badge">
+                        V{doc.versions.find(v => v.id === doc.currentVersionId)?.versionNumber || "?"}
                       </span>
                     )}
-                    <span
-                      className={`vl-doc-icon ${isSelectedDoc ? "vl-doc-icon--active" : ""}`}
-                    >
-                      {getDocIcon(doc.type)}
-                    </span>
-                    <span className="vl-doc-name">
-                      {getDocumentTypeLabel(t, doc.type as any)}
-                    </span>
-                  </div>
-                  {doc.currentVersionId && (
-                    <span className="vl-doc-badge">
-                      V{doc.versions.find(v => v.id === doc.currentVersionId)?.versionNumber || "?"}
-                    </span>
-                  )}
-                </button>
+                  </button>
 
-                {/* Version list */}
-                {isExpanded && hasVersions && (
-                  <div className="vl-versions">
-                    {doc.versions.map((version, index) => {
-                      const isSelectedVersion = version.id === selectedVersionId;
+                  {/* Version list */}
+                  {isExpanded && hasVersions && (
+                    <div className="vl-versions">
+                      {doc.versions.map((version, index) => {
+                        const isSelectedVersion = version.id === selectedVersionId;
 
-                      return (
-                        <button
-                          key={version.id}
-                          className={`vl-version ${isSelectedVersion ? "vl-version--active" : ""}`}
-                          onClick={() => onSelectVersion(version.id, doc.id)}
-                          style={{ animationDelay: `${index * 0.03}s` }}
-                        >
-                          <div className="vl-version-left">
-                            <StatusDot status={version.status} />
-                            <span className="vl-version-number">
-                              V{version.versionNumber}
+                        return (
+                          <button
+                            key={version.id}
+                            className={`vl-version ${isSelectedVersion ? "vl-version--active" : ""}`}
+                            onClick={() => onSelectVersion(version.id, doc.id)}
+                            style={{ animationDelay: `${index * 0.03}s` }}
+                          >
+                            <div className="vl-version-left">
+                              <StatusDot status={version.status} />
+                              <span className="vl-version-number">
+                                V{version.versionNumber}
+                              </span>
+                            </div>
+                            <span className="vl-version-title" title={version.title}>
+                              {version.title}
                             </span>
-                          </div>
-                          <span className="vl-version-title" title={version.title}>
-                            {version.title}
-                          </span>
-                          <span className={`vl-version-badge badge badge-${
-                            version.status === "approved" ? "success" :
-                            version.status === "rejected" ? "danger" :
-                            version.status === "draft" ? "neutral" : "warning"
-                          }`}>
-                            {getVersionStatusLabel(t, version.status as any)}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+                            <span className={`vl-version-badge badge badge-${version.status === "approved" ? "success" :
+                                version.status === "rejected" ? "danger" :
+                                  version.status === "draft" ? "neutral" : "warning"
+                              }`}>
+                              {getVersionStatusLabel(t, version.status as any)}
+                            </span>
+                            {version.status === "draft" && (
+                              confirmDeleteId === version.id ? (
+                                <span className="vl-version-delete-confirm" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    className="vl-version-delete-btn vl-version-delete-btn--danger"
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); deleteVersionMutation.mutate(version.id); }}
+                                    disabled={deleteVersionMutation.isPending}
+                                    title={t("projectWorkspace.versions.deleteDraftConfirm")}
+                                  >
+                                    {deleteVersionMutation.isPending ? "..." : "✓"}
+                                  </button>
+                                  <button
+                                    className="vl-version-delete-btn"
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                    title={t("common.cancel")}
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  className="vl-version-delete-btn"
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(version.id); }}
+                                  title={t("projectWorkspace.versions.deleteDraftAction")}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  </svg>
+                                </button>
+                              )
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
     </div>
   );

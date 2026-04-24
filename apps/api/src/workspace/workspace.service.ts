@@ -948,6 +948,74 @@ export class WorkspaceService {
     });
   }
 
+  async updateVersion(
+    userId: string,
+    versionId: string,
+    input: { title?: string; content?: unknown },
+  ) {
+    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    if (version.status !== "draft") {
+      throw new BadRequestException("Only draft versions can be updated");
+    }
+    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const actor = await this.getActor(userId, document.projectId);
+    if (!canEditProject(actor)) {
+      throw new ForbiddenException("You do not have permission to update this version");
+    }
+
+    return this.database.mutate((db) => {
+      const liveVersion = this.mustFindVersion(db, versionId);
+      if (liveVersion.status !== "draft") {
+        throw new BadRequestException("Only draft versions can be updated");
+      }
+      const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
+      if (input.title !== undefined) liveVersion.title = input.title;
+      if (input.content !== undefined) {
+        liveVersion.content = liveDocument.type === "storyboard"
+          ? normalizeStoryboardContent(input.content)
+          : input.content;
+      }
+      liveDocument.updatedAt = new Date().toISOString();
+      return liveVersion;
+    });
+  }
+
+  async deleteVersion(userId: string, versionId: string) {
+    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    if (version.status !== "draft") {
+      throw new BadRequestException("Only draft versions can be deleted");
+    }
+    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const actor = await this.getActor(userId, document.projectId);
+    if (!canEditProject(actor)) {
+      throw new ForbiddenException("You do not have permission to delete this version");
+    }
+
+    return this.database.mutate((db) => {
+      const liveVersion = this.mustFindVersion(db, versionId);
+      if (liveVersion.status !== "draft") {
+        throw new BadRequestException("Only draft versions can be deleted");
+      }
+      const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
+
+      // Remove the version
+      const versionIndex = db.versions.findIndex((v) => v.id === versionId);
+      if (versionIndex !== -1) db.versions.splice(versionIndex, 1);
+
+      // Remove associated comments
+      db.comments = db.comments.filter((c) => c.versionId !== versionId);
+
+      // If the document pointed to this version, fall back to the latest remaining version
+      if (liveDocument.currentVersionId === versionId) {
+        const remaining = db.versions
+          .filter((v) => v.documentId === liveDocument.id)
+          .sort((a, b) => b.versionNumber - a.versionNumber);
+        liveDocument.currentVersionId = remaining[0]?.id;
+        liveDocument.updatedAt = new Date().toISOString();
+      }
+    });
+  }
+
   async restoreVersion(userId: string, versionId: string) {
     const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));

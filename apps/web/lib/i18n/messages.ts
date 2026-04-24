@@ -316,6 +316,8 @@ export const zhCNMessages = {
       selectDocumentFirst: "请先选择一个文档。",
       createVersionSuccess: "已创建版本 V{versionNumber}。",
       createVersionFailed: "创建版本失败。",
+      updateDraftSuccess: "草稿已保存。",
+      updateDraftFailed: "保存草稿失败。",
       versionActionSuccess: "版本已{action}，当前状态为 {status}。",
       versionActionFailed: "版本操作失败。",
       commentSuccess: "评论已添加。",
@@ -488,7 +490,9 @@ export const zhCNMessages = {
       emptyCurrentTitle: "还没有可查看的版本",
       emptyCurrentDescription: "先从左侧选择文档，再手动创建版本，或者发起 AI 生成。",
       versionLabel: "V{versionNumber}",
-      versionMeta: "V{versionNumber} · {date}"
+      versionMeta: "V{versionNumber} · {date}",
+      deleteDraftAction: "删除草稿",
+      deleteDraftConfirm: "确认删除此草稿"
     },
     sidebar: {
       tabLibrary: "库与大纲",
@@ -1346,10 +1350,10 @@ export const zhCNMessages = {
 
 type DeepStringShape<T> = {
   [Key in keyof T]: T[Key] extends string
-    ? string
-    : T[Key] extends Record<string, unknown>
-      ? DeepStringShape<T[Key]>
-      : T[Key];
+  ? string
+  : T[Key] extends Record<string, unknown>
+  ? DeepStringShape<T[Key]>
+  : T[Key];
 };
 
 export const enMessages: DeepStringShape<typeof zhCNMessages> = {
@@ -1663,6 +1667,8 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       selectDocumentFirst: "Select a document first.",
       createVersionSuccess: "Created version V{versionNumber}.",
       createVersionFailed: "Failed to create the version.",
+      updateDraftSuccess: "Draft saved.",
+      updateDraftFailed: "Failed to save the draft.",
       versionActionSuccess: "The version was {action}. Current status: {status}.",
       versionActionFailed: "Failed to update the version status.",
       commentSuccess: "Comment added.",
@@ -1835,7 +1841,9 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       emptyCurrentTitle: "No version selected yet",
       emptyCurrentDescription: "Choose a document first, then create a version manually or generate one with AI.",
       versionLabel: "V{versionNumber}",
-      versionMeta: "V{versionNumber} · {date}"
+      versionMeta: "V{versionNumber} · {date}",
+      deleteDraftAction: "Delete draft",
+      deleteDraftConfirm: "Confirm deletion of this draft"
     },
     sidebar: {
       tabLibrary: "Library",
@@ -2702,10 +2710,10 @@ type DotJoin<Prefix extends string, Key extends string> = Prefix extends "" ? Ke
 
 type NestedTranslationKey<T, Prefix extends string = ""> = {
   [Key in keyof T & string]: T[Key] extends string
-    ? DotJoin<Prefix, Key>
-    : T[Key] extends Record<string, unknown>
-      ? NestedTranslationKey<T[Key], DotJoin<Prefix, Key>>
-      : never;
+  ? DotJoin<Prefix, Key>
+  : T[Key] extends Record<string, unknown>
+  ? NestedTranslationKey<T[Key], DotJoin<Prefix, Key>>
+  : never;
 }[keyof T & string];
 
 export type TranslationKey = NestedTranslationKey<Messages>;

@@ -399,6 +399,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     onSuccess: async (version) => {
       setFeedback({ message: t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber }), error: null });
       setIsEditing(false);
+      setSelectedVersionId(version.id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
@@ -407,9 +408,38 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
   });
 
+  // Update existing draft version in-place (for inline storyboard edits)
+  const updateVersionMutation = useMutation({
+    mutationFn: async (payload: { versionId: string; content: unknown }) => {
+      return apiFetch<Pick<VersionRecord, "id" | "versionNumber">>(
+        `/versions/${payload.versionId}`,
+        { method: "PATCH", body: { content: payload.content } },
+      );
+    },
+    onSuccess: async () => {
+      setFeedback({ message: t("projectWorkspace.feedback.updateDraftSuccess"), error: null });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+      ]);
+    },
+    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.updateDraftFailed") }),
+  });
+
   function handleEditorSave(title: string, content: ScriptContent | StoryboardContent | WorldBibleContent) {
     setFeedback({ message: null, error: null });
     createVersionMutation.mutate({ title, content });
+  }
+
+  function handleInlineStoryboardChange(content: StoryboardContent) {
+    setFeedback({ message: null, error: null });
+    // If the current version is already a draft, update it in-place
+    if (selectedVersion && selectedVersion.status === "draft") {
+      updateVersionMutation.mutate({ versionId: selectedVersion.id, content });
+      return;
+    }
+    // Otherwise create a new draft version
+    createVersionMutation.mutate({ title: "Inline edit", content });
   }
 
   function openEditor(fromVersion?: typeof selectedVersion) {
@@ -694,6 +724,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   setLeftPanelOpen(next);
                   localStorage.setItem("uw-left-panel", String(next));
                 }}
+                projectId={projectId}
               />
             </div>
             {leftPanelOpen && <JobStatusBar jobs={jobs} />}
@@ -770,7 +801,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                           projectId={projectId}
                           project={payload}
                           allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
-                          onStoryboardChange={(c) => handleEditorSave("Inline edit", c)}
+                          onStoryboardChange={handleInlineStoryboardChange}
                         />
                       )}
                     </div>
@@ -886,6 +917,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   if (isEditing) setIsEditing(false);
                   setLeftDrawerOpen(false);
                 }}
+                projectId={projectId}
               />
             </div>
             <JobStatusBar jobs={jobs} />

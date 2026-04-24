@@ -255,6 +255,24 @@ export class WorkspaceController {
     return this.workspaceService.createVersion(user.id, documentId, body);
   }
 
+  @Patch("versions/:id")
+  updateVersion(
+    @CurrentUser() user: { id: string },
+    @Param("id") versionId: string,
+    @Body() body: { title?: string; content?: unknown },
+  ) {
+    return this.workspaceService.updateVersion(user.id, versionId, body);
+  }
+
+  @Delete("versions/:id")
+  @HttpCode(204)
+  deleteVersion(
+    @CurrentUser() user: { id: string },
+    @Param("id") versionId: string,
+  ) {
+    return this.workspaceService.deleteVersion(user.id, versionId);
+  }
+
   @Post("versions/:id/submit")
   submitVersion(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
     return this.workspaceService.submitVersion(user.id, versionId);
