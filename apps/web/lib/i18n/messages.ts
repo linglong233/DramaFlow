@@ -492,7 +492,9 @@ export const zhCNMessages = {
       versionLabel: "V{versionNumber}",
       versionMeta: "V{versionNumber} · {date}",
       deleteDraftAction: "删除草稿",
-      deleteDraftConfirm: "确认删除此草稿"
+      deleteDraftConfirm: "确认删除此草稿",
+      showMore: "展开其余 {count} 个版本",
+      showLess: "收起旧版本"
     },
     sidebar: {
       tabLibrary: "库与大纲",
@@ -1843,7 +1845,9 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       versionLabel: "V{versionNumber}",
       versionMeta: "V{versionNumber} · {date}",
       deleteDraftAction: "Delete draft",
-      deleteDraftConfirm: "Confirm deletion of this draft"
+      deleteDraftConfirm: "Confirm deletion of this draft",
+      showMore: "Show {count} more versions",
+      showLess: "Show fewer versions"
     },
     sidebar: {
       tabLibrary: "Library",

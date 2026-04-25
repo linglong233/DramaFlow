@@ -426,6 +426,51 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.updateDraftFailed") }),
   });
 
+  // Submit a draft version for review
+  const submitVersionMutation = useMutation({
+    mutationFn: async (versionId: string) => {
+      return apiFetch(`/versions/${versionId}/submit`, { method: "POST" });
+    },
+    onSuccess: async () => {
+      setFeedback({ message: t("projectWorkspace.versions.submitAction"), error: null });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+      ]);
+    },
+    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
+  });
+
+  // Approve a pending version
+  const approveVersionMutation = useMutation({
+    mutationFn: async (versionId: string) => {
+      return apiFetch(`/versions/${versionId}/approve`, { method: "POST" });
+    },
+    onSuccess: async () => {
+      setFeedback({ message: t("projectWorkspace.versions.approveAction"), error: null });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+      ]);
+    },
+    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
+  });
+
+  // Reject a pending version
+  const rejectVersionMutation = useMutation({
+    mutationFn: async (versionId: string) => {
+      return apiFetch(`/versions/${versionId}/reject`, { method: "POST" });
+    },
+    onSuccess: async () => {
+      setFeedback({ message: t("projectWorkspace.versions.rejectAction"), error: null });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+      ]);
+    },
+    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
+  });
+
   function handleEditorSave(title: string, content: ScriptContent | StoryboardContent | WorldBibleContent) {
     setFeedback({ message: null, error: null });
     createVersionMutation.mutate({ title, content });
@@ -661,7 +706,16 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       {isInfoMode && (
         <div className="uw-info-scroll">
           <div className="uw-info-inner">
-            <ProjectInfoPanel projectId={projectId} payload={payload} />
+            <ProjectInfoPanel
+              projectId={projectId}
+              payload={payload}
+              onNavigateToVersion={(documentId, versionId) => {
+                setSelectedDocId(documentId);
+                setSelectedVersionId(versionId);
+                setDocSubTab("view");
+                handleModeChange("document");
+              }}
+            />
           </div>
         </div>
       )}
@@ -802,6 +856,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                           project={payload}
                           allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
                           onStoryboardChange={handleInlineStoryboardChange}
+                          onSubmitForReview={(versionId) => submitVersionMutation.mutate(versionId)}
+                          isSubmitting={submitVersionMutation.isPending}
+                          onApprove={(versionId) => approveVersionMutation.mutate(versionId)}
+                          onReject={(versionId) => rejectVersionMutation.mutate(versionId)}
+                          isApproving={approveVersionMutation.isPending}
+                          isRejecting={rejectVersionMutation.isPending}
                         />
                       )}
                     </div>

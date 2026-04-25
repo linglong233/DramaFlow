@@ -165,11 +165,21 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     const scriptDoc = project.documents.find((d) => d.type === "script");
     const scriptVer = project.versions.find((v) => v.id === scriptDoc?.currentVersionId);
     if (!scriptVer) return map;
-    for (const scene of normalizeScriptContent(scriptVer.content).scenes) {
+    const scriptScenes = normalizeScriptContent(scriptVer.content).scenes;
+    for (const scene of scriptScenes) {
       map.set(scene.id, scene.heading);
     }
+    // Index-based fallback: when AI-generated sceneIds don't match script scene IDs,
+    // map storyboard scenes to script scenes by position order.
+    const storyboardSceneIds = getStoryboardSceneIds(safeContent);
+    for (let i = 0; i < storyboardSceneIds.length && i < scriptScenes.length; i++) {
+      const sbSceneId = storyboardSceneIds[i];
+      if (!map.has(sbSceneId) && scriptScenes[i].heading) {
+        map.set(sbSceneId, scriptScenes[i].heading);
+      }
+    }
     return map;
-  }, [project]);
+  }, [project, safeContent]);
 
   const shotStateById = useMemo(() => {
     const map = new Map<string, ShotProjectState>();

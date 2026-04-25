@@ -80,9 +80,10 @@ function initials(name: string): string {
 interface Props {
   projectId: string;
   payload: ProjectWorkspacePayload;
+  onNavigateToVersion?: (documentId: string, versionId: string) => void;
 }
 
-export function ProjectInfoPanel({ projectId, payload }: Props) {
+export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Props) {
   const queryClient = useQueryClient();
   const { formatDate, t } = useI18n();
   const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
@@ -258,12 +259,25 @@ export function ProjectInfoPanel({ projectId, payload }: Props) {
                   <span className="pip-empty__desc">{t("projectWorkspace.collaboration.pendingEmptyDescription")}</span>
                 </div>
               ) : payload.pendingReviews.map((item) => (
-                <div key={item.id} className="pip-row">
+                <div
+                  key={item.id}
+                  className="pip-row"
+                  style={{ cursor: onNavigateToVersion ? "pointer" : undefined }}
+                  onClick={onNavigateToVersion ? () => onNavigateToVersion(item.documentId, item.id) : undefined}
+                  role={onNavigateToVersion ? "button" : undefined}
+                  tabIndex={onNavigateToVersion ? 0 : undefined}
+                  onKeyDown={onNavigateToVersion ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigateToVersion(item.documentId, item.id); } } : undefined}
+                >
                   <div className="pip-row__info">
                     <span className="pip-row__name">{item.title}</span>
                     <span className="pip-row__sub">{item.documentTitle} · V{item.versionNumber}</span>
                   </div>
                   <span className="status-badge badge-warning">{getVersionStatusLabel(t, item.status)}</span>
+                  {onNavigateToVersion && (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-tertiary)" }}>
+                      <path d="M5 2.5l4.5 4.5L5 11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
                 </div>
               ))}
             </div>

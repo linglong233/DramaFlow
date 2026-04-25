@@ -7,11 +7,14 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n, getDocumentTypeLabel, getVersionStatusLabel } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
 import { queryKeys } from "../../lib/query-keys";
+
+/** Maximum number of versions to show before collapsing behind a toggle. */
+const MAX_VISIBLE_VERSIONS = 3;
 
 interface Version {
   id: string;
@@ -82,8 +85,32 @@ export function VersionList({
 }: Props) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set(documents.map(d => d.id)));
+
+  // Only expand the document that currently holds the selection
+  const initialExpandedDoc = useMemo(() => {
+    if (selectedDocId) return selectedDocId;
+    const match = documents.find(d => d.versions.some(v => v.id === selectedVersionId));
+    return match?.id ?? "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(
+    initialExpandedDoc ? new Set([initialExpandedDoc]) : new Set()
+  );
+  const [showAllVersions, setShowAllVersions] = useState<Set<string>>(new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const activeDocId = selectedDocId || documents.find((doc) => doc.versions.some((version) => version.id === selectedVersionId))?.id;
+    if (!activeDocId) return;
+
+    setExpandedDocs((prev) => {
+      if (prev.has(activeDocId)) return prev;
+      const next = new Set(prev);
+      next.add(activeDocId);
+      return next;
+    });
+  }, [documents, selectedDocId, selectedVersionId]);
 
   const deleteVersionMutation = useMutation({
     mutationFn: async (versionId: string) => apiFetch(`/versions/${versionId}`, { method: "DELETE" }),
@@ -101,6 +128,19 @@ export function VersionList({
   const toggleDoc = (docId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setExpandedDocs(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const toggleShowAll = (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowAllVersions(prev => {
       const next = new Set(prev);
       if (next.has(docId)) {
         next.delete(docId);
@@ -192,58 +232,74 @@ export function VersionList({
 
       {!isCollapsed && (
         <div className="vl-list">
-          {documents.length === 0 ? (
-            <div className="vl-empty">
-              {t("projectWorkspace.versions.emptyCurrentDescription")}
-            </div>
-          ) : (
-            documents.map((doc) => {
-              const isExpanded = expandedDocs.has(doc.id);
-              const isSelectedDoc = doc.id === selectedDocId;
-              const hasVersions = doc.versions.length > 0;
+        {documents.length === 0 ? (
+          <div className="vl-empty">
+            {t("projectWorkspace.versions.emptyCurrentDescription")}
+          </div>
+        ) : (
+          documents.map((doc) => {
+            const isExpanded = expandedDocs.has(doc.id);
+            const isSelectedDoc = doc.id === selectedDocId;
+            const hasVersions = doc.versions.length > 0;
 
-              return (
-                <div key={doc.id} className="vl-doc">
-                  {/* Document header */}
-                  <button
-                    className={`vl-doc-header ${isSelectedDoc ? "vl-doc-header--active" : ""}`}
-                    onClick={() => handleSelectDoc(doc.id)}
-                  >
-                    <div className="vl-doc-header-left">
-                      {hasVersions && (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          className={`vl-chevron ${isExpanded ? "vl-chevron--expanded" : ""}`}
-                          onClick={(e) => toggleDoc(doc.id, e)}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDoc(doc.id); } }}
-                          aria-label={isExpanded ? "Collapse" : "Expand"}
-                        >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                        </span>
-                      )}
+            return (
+              <div key={doc.id} className="vl-doc">
+                {/* Document header */}
+                <button
+                  className={`vl-doc-header ${isSelectedDoc ? "vl-doc-header--active" : ""}`}
+                  onClick={() => handleSelectDoc(doc.id)}
+                >
+                  <div className="vl-doc-header-left">
+                    {hasVersions && (
                       <span
-                        className={`vl-doc-icon ${isSelectedDoc ? "vl-doc-icon--active" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        className={`vl-chevron ${isExpanded ? "vl-chevron--expanded" : ""}`}
+                        onClick={(e) => toggleDoc(doc.id, e)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDoc(doc.id); } }}
+                        aria-label={isExpanded ? "Collapse" : "Expand"}
                       >
-                        {getDocIcon(doc.type)}
-                      </span>
-                      <span className="vl-doc-name">
-                        {getDocumentTypeLabel(t, doc.type as any)}
-                      </span>
-                    </div>
-                    {doc.currentVersionId && (
-                      <span className="vl-doc-badge">
-                        V{doc.versions.find(v => v.id === doc.currentVersionId)?.versionNumber || "?"}
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
                       </span>
                     )}
-                  </button>
+                    <span
+                      className={`vl-doc-icon ${isSelectedDoc ? "vl-doc-icon--active" : ""}`}
+                    >
+                      {getDocIcon(doc.type)}
+                    </span>
+                    <span className="vl-doc-name">
+                      {getDocumentTypeLabel(t, doc.type as any)}
+                    </span>
+                  </div>
+                  {doc.currentVersionId && (
+                    <span className="vl-doc-badge">
+                      V{doc.versions.find(v => v.id === doc.currentVersionId)?.versionNumber || "?"}
+                    </span>
+                  )}
+                </button>
 
-                  {/* Version list */}
-                  {isExpanded && hasVersions && (
+                {/* Version list */}
+                {isExpanded && hasVersions && (() => {
+                  const isShowingAll = showAllVersions.has(doc.id);
+                  const totalVersions = doc.versions.length;
+                  const hasMore = totalVersions > MAX_VISIBLE_VERSIONS;
+
+                  // If the selected version belongs to this doc but would be
+                  // hidden, force-show all versions for this doc.
+                  const selectedIsHidden = hasMore && !isShowingAll &&
+                    doc.versions.slice(MAX_VISIBLE_VERSIONS).some(v => v.id === selectedVersionId);
+                  const effectiveShowAll = isShowingAll || selectedIsHidden;
+
+                  const visibleVersions = (hasMore && !effectiveShowAll)
+                    ? doc.versions.slice(0, MAX_VISIBLE_VERSIONS)
+                    : doc.versions;
+                  const hiddenCount = totalVersions - MAX_VISIBLE_VERSIONS;
+
+                  return (
                     <div className="vl-versions">
-                      {doc.versions.map((version, index) => {
+                      {visibleVersions.map((version, index) => {
                         const isSelectedVersion = version.id === selectedVersionId;
 
                         return (
@@ -262,10 +318,11 @@ export function VersionList({
                             <span className="vl-version-title" title={version.title}>
                               {version.title}
                             </span>
-                            <span className={`vl-version-badge badge badge-${version.status === "approved" ? "success" :
-                                version.status === "rejected" ? "danger" :
-                                  version.status === "draft" ? "neutral" : "warning"
-                              }`}>
+                            <span className={`vl-version-badge badge badge-${
+                              version.status === "approved" ? "success" :
+                              version.status === "rejected" ? "danger" :
+                              version.status === "draft" ? "neutral" : "warning"
+                            }`}>
                               {getVersionStatusLabel(t, version.status as any)}
                             </span>
                             {version.status === "draft" && (
@@ -306,13 +363,26 @@ export function VersionList({
                           </button>
                         );
                       })}
+                      {hasMore && (
+                        <button
+                          className="vl-version-toggle"
+                          type="button"
+                          onClick={(e) => toggleShowAll(doc.id, e)}
+                        >
+                          {effectiveShowAll
+                            ? t("projectWorkspace.versions.showLess")
+                            : t("projectWorkspace.versions.showMore", { count: hiddenCount })
+                          }
+                        </button>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+                  );
+                })()}
+              </div>
+            );
+          })
+        )}
+      </div>
       )}
     </div>
   );

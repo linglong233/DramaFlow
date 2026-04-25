@@ -4986,6 +4986,27 @@ textarea.input {
   font-weight: 600;
 }
 
+.vl-version-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+  margin-top: 2px;
+}
+
+.vl-version-toggle:hover {
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.06);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    TEAM ADMIN DASHBOARD
    ───────────────────────────────────────────────────────────────────────────── */

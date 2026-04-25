@@ -778,7 +778,8 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
   }
 
   private mockStoryboard(script: ScriptContent, cinematicStyle: string, shotDensity: string): StoryboardContent {
-    const shots = script.scenes.flatMap((scene, sceneIndex) => {
+    const scenes = script?.scenes ?? [];
+    const shots = scenes.flatMap((scene, sceneIndex) => {
       return [1, 2].map((shotIndex) => ({
         id: `shot-${sceneIndex + 1}-${shotIndex}`,
         sceneId: scene.id,

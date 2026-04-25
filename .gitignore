@@ -7,6 +7,8 @@ coverage
 .turbo
 apps/api/data
 apps/api/uploads
+apps/api/apps/api/data
+apps/api/apps/api/uploads
 apps/web/.next
 *.tsbuildinfo
 **/dev-db.json

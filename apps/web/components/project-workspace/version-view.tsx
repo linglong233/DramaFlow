@@ -74,13 +74,13 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
         <div className="vv-scene__head-right">
           {hasDialogue ? (
             <span className="vv-scene__meta-badge">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
               {scene.dialogue.length}
             </span>
           ) : null}
           {scene.characters.length > 0 ? (
             <span className="vv-scene__meta-badge">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
               {scene.characters.length}
             </span>
           ) : null}
@@ -119,7 +119,7 @@ function SceneCard({ scene, index, expanded, onToggle }: { scene: ScriptScene; i
           {scene.directorNote ? (
             <div className="vv-scene__director-note">
               <span className="vv-scene__director-note-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                 {t("versionView.directorNote")}
               </span>
               <span className="vv-scene__director-note-value">{scene.directorNote}</span>
@@ -389,9 +389,9 @@ export function ScriptView({ content }: { content: ScriptContent }) {
           <button className="vv-scenes-header__toggle" type="button" onClick={toggleAll}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {allExpanded ? (
-                <><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></>
+                <><polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" /><line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" /></>
               ) : (
-                <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>
+                <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>
               )}
             </svg>
             {allExpanded ? t("versionView.collapseAll") : t("versionView.expandAll")}
@@ -563,6 +563,12 @@ export function VersionView({
   project,
   allowStoryboardMutations = true,
   onStoryboardChange,
+  onSubmitForReview,
+  isSubmitting,
+  onApprove,
+  onReject,
+  isApproving,
+  isRejecting,
 }: {
   version: Version | null;
   isLoading: boolean;
@@ -570,6 +576,12 @@ export function VersionView({
   project?: ProjectWorkspacePayload;
   allowStoryboardMutations?: boolean;
   onStoryboardChange?: (content: StoryboardContent) => void;
+  onSubmitForReview?: (versionId: string) => void;
+  isSubmitting?: boolean;
+  onApprove?: (versionId: string) => void;
+  onReject?: (versionId: string) => void;
+  isApproving?: boolean;
+  isRejecting?: boolean;
 }) {
   const { formatDate, t } = useI18n();
 
@@ -592,6 +604,8 @@ export function VersionView({
   }
 
   const currentVersion = version;
+  const canReview = currentVersion.status === "pending_review" || currentVersion.status === "submitted";
+
   function renderContent() {
     if (!currentVersion.content) {
       return <span className="muted">{t("projectWorkspace.overview.fallbackDescription")}</span>;
@@ -636,9 +650,42 @@ export function VersionView({
             })}
           </span>
         </div>
-        <span className={`badge badge-${currentVersion.status === "approved" ? "success" : currentVersion.status === "rejected" ? "danger" : "neutral"}`}>
+        <span className={`badge badge-${currentVersion.status === "approved" ? "success" : currentVersion.status === "rejected" ? "danger" : currentVersion.status === "pending_review" || currentVersion.status === "submitted" ? "warning" : "neutral"}`}>
           {getVersionStatusLabel(t, currentVersion.status as never)}
         </span>
+        {currentVersion.status === "draft" && onSubmitForReview && (
+          <button
+            className="btn btn-secondary btn-sm"
+            type="button"
+            onClick={() => onSubmitForReview(currentVersion.id)}
+            disabled={isSubmitting}
+            style={{ fontSize: 12, whiteSpace: "nowrap" }}
+          >
+            {isSubmitting ? t("common.submitting") : t("projectWorkspace.review.submitForReview")}
+          </button>
+        )}
+        {canReview && onApprove && onReject && (
+          <>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              onClick={() => onApprove(currentVersion.id)}
+              disabled={isApproving}
+              style={{ fontSize: 12, whiteSpace: "nowrap" }}
+            >
+              {isApproving ? t("common.submitting") : t("projectWorkspace.versions.approveAction")}
+            </button>
+            <button
+              className="btn btn-danger btn-sm"
+              type="button"
+              onClick={() => onReject(currentVersion.id)}
+              disabled={isRejecting}
+              style={{ fontSize: 12, whiteSpace: "nowrap" }}
+            >
+              {isRejecting ? t("common.submitting") : t("projectWorkspace.versions.rejectAction")}
+            </button>
+          </>
+        )}
       </div>
 
       <div style={{ marginTop: "var(--space-4)" }}>

@@ -192,7 +192,7 @@ export function ShotDetailDrawer({
   const selectedCharacters = shot.characterIds?.length ? shot.characterIds : characters.map((c) => c.id);
   const selectedVoice = ttsDraft?.characterId ? voiceConfigsByCharacterId.get(ttsDraft.characterId) : undefined;
 
-  const sceneHeading = sceneHeadingMap.get(shot.sceneId) || shot.sceneId;
+  const sceneHeading = sceneHeadingMap.get(shot.sceneId) || t("storyboardToolbar.untitledScene");
   const framingLabel = getStoryboardFramingLabel(shot.framing, lang);
   const cameraLabel = getStoryboardCameraMoveLabel(shot.cameraMove, lang);
 

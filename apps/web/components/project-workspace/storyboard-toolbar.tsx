@@ -99,7 +99,12 @@ export function StoryboardToolbar({
     ? `${Math.floor(totalDuration / 60)}m ${Math.round(totalDuration % 60)}s`
     : `${Math.round(totalDuration)}s`;
 
-  const selectedGroup = sceneGroups.find((g) => g.sceneId === selectedSceneId);
+  const selectedGroupIndex = sceneGroups.findIndex((g) => g.sceneId === selectedSceneId);
+  const selectedGroup = selectedGroupIndex >= 0 ? sceneGroups[selectedGroupIndex] : undefined;
+  const selectedSceneLabel = selectedGroup?.heading
+    || (selectedGroupIndex >= 0
+      ? t("storyboardToolbar.scenePrefix", { index: String(selectedGroupIndex + 1) })
+      : t("storyboardToolbar.untitledScene"));
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -131,7 +136,7 @@ export function StoryboardToolbar({
             type="button"
             onClick={() => setSceneDropdownOpen(!sceneDropdownOpen)}
           >
-            {selectedGroup?.heading || selectedSceneId}
+            {selectedSceneLabel}
             <ChevronDownIcon />
           </button>
           {sceneDropdownOpen && (
@@ -146,7 +151,7 @@ export function StoryboardToolbar({
                     setSceneDropdownOpen(false);
                   }}
                 >
-                  {t("storyboardToolbar.scenePrefix", { index: String(index + 1) })}: {group.heading || group.sceneId}
+                  {t("storyboardToolbar.scenePrefix", { index: String(index + 1) })}: {group.heading || t("storyboardToolbar.untitledScene")}
                 </button>
               ))}
               {editable && (
