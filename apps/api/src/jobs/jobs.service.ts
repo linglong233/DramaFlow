@@ -558,8 +558,8 @@ export class JobsService {
 
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
-      type: "script",
-      title: `${job.input.title} 剧本`,
+      type: "synopsis",
+      title: `${job.input.title} 大纲`,
       createdBy: job.createdBy,
     });
 
@@ -2021,8 +2021,8 @@ export class JobsService {
       if (finalResult) {
         const document = await this.workspaceService.ensureDocumentForProject({
           projectId,
-          type: "script",
-          title: `${input.title} 剧本`,
+          type: "synopsis",
+          title: `${input.title} 大纲`,
           createdBy: userId,
         });
 

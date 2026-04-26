@@ -593,6 +593,7 @@ export const zhCNMessages = {
   },
   enums: {
     documentType: {
+      synopsis: "大纲",
       script: "剧本",
       storyboard: "分镜",
       image: "图片",
@@ -1946,6 +1947,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
   },
   enums: {
     documentType: {
+      synopsis: "Synopsis",
       script: "Script",
       storyboard: "Storyboard",
       image: "Image",

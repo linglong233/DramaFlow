@@ -41,8 +41,8 @@ export type ReviewPolicyMode = "inherit" | "required" | "bypass";
 /** 项目状态：草稿、进行中、已完成、已归档 */
 export type ProjectStatus = "draft" | "in_progress" | "completed" | "archived";
 
-/** 文档类型：剧本、分镜、图片、视频、音频、世界观设定 */
-export type DocumentType = "script" | "storyboard" | "image" | "video" | "audio" | "subtitle" | "world_bible";
+/** 文档类型：大纲、剧本、分镜、图片、视频、音频、世界观设定 */
+export type DocumentType = "synopsis" | "script" | "storyboard" | "image" | "video" | "audio" | "subtitle" | "world_bible";
 
 /** 版本状态：草稿、已提交、待审核、已批准、已拒绝 */
 export type VersionStatus =

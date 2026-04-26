@@ -8,6 +8,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   normalizeScriptContent,
@@ -16,6 +17,7 @@ import {
   type ProjectWorkspacePayload,
   type ScriptContent,
   type StoryboardContent,
+  type VersionRecord,
 } from "@dramaflow/shared";
 
 import { apiStreamFetch, formatApiError } from "../../lib/api";
@@ -26,6 +28,7 @@ import { ScriptView, StoryboardPreview } from "./version-view";
 interface Props {
   projectId: string;
   project: ProjectWorkspacePayload;
+  selectedVersion?: Pick<VersionRecord, "id" | "title" | "content"> | null;
   onEditResult?: (content: ScriptContent | StoryboardContent) => void;
 }
 
@@ -71,7 +74,7 @@ function StopIcon() {
   );
 }
 
-export function TextGeneratorPanel({ projectId, project, onEditResult }: Props) {
+export function TextGeneratorPanel({ projectId, project, selectedVersion: externalSelectedVersion, onEditResult }: Props) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
@@ -84,9 +87,9 @@ export function TextGeneratorPanel({ projectId, project, onEditResult }: Props) 
     ]);
   }
 
-  // Synopsis step state
-  const [synTitle, setSynTitle] = useState("");
-  const [synGenre, setSynGenre] = useState("");
+  // Synopsis step state — pre-fill from project metadata
+  const [synTitle, setSynTitle] = useState(project.project.name ?? "");
+  const [synGenre, setSynGenre] = useState(project.project.genre ?? "");
   const [synTheme, setSynTheme] = useState("");
   const [synKeywords, setSynKeywords] = useState("");
   const [synEpisodeCount, setSynEpisodeCount] = useState(3);
@@ -100,15 +103,73 @@ export function TextGeneratorPanel({ projectId, project, onEditResult }: Props) 
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
-  // Script step state (existing fields)
-  const [scriptTitle, setScriptTitle] = useState("");
-  const [scriptGenre, setScriptGenre] = useState("");
+  // Script step state
+  const [scriptTitle, setScriptTitle] = useState(project.project.name ?? "");
+  const [scriptGenre, setScriptGenre] = useState(project.project.genre ?? "");
   const [scriptPremise, setScriptPremise] = useState("");
   const [episodeGoal, setEpisodeGoal] = useState("");
   const [tone, setTone] = useState("");
   const [audience, setAudience] = useState("");
   const [cinematicStyle, setCinematicStyle] = useState("");
   const [shotDensity, setShotDensity] = useState<"sparse" | "balanced" | "dense">("balanced");
+
+  // Sync form fields when user switches to a different version in the sidebar
+  const lastSyncedVersionId = useRef<string | null>(null);
+  useEffect(() => {
+    if (isStreaming) return; // Don't overwrite while generating
+
+    if (!externalSelectedVersion) {
+      lastSyncedVersionId.current = null;
+      setSynTitle(project.project.name ?? "");
+      setSynGenre(project.project.genre ?? "");
+      setScriptTitle(project.project.name ?? "");
+      setScriptGenre(project.project.genre ?? "");
+      setSynopsisResult(null);
+      setSynopsisEditable(false);
+      setScriptPremise("");
+      return;
+    }
+
+    if (externalSelectedVersion.id === lastSyncedVersionId.current) return;
+    lastSyncedVersionId.current = externalSelectedVersion.id;
+
+    // Always sync title from the selected version
+    const versionTitle = externalSelectedVersion.title || project.project.name || "";
+    setSynTitle(versionTitle);
+    setScriptTitle(versionTitle);
+    setSynopsisEditable(false);
+
+    if (project.project.genre) {
+      setSynGenre(project.project.genre);
+      setScriptGenre(project.project.genre);
+    }
+
+    const content = externalSelectedVersion.content;
+    if (typeof content === "string") {
+      setSynopsisResult(content);
+      setScriptPremise(content);
+      return;
+    }
+
+    setSynopsisResult(null);
+
+    if (!content || typeof content !== "object") {
+      setScriptPremise("");
+      return;
+    }
+
+    const c = content as Record<string, unknown>;
+
+    // Script content: extract logline, premise, characters, genre
+    if ("logline" in c || "premise" in c || "scenes" in c) {
+      const premise = (c as { premise?: string }).premise;
+      const logline = (c as { logline?: string }).logline;
+      setScriptPremise(premise || logline || "");
+      return;
+    }
+
+    setScriptPremise("");
+  }, [externalSelectedVersion, isStreaming, project.project.name, project.project.genre]);
   const [targetType, setTargetType] = useState<"script" | "storyboard">("script");
   const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
   const [generatedStoryboard, setGeneratedStoryboard] = useState<StoryboardContent | null>(null);
@@ -625,7 +686,7 @@ export function TextGeneratorPanel({ projectId, project, onEditResult }: Props) 
                 style={{ resize: "vertical", whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.7 }}
               />
             ) : (
-              <pre className="gen-synopsis__text">{synopsisResult}</pre>
+              <div className="gen-synopsis__text vv-markdown"><ReactMarkdown>{synopsisResult}</ReactMarkdown></div>
             )}
           </div>
         </section>

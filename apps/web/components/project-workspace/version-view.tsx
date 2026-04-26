@@ -8,6 +8,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   normalizeScriptContent,
   normalizeStoryboardContent,
@@ -625,9 +626,9 @@ export function VersionView({
 
     if (typeof currentVersion.content === "string") {
       return (
-        <pre className="vv-json" style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
-          {currentVersion.content}
-        </pre>
+        <div className="vv-markdown">
+          <ReactMarkdown>{currentVersion.content}</ReactMarkdown>
+        </div>
       );
     }
 

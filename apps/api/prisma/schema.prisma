@@ -41,6 +41,7 @@ enum ProjectStatus {
 }
 
 enum DocumentType {
+  synopsis
   script
   storyboard
   image

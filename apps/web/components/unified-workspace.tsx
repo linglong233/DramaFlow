@@ -69,6 +69,7 @@ const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
   timeline: "timeline",
 };
 
+const VIRTUAL_SYNOPSIS_DOC_ID = "__virtual_synopsis__";
 const VIRTUAL_VIDEO_DOC_ID = "__video_timeline__";
 
 interface DocumentWithVersions {
@@ -326,8 +327,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, socket]);
 
   const documents: DocumentWithVersions[] = useMemo(() => {
-    const docTypes = new Set(["script", "storyboard", "world_bible"]);
-    const typeOrder: Record<string, number> = { world_bible: 0, script: 1, storyboard: 2 };
+    const docTypes = new Set(["synopsis", "script", "storyboard", "world_bible"]);
+    const typeOrder: Record<string, number> = { world_bible: 0, synopsis: 1, script: 2, storyboard: 3 };
     const realDocs = rawDocuments
       .filter((doc) => docTypes.has(doc.type))
       .sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99))
@@ -345,6 +346,20 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       };
     });
 
+    // Ensure synopsis always appears in sidebar even before first generation
+    const hasSynopsis = realDocs.some((d) => d.type === "synopsis");
+    if (!hasSynopsis) {
+      realDocs.push({
+        id: VIRTUAL_SYNOPSIS_DOC_ID,
+        type: "synopsis",
+        title: "",
+        shotId: undefined,
+        currentVersionId: undefined,
+        versions: [],
+      });
+      realDocs.sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99));
+    }
+
     // Append virtual video entry that navigates to timeline mode
     realDocs.push({
       id: VIRTUAL_VIDEO_DOC_ID,
@@ -360,11 +375,18 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   // Auto-select first document/version (skip virtual video entry)
   useEffect(() => {
-    const realDocs = documents.filter((d) => d.id !== VIRTUAL_VIDEO_DOC_ID);
-    if (!realDocs.length) return;
-    const activeDoc = selectedDocId ? documents.find((d) => d.id === selectedDocId) : realDocs[0];
+    const contentDocs = documents.filter((d) => d.id !== VIRTUAL_VIDEO_DOC_ID);
+    if (!contentDocs.length) return;
+
+    const selectableDocs = contentDocs.filter((d) => d.id !== VIRTUAL_SYNOPSIS_DOC_ID || d.versions.length > 0);
+    const defaultDoc = selectableDocs.find((d) => d.versions.length > 0) ?? selectableDocs[0] ?? contentDocs[0];
+    const activeDoc = selectedDocId ? documents.find((d) => d.id === selectedDocId) ?? defaultDoc : defaultDoc;
     if (!activeDoc || activeDoc.id === VIRTUAL_VIDEO_DOC_ID) return;
-    if (!selectedDocId) setSelectedDocId(activeDoc.id);
+    if (!selectedDocId || activeDoc.id !== selectedDocId) setSelectedDocId(activeDoc.id);
+    if (selectedVersionId && !activeDoc.versions.some((version) => version.id === selectedVersionId)) {
+      setSelectedVersionId(activeDoc.versions[0]?.id ?? "");
+      return;
+    }
     if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.versions[0].id);
   }, [documents, selectedDocId, selectedVersionId]);
 
@@ -374,13 +396,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   );
 
   const selectedVersion = useMemo(() => {
-    for (const doc of documents) {
-      const version = doc.versions.find((v) => v.id === selectedVersionId);
-      if (version) return version;
-    }
-    return null;
-  }, [documents, selectedVersionId]);
+    return selectedDoc?.versions.find((version) => version.id === selectedVersionId) ?? null;
+  }, [selectedDoc, selectedVersionId]);
 
+  const isSynopsisDoc = selectedDoc?.type === "synopsis";
   const isScriptDoc = selectedDoc?.type === "script";
   const isStoryboardDoc = selectedDoc?.type === "storyboard";
   const isVideoDoc = selectedDoc?.type === "video";
@@ -389,8 +408,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   // Version creation (for editor save)
   const createVersionMutation = useMutation({
     mutationFn: async (payload: { title: string; content: unknown }) => {
-      const targetDocId = selectedDocId || documents[0]?.id;
-      if (!targetDocId) throw new Error(t("projectWorkspace.manualVersion.noDocumentError"));
+      const targetDocId = selectedDoc?.id;
+      if (!targetDocId || targetDocId === VIRTUAL_SYNOPSIS_DOC_ID || targetDocId === VIRTUAL_VIDEO_DOC_ID) {
+        throw new Error(t("projectWorkspace.manualVersion.noDocumentError"));
+      }
       return apiFetch<Pick<VersionRecord, "id" | "versionNumber">>(
         `/documents/${targetDocId}/versions`,
         { method: "POST", body: { title: payload.title, content: payload.content, metadata: { source: "unified-workspace" } } },
@@ -488,6 +509,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }
 
   function openEditor(fromVersion?: typeof selectedVersion) {
+    if (isSynopsisDoc) {
+      return;
+    }
+
     if (isStoryboardDoc) {
       setStoryboardEditorInitialContent(
         fromVersion ? normalizeStoryboardContent(fromVersion.content) : null,
@@ -506,11 +531,26 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }
 
   function handleEditResult(content: ScriptContent | StoryboardContent | WorldBibleContent) {
-    if (isStoryboardDoc) {
+    if ("shots" in content || "overview" in content) {
+      const storyboardDoc = documents.find((doc) => doc.type === "storyboard");
+      if (storyboardDoc) {
+        setSelectedDocId(storyboardDoc.id);
+        setSelectedVersionId(storyboardDoc.currentVersionId ?? storyboardDoc.versions[0]?.id ?? "");
+      }
       setStoryboardEditorInitialContent(normalizeStoryboardContent(content));
-    } else if (isWorldBibleDoc) {
+    } else if ("locations" in content || "styleGuide" in content || "voiceConfigs" in content) {
+      const worldBibleDoc = documents.find((doc) => doc.type === "world_bible");
+      if (worldBibleDoc) {
+        setSelectedDocId(worldBibleDoc.id);
+        setSelectedVersionId(worldBibleDoc.currentVersionId ?? worldBibleDoc.versions[0]?.id ?? "");
+      }
       setWorldBibleEditorInitialContent(normalizeWorldBibleContent(content));
     } else {
+      const scriptDoc = documents.find((doc) => doc.type === "script");
+      if (scriptDoc) {
+        setSelectedDocId(scriptDoc.id);
+        setSelectedVersionId(scriptDoc.currentVersionId ?? scriptDoc.versions[0]?.id ?? "");
+      }
       setEditorInitialContent(normalizeScriptContent(content as ScriptContent));
     }
     setDocSubTab("edit");
@@ -530,15 +570,16 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }
 
   function handleSubTabChange(sub: DocSubTab) {
-    setDocSubTab(sub);
-    if (sub === "edit") {
+    const nextSub = sub === "edit" && isSynopsisDoc ? "generate" : sub;
+    setDocSubTab(nextSub);
+    if (nextSub === "edit") {
       openEditor(selectedVersion);
     } else {
       setIsEditing(false);
     }
     const params = new URLSearchParams(searchParams.toString());
-    if (sub !== "view") {
-      params.set("sub", sub);
+    if (nextSub !== "view") {
+      params.set("sub", nextSub);
     } else {
       params.delete("sub");
     }
@@ -563,6 +604,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       }
     }
   }, [mode, searchParams]);
+
+  useEffect(() => {
+    if (mode === "document" && docSubTab === "edit" && isSynopsisDoc) {
+      handleSubTabChange("generate");
+    }
+  }, [docSubTab, isSynopsisDoc, mode]);
 
   const modeConfig = [
     { key: "info" as const, label: t("projectWorkspace.workspace.modeInfo"), icon: InfoIcon },
@@ -762,10 +809,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     handleModeChange("timeline");
                     return;
                   }
-                  setSelectedDocId(id);
-                  if (docSubTab === "edit") setDocSubTab("view");
                   const doc = documents.find((d) => d.id === id);
-                  if (doc?.versions[0]) setSelectedVersionId(doc.versions[0].id);
+                  setSelectedDocId(id);
+                  if (docSubTab === "edit") {
+                    setDocSubTab(doc?.type === "synopsis" ? "generate" : "view");
+                  }
+                  setSelectedVersionId(doc?.versions[0]?.id ?? "");
                 }}
                 onSelectVersion={(id, docId) => {
                   setSelectedVersionId(id);
@@ -807,6 +856,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       aria-selected={docSubTab === "edit"}
                       onClick={() => handleSubTabChange("edit")}
                       type="button"
+                      disabled={isSynopsisDoc}
                     >
                       <EditIcon />
                       {t("projectWorkspace.workspace.modeEdit")}
@@ -905,7 +955,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         isSaving={createVersionMutation.isPending}
                         projectId={projectId}
                       />
-                    ) : (
+                    ) : isScriptDoc ? (
                       <RichScriptEditor
                         key={`script-${selectedVersionId || "new"}-${editorSessionKey}`}
                         initialContent={editorInitialContent}
@@ -913,13 +963,13 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         onCancel={() => handleSubTabChange("view")}
                         isSaving={createVersionMutation.isPending}
                       />
-                    )
+                    ) : null
                   )}
                 </div>
 
                 {/* Generate sub-tab (always mounted to preserve streaming state) */}
                 <div style={{ display: mode === "document" && docSubTab === "generate" ? undefined : "none" }}>
-                  <TextGeneratorPanel projectId={projectId} project={payload} onEditResult={handleEditResult} />
+                  <TextGeneratorPanel projectId={projectId} project={payload} selectedVersion={selectedVersion} onEditResult={handleEditResult} />
                 </div>
 
               </div>
