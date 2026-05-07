@@ -13,6 +13,7 @@ import type { TimelineRecord, TimelineTrackRecord, TimelineClipRecord, ExportRec
 
 import { useI18n } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
+import { useFeedback } from "../../lib/hooks";
 import { InlineFeedback } from "../inline-feedback";
 import { MediaLibrary } from "./media-library";
 
@@ -100,7 +101,7 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
   const [playheadTime, setPlayheadTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const scrollRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);

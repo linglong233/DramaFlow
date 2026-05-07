@@ -14,6 +14,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { TeamInviteLinkInfoResponse } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../../../lib/api";
+import { useFeedback } from "../../../lib/hooks";
 import { useI18n, getTeamRoleLabel } from "../../../lib/i18n";
 import { useSession } from "../../../lib/use-session";
 import { ErrorState } from "../../../components/error-state";
@@ -26,7 +27,7 @@ function JoinTeamContent() {
   const { t } = useI18n();
   const { session } = useSession();
   const token = searchParams.get("token") ?? "";
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [joined, setJoined] = useState(false);
 
   const infoQuery = useQuery({

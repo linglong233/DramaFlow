@@ -13,12 +13,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, formatApiError } from "../lib/api";
 import { queryKeys } from "../lib/query-keys";
 import { useSession } from "../lib/use-session";
+import { useFeedback } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
-
-interface FeedbackState {
-  message: string | null;
-  error: string | null;
-}
 
 interface ProjectItem {
   id: string;
@@ -143,7 +139,7 @@ export function DashboardOverview() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [feedback, setFeedback] = useState<FeedbackState>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

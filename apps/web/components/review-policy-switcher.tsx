@@ -14,6 +14,7 @@ import type { ReviewPolicyMode } from "@dramaflow/shared";
 import { useI18n, getReviewPolicyLabel } from "../lib/i18n";
 import { apiFetch, formatApiError } from "../lib/api";
 import { queryKeys } from "../lib/query-keys";
+import { useFeedback } from "../lib/hooks";
 import { InlineFeedback } from "./inline-feedback";
 
 /* ── SVG Icons ── */
@@ -83,7 +84,7 @@ export function ReviewPolicySwitcher({
 }: ReviewPolicySwitcherProps) {
   const queryClient = useQueryClient();
   const { t } = useI18n();
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [selectedMode, setSelectedMode] = useState<ReviewPolicyMode>(currentMode);
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);

@@ -8,11 +8,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { JobRecord, JobStatus, JobType } from "@dramaflow/shared";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ProjectJobSummary, JobStatus, JobType } from "@dramaflow/shared";
 
 import { useI18n, type TranslateFn } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
+import { useFeedback, useActiveJobs } from "../../lib/hooks";
 import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
 
@@ -102,19 +103,10 @@ export function TaskPanel({ projectId, shotIds }: TaskPanelProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [confirmBatch, setConfirmBatch] = useState<"images" | "videos" | null>(null);
 
-  const jobsQuery = useQuery({
-    queryKey: queryKeys.projectJobs(projectId),
-    queryFn: () => apiFetch<{ jobs: JobRecord[]; total: number }>(`/projects/${projectId}/jobs?limit=50`),
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data) return false;
-      const hasActive = data.jobs.some((j) => j.status === "queued" || j.status === "running");
-      return hasActive ? 5000 : false;
-    },
-  });
+  const jobsQuery = useActiveJobs({ projectId, limit: 50, pollWhenActive: true });
 
   const cancelMutation = useMutation({
     mutationFn: (jobId: string) => apiFetch(`/jobs/${jobId}/cancel`, { method: "POST" }),
@@ -164,8 +156,8 @@ export function TaskPanel({ projectId, shotIds }: TaskPanelProps) {
   const filteredJobs = activeFilter === "all" ? jobs : jobs.filter((j) => j.status === activeFilter);
 
   // Group by batchId
-  const batchGroups = new Map<string, JobRecord[]>();
-  const ungrouped: JobRecord[] = [];
+  const batchGroups = new Map<string, ProjectJobSummary[]>();
+  const ungrouped: ProjectJobSummary[] = [];
   for (const job of filteredJobs) {
     if (job.batchId) {
       const group = batchGroups.get(job.batchId) ?? [];
@@ -297,7 +289,7 @@ function JobRow({
   isCancelling,
   isRetrying,
 }: {
-  job: JobRecord;
+  job: ProjectJobSummary;
   t: TranslateFn;
   onCancel: () => void;
   onRetry: () => void;
@@ -314,7 +306,7 @@ function JobRow({
           {t(`taskPanel.jobTypes.${job.type}` as any)}
         </span>
         <span className="task-panel__row-time">
-          {formatRelativeTime(job.createdAt, t)}
+          {formatRelativeTime(job.updatedAt, t)}
         </span>
       </div>
       <div className="task-panel__row-status">

@@ -8,12 +8,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { VersionRecord } from "@dramaflow/shared";
 
-import { apiFetch, formatApiError } from "../../lib/api";
+import { formatApiError } from "../../lib/api";
 import { useI18n, getVersionStatusLabel } from "../../lib/i18n";
-import { queryKeys } from "../../lib/query-keys";
+import { useVersionMutations } from "../../lib/hooks";
 import { ReviewPanel } from "./review-panel";
 import { RewritePanel } from "./rewrite-panel";
 
@@ -116,53 +115,41 @@ export function RightContextPanel({
   isEditing, onStartEdit, onFeedback, jobs, documents, versions,
 }: Props) {
   const { t, formatDate } = useI18n();
-  const queryClient = useQueryClient();
   const [reviewComment, setReviewComment] = useState("");
 
-  async function invalidateWorkspace() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-    ]);
-  }
+  const versionMutations = useVersionMutations(projectId);
 
-  const submitVersion = useMutation({
-    mutationFn: (versionId: string) => apiFetch(`/versions/${versionId}/submit`, { method: "POST" }),
-    onSuccess: async () => {
-      onFeedback({ message: t("projectWorkspace.versions.submitAction"), error: null });
-      await invalidateWorkspace();
-    },
-    onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
-  });
+  const submitVersion = {
+    mutate: (versionId: string) => versionMutations.submit.mutate(versionId, {
+      onSuccess: () => onFeedback({ message: t("projectWorkspace.versions.submitAction"), error: null }),
+      onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
+    }),
+    isPending: versionMutations.submit.isPending,
+  };
 
-  const approveVersion = useMutation({
-    mutationFn: (versionId: string) => apiFetch(`/versions/${versionId}/approve`, { method: "POST", body: { comment: reviewComment || undefined } }),
-    onSuccess: async () => {
-      setReviewComment("");
-      onFeedback({ message: t("projectWorkspace.versions.approveAction"), error: null });
-      await invalidateWorkspace();
-    },
-    onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
-  });
+  const approveVersion = {
+    mutate: (versionId: string) => versionMutations.approve.mutate({ versionId, comment: reviewComment || undefined }, {
+      onSuccess: () => { setReviewComment(""); onFeedback({ message: t("projectWorkspace.versions.approveAction"), error: null }); },
+      onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
+    }),
+    isPending: versionMutations.approve.isPending,
+  };
 
-  const rejectVersion = useMutation({
-    mutationFn: (versionId: string) => apiFetch(`/versions/${versionId}/reject`, { method: "POST", body: { comment: reviewComment || undefined } }),
-    onSuccess: async () => {
-      setReviewComment("");
-      onFeedback({ message: t("projectWorkspace.versions.rejectAction"), error: null });
-      await invalidateWorkspace();
-    },
-    onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
-  });
+  const rejectVersion = {
+    mutate: (versionId: string) => versionMutations.reject.mutate({ versionId, comment: reviewComment || undefined }, {
+      onSuccess: () => { setReviewComment(""); onFeedback({ message: t("projectWorkspace.versions.rejectAction"), error: null }); },
+      onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
+    }),
+    isPending: versionMutations.reject.isPending,
+  };
 
-  const restoreVersion = useMutation({
-    mutationFn: (versionId: string) => apiFetch(`/versions/${versionId}/restore`, { method: "POST" }),
-    onSuccess: async () => {
-      onFeedback({ message: t("versionRestore.success"), error: null });
-      await invalidateWorkspace();
-    },
-    onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "versionRestore.failed") }),
-  });
+  const restoreVersion = {
+    mutate: (versionId: string) => versionMutations.restore.mutate(versionId, {
+      onSuccess: () => onFeedback({ message: t("versionRestore.success"), error: null }),
+      onError: (error) => onFeedback({ message: null, error: formatApiError(error, t, "versionRestore.failed") }),
+    }),
+    isPending: versionMutations.restore.isPending,
+  };
 
   const canReview = selectedVersion?.status === "pending_review" || selectedVersion?.status === "submitted";
 

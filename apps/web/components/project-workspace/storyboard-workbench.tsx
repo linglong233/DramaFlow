@@ -20,6 +20,7 @@ import {
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../../lib/api";
+import { useFeedback } from "../../lib/hooks";
 import { useI18n } from "../../lib/i18n";
 import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
@@ -107,7 +108,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const [filter, setFilter] = useState<ShotFilter>("all");
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
   const [ttsDrafts, setTtsDrafts] = useState<Record<string, { text: string; characterId: string }>>({});
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
   const [selectedVideoProvider, setSelectedVideoProvider] = useState<string | undefined>();
 

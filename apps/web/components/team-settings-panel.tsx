@@ -21,6 +21,7 @@ import type {
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../lib/api";
+import { useFeedback } from "../lib/hooks";
 import {
   IMAGE_PROVIDER_LABELS,
   VIDEO_PROVIDER_LABELS,
@@ -92,7 +93,7 @@ export function TeamSettingsPanel() {
   const [availableModels, setAvailableModels] = useState<LlmModelSummary[]>([]);
   const [hasFetchedModels, setHasFetchedModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
 
   const teamsQuery = useQuery({
     queryKey: queryKeys.teams,

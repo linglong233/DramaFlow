@@ -13,6 +13,7 @@ import type { ProjectRole, ProjectWorkspacePayload } from "@dramaflow/shared";
 
 import { useI18n, getProjectRoleLabel, getReviewPolicyLabel, getVersionStatusLabel } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
+import { useFeedback } from "../../lib/hooks";
 import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
 import { ReviewPolicySwitcher } from "../review-policy-switcher";
@@ -86,7 +87,7 @@ interface Props {
 export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Props) {
   const queryClient = useQueryClient();
   const { formatDate, t } = useI18n();
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState<ProjectRole>("viewer");
   const [showAddMember, setShowAddMember] = useState(false);

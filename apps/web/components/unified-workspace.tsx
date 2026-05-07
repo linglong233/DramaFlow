@@ -16,15 +16,10 @@ import {
   normalizeStoryboardContent,
   normalizeWorldBibleContent,
   type ExportRecord,
-  type ProjectVersionsResponse,
   type ProjectWorkspacePayload,
-  type ProjectWorkspaceSummaryPayload,
-  type RealtimeJobUpdatedEvent,
-  type RealtimeReviewUpdatedEvent,
   type ScriptContent,
   type StoryboardContent,
   type WorldBibleContent,
-  type TaskListResponse,
   type TimelineResponse,
   type VersionRecord,
 } from "@dramaflow/shared";
@@ -32,6 +27,7 @@ import {
 import { useI18n } from "../lib/i18n";
 import { apiFetch, formatApiError } from "../lib/api";
 import { queryKeys } from "../lib/query-keys";
+import { useFeedback, useProject, useProjectVersions, useVersionMutations, useActiveJobs, useWorkspaceRealtime } from "../lib/hooks";
 import { ErrorState } from "./error-state";
 import { InlineFeedback } from "./inline-feedback";
 import { LoadingSkeleton } from "./loading-skeleton";
@@ -79,21 +75,6 @@ interface DocumentWithVersions {
   shotId?: string;
   currentVersionId?: string;
   versions: Array<Pick<VersionRecord, "id" | "title" | "versionNumber" | "status" | "content" | "createdAt">>;
-}
-
-
-function mergeProjectJobs(
-  current: TaskListResponse | undefined,
-  nextJob: TaskListResponse["jobs"][number],
-): TaskListResponse {
-  const existingJobs = current?.jobs ?? [];
-  const jobs = [nextJob, ...existingJobs.filter((job) => job.id !== nextJob.id)]
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-
-  return {
-    jobs,
-    total: current ? Math.max(current.total, jobs.length) : jobs.length,
-  };
 }
 
 /* 閳光偓閳光偓 Inline SVG Icons 閳光偓閳光偓 */
@@ -184,7 +165,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { connected, socket, subscribeProject, unsubscribeProject } = useRealtime();
+  const { connected } = useRealtime();
+
+  useWorkspaceRealtime(projectId);
 
   // Parse initial mode with backward compat
   const rawMode = searchParams.get("mode") || "document";
@@ -213,29 +196,18 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [editorInitialContent, setEditorInitialContent] = useState<ScriptContent | null>(null);
   const [storyboardEditorInitialContent, setStoryboardEditorInitialContent] = useState<StoryboardContent | null>(null);
   const [worldBibleEditorInitialContent, setWorldBibleEditorInitialContent] = useState<WorldBibleContent | null>(null);
   const [editorSessionKey, setEditorSessionKey] = useState(0);
   const [showDiff, setShowDiff] = useState(false);
 
-  const projectQuery = useQuery({
-    queryKey: queryKeys.project(projectId),
-    queryFn: () => apiFetch<ProjectWorkspaceSummaryPayload>(`/projects/${projectId}`),
-  });
+  const projectQuery = useProject(projectId);
 
-  const versionsQuery = useQuery({
-    queryKey: queryKeys.projectVersions(projectId),
-    queryFn: () => apiFetch<ProjectVersionsResponse>(`/projects/${projectId}/versions`),
-    enabled: Boolean(projectQuery.data),
-  });
+  const versionsQuery = useProjectVersions(projectId, Boolean(projectQuery.data));
 
-  const jobsQuery = useQuery({
-    queryKey: queryKeys.projectJobs(projectId),
-    queryFn: () => apiFetch<TaskListResponse>(`/projects/${projectId}/jobs?limit=100`),
-    enabled: Boolean(projectQuery.data),
-  });
+  const jobsQuery = useActiveJobs({ projectId, enabled: Boolean(projectQuery.data) });
 
   const timelineQuery = useQuery({
     queryKey: queryKeys.timeline(projectId),
@@ -272,59 +244,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     }
     previousHasActiveJobs.current = hasActiveJobs;
   }, [hasActiveJobs, projectId, queryClient]);
-
-  useEffect(() => {
-    if (!projectId) {
-      return;
-    }
-
-    subscribeProject(projectId);
-    return () => unsubscribeProject(projectId);
-  }, [projectId, subscribeProject, unsubscribeProject]);
-
-  useEffect(() => {
-    if (!socket) {
-      return;
-    }
-
-    async function handleJobUpdated(event: RealtimeJobUpdatedEvent) {
-      if (event.projectId !== projectId) {
-        return;
-      }
-
-      queryClient.setQueryData<TaskListResponse>(queryKeys.projectJobs(projectId), (current) => mergeProjectJobs(current, event.job));
-
-      if (event.job.type === "export_video") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.exports(projectId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(projectId) });
-      }
-
-      if (event.job.status === "completed" || event.job.status === "failed") {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-        ]);
-      }
-    }
-
-    function handleReviewUpdated(event: RealtimeReviewUpdatedEvent) {
-      if (event.projectId !== projectId) {
-        return;
-      }
-
-      void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.versionComments(event.versionId) });
-    }
-
-    socket.on("job.updated", handleJobUpdated);
-    socket.on("review.updated", handleReviewUpdated);
-
-    return () => {
-      socket.off("job.updated", handleJobUpdated);
-      socket.off("review.updated", handleReviewUpdated);
-    };
-  }, [projectId, queryClient, socket]);
 
   const documents: DocumentWithVersions[] = useMemo(() => {
     const docTypes = new Set(["synopsis", "script", "storyboard", "world_bible"]);
@@ -405,107 +324,53 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const isVideoDoc = selectedDoc?.type === "video";
   const isWorldBibleDoc = selectedDoc?.type === "world_bible";
 
-  // Version creation (for editor save)
-  const createVersionMutation = useMutation({
-    mutationFn: async (payload: { title: string; content: unknown }) => {
-      const targetDocId = selectedDoc?.id;
-      if (!targetDocId || targetDocId === VIRTUAL_SYNOPSIS_DOC_ID || targetDocId === VIRTUAL_VIDEO_DOC_ID) {
-        throw new Error(t("projectWorkspace.manualVersion.noDocumentError"));
-      }
-      return apiFetch<Pick<VersionRecord, "id" | "versionNumber">>(
-        `/documents/${targetDocId}/versions`,
-        { method: "POST", body: { title: payload.title, content: payload.content, metadata: { source: "unified-workspace" } } },
-      );
-    },
-    onSuccess: async (version) => {
-      setFeedback({ message: t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber }), error: null });
-      setIsEditing(false);
-      setSelectedVersionId(version.id);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-      ]);
-    },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
-  });
-
-  // Update existing draft version in-place (for inline storyboard edits)
-  const updateVersionMutation = useMutation({
-    mutationFn: async (payload: { versionId: string; content: unknown }) => {
-      return apiFetch<Pick<VersionRecord, "id" | "versionNumber">>(
-        `/versions/${payload.versionId}`,
-        { method: "PATCH", body: { content: payload.content } },
-      );
-    },
-    onSuccess: async () => {
-      setFeedback({ message: t("projectWorkspace.feedback.updateDraftSuccess"), error: null });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-      ]);
-    },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.updateDraftFailed") }),
-  });
-
-  // Submit a draft version for review
-  const submitVersionMutation = useMutation({
-    mutationFn: async (versionId: string) => {
-      return apiFetch(`/versions/${versionId}/submit`, { method: "POST" });
-    },
-    onSuccess: async () => {
-      setFeedback({ message: t("projectWorkspace.versions.submitAction"), error: null });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-      ]);
-    },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
-  });
-
-  // Approve a pending version
-  const approveVersionMutation = useMutation({
-    mutationFn: async (versionId: string) => {
-      return apiFetch(`/versions/${versionId}/approve`, { method: "POST" });
-    },
-    onSuccess: async () => {
-      setFeedback({ message: t("projectWorkspace.versions.approveAction"), error: null });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-      ]);
-    },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
-  });
-
-  // Reject a pending version
-  const rejectVersionMutation = useMutation({
-    mutationFn: async (versionId: string) => {
-      return apiFetch(`/versions/${versionId}/reject`, { method: "POST" });
-    },
-    onSuccess: async () => {
-      setFeedback({ message: t("projectWorkspace.versions.rejectAction"), error: null });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
-      ]);
-    },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.versionActionFailed") }),
-  });
+  // Version mutations
+  const versionMutations = useVersionMutations(projectId);
 
   function handleEditorSave(title: string, content: ScriptContent | StoryboardContent | WorldBibleContent) {
     setFeedback({ message: null, error: null });
-    createVersionMutation.mutate({ title, content });
+    const targetDocId = selectedDoc?.id;
+    if (!targetDocId || targetDocId === VIRTUAL_SYNOPSIS_DOC_ID || targetDocId === VIRTUAL_VIDEO_DOC_ID) {
+      setFeedback({ message: null, error: t("projectWorkspace.manualVersion.noDocumentError") });
+      return;
+    }
+    versionMutations.create.mutate(
+      { documentId: targetDocId, title, content, metadata: { source: "unified-workspace" } },
+      {
+        onSuccess: (version) => {
+          setFeedback({ message: t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber }), error: null });
+          setIsEditing(false);
+          setSelectedVersionId(version.id);
+        },
+        onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
+      },
+    );
   }
 
   function handleInlineStoryboardChange(content: StoryboardContent) {
     setFeedback({ message: null, error: null });
     // If the current version is already a draft, update it in-place
     if (selectedVersion && selectedVersion.status === "draft") {
-      updateVersionMutation.mutate({ versionId: selectedVersion.id, content });
+      versionMutations.update.mutate(
+        { versionId: selectedVersion.id, content },
+        {
+          onSuccess: () => setFeedback({ message: t("projectWorkspace.feedback.updateDraftSuccess"), error: null }),
+          onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.updateDraftFailed") }),
+        },
+      );
       return;
     }
     // Otherwise create a new draft version
-    createVersionMutation.mutate({ title: "Inline edit", content });
+    const targetDocId = selectedDoc?.id;
+    if (targetDocId) {
+      versionMutations.create.mutate(
+        { documentId: targetDocId, title: "Inline edit", content, metadata: { source: "unified-workspace" } },
+        {
+          onSuccess: () => setFeedback({ message: t("projectWorkspace.feedback.updateDraftSuccess"), error: null }),
+          onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
+        },
+      );
+    }
   }
 
   function openEditor(fromVersion?: typeof selectedVersion) {
@@ -906,12 +771,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                           project={payload}
                           allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
                           onStoryboardChange={handleInlineStoryboardChange}
-                          onSubmitForReview={(versionId) => submitVersionMutation.mutate(versionId)}
-                          isSubmitting={submitVersionMutation.isPending}
-                          onApprove={(versionId) => approveVersionMutation.mutate(versionId)}
-                          onReject={(versionId) => rejectVersionMutation.mutate(versionId)}
-                          isApproving={approveVersionMutation.isPending}
-                          isRejecting={rejectVersionMutation.isPending}
+                          onSubmitForReview={(versionId) => versionMutations.submit.mutate(versionId)}
+                          isSubmitting={versionMutations.submit.isPending}
+                          onApprove={(versionId) => versionMutations.approve.mutate({ versionId })}
+                          onReject={(versionId) => versionMutations.reject.mutate({ versionId })}
+                          isApproving={versionMutations.approve.isPending}
+                          isRejecting={versionMutations.reject.isPending}
                         />
                       )}
                     </div>
@@ -942,7 +807,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         initialContent={storyboardEditorInitialContent}
                         onSave={handleEditorSave}
                         onCancel={() => handleSubTabChange("view")}
-                        isSaving={createVersionMutation.isPending}
+                        isSaving={versionMutations.create.isPending}
                         projectId={projectId}
                         project={payload}
                       />
@@ -952,7 +817,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         initialContent={worldBibleEditorInitialContent}
                         onSave={handleEditorSave}
                         onCancel={() => handleSubTabChange("view")}
-                        isSaving={createVersionMutation.isPending}
+                        isSaving={versionMutations.create.isPending}
                         projectId={projectId}
                       />
                     ) : isScriptDoc ? (
@@ -961,7 +826,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         initialContent={editorInitialContent}
                         onSave={handleEditorSave}
                         onCancel={() => handleSubTabChange("view")}
-                        isSaving={createVersionMutation.isPending}
+                        isSaving={versionMutations.create.isPending}
                       />
                     ) : null
                   )}

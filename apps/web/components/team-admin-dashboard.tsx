@@ -16,6 +16,7 @@ import { apiFetch, formatApiError } from "../lib/api";
 import { useI18n, getProjectRoleLabel, getReviewPolicyLabel, getTeamRoleLabel, getVersionStatusLabel } from "../lib/i18n";
 import { useSession } from "../lib/use-session";
 import { queryKeys } from "../lib/query-keys";
+import { useFeedback } from "../lib/hooks";
 import { ConfirmAction } from "./confirm-action";
 import { ErrorState } from "./error-state";
 import { InlineFeedback } from "./inline-feedback";
@@ -83,7 +84,7 @@ export function TeamAdminDashboard() {
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TeamRole>("member");
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [memberSearch, setMemberSearch] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
   const [linkRole, setLinkRole] = useState<TeamRole>("member");

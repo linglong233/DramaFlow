@@ -21,6 +21,7 @@ import {
 } from "@dramaflow/shared";
 
 import { apiStreamFetch, formatApiError } from "../../lib/api";
+import { useFeedback } from "../../lib/hooks";
 import { queryKeys } from "../../lib/query-keys";
 import { useI18n, getShotDensityLabel } from "../../lib/i18n";
 import { ScriptView, StoryboardPreview } from "./version-view";
@@ -171,7 +172,7 @@ export function TextGeneratorPanel({ projectId, project, selectedVersion: extern
     setScriptPremise("");
   }, [externalSelectedVersion, isStreaming, project.project.name, project.project.genre]);
   const [targetType, setTargetType] = useState<"script" | "storyboard">("script");
-  const [feedback, setFeedback] = useState<{ message: string | null; error: string | null }>({ message: null, error: null });
+  const { feedback, setFeedback } = useFeedback();
   const [generatedStoryboard, setGeneratedStoryboard] = useState<StoryboardContent | null>(null);
   const [formCollapsed, setFormCollapsed] = useState(false);
 
