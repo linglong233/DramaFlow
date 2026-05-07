@@ -28,14 +28,14 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test("text provider falls back to mock script content when no API key exists", async () => {
+test("text provider throws when no API key is configured", async () => {
   delete process.env.OPENAI_COMPAT_API_KEY;
 
   const provider = new OpenAiCompatTextProvider();
-  const script = await provider.generateScript(baseScriptInput);
-
-  assert.ok(script.logline.includes("Edge of Dawn"));
-  assert.ok(script.scenes.length >= 1);
+  await assert.rejects(
+    provider.generateScript(baseScriptInput),
+    /API key is not configured/,
+  );
 });
 
 test("text provider parses standard JSON chat completion responses", async () => {
@@ -135,17 +135,19 @@ test("text provider throws when mock fallback is disabled and provider output is
   );
 });
 
-test("media provider mock image returns inline SVG payload", async () => {
-  const provider = new OpenAiMediaProvider();
-  const result = await provider.generateImage({
-    shotId: "shot-1-1",
-    style: "Cinematic still",
-    aspectRatio: "16:9",
-    prompt: "A reveal on a rooftop at night",
-  });
+test("media provider throws when no API key is configured", async () => {
+  delete process.env.OPENAI_COMPAT_API_KEY;
 
-  assert.equal(result.provider.includes("image"), true);
-  assert.equal(result.mimeType.startsWith("image"), true);
+  const provider = new OpenAiMediaProvider();
+  await assert.rejects(
+    provider.generateImage({
+      shotId: "shot-1-1",
+      style: "Cinematic still",
+      aspectRatio: "16:9",
+      prompt: "A reveal on a rooftop at night",
+    }),
+    /API key is not configured/,
+  );
 });
 
 test("google provider sends a text-only generateContent request for text-to-image", async () => {

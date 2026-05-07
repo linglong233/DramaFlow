@@ -32,7 +32,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
   async generateImage(input: GenerateMediaInput & { prompt: string }, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<GeneratedMediaContent> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
-      return this.mockImage(input);
+      throw new Error("OpenAI image generation skipped: API key is not configured");
     }
 
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
@@ -50,7 +50,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
     });
 
     if (!response.ok) {
-      return this.mockImage(input);
+      throw new Error(`OpenAI image generation failed with HTTP ${response.status}`);
     }
 
     const data = (await response.json()) as {
@@ -58,7 +58,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
     };
     const item = data.data?.[0];
     if (!item) {
-      return this.mockImage(input);
+      throw new Error("OpenAI image generation response did not include image data");
     }
 
     if (item.b64_json) {
@@ -82,13 +82,13 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
   }
 
   async generateVideo(input: GenerateMediaInput & { prompt: string }, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<GeneratedMediaContent> {
-    return this.mockVideo(input);
+    throw new Error("Synchronous video generation is not supported. Use createVideoJob instead.");
   }
 
   async createVideoJob(input: GenerateMediaInput & { prompt: string }, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<GeneratedMediaContent> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
-      return this.mockVideoJob(input, "Video API is not configured. Returning a mock video manifest.");
+      throw new Error("OpenAI video generation skipped: API key is not configured");
     }
 
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
@@ -109,20 +109,23 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
       });
 
       if (!response.ok) {
-        return this.mockVideoJob(input, `Video API returned HTTP ${response.status}. Falling back to mock video.`);
+        throw new Error(`OpenAI video generation failed with HTTP ${response.status}`);
       }
 
       const data = await response.json() as Record<string, unknown>;
       return this.normalizeVideoJobState(data, input);
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith("OpenAI video generation")) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : "Unknown provider error";
-      return this.mockVideoJob(input, `Video API request failed (${message}). Falling back to mock video.`);
+      throw new Error(`OpenAI video generation request failed: ${message}`);
     }
   }
 
   async getVideoJob(providerVideoId: string, input: GenerateMediaInput & { prompt: string }, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<GeneratedMediaContent> {
     if (providerVideoId.startsWith("mock:")) {
-      return this.mockVideoJob(input, "Mock video job completed.");
+      throw new Error(`Cannot poll mock video job: ${providerVideoId}`);
     }
 
     const effectiveApiKey = config?.apiKey || this.apiKey;
@@ -361,7 +364,8 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   }
 
-  private escapeXml(value: string) {
+  private escapeXml(value: string | undefined) {
+    if (!value) return "";
     return value
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")

@@ -46,12 +46,12 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
   private readonly apiKey = process.env.OPENAI_COMPAT_API_KEY;
   private readonly baseUrl = (process.env.OPENAI_COMPAT_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
   private readonly model = process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini";
-  private readonly mockFallbackEnabled = (process.env.OPENAI_COMPAT_MOCK_FALLBACK ?? "true") !== "false";
+  private readonly mockFallbackEnabled = (process.env.OPENAI_COMPAT_MOCK_FALLBACK ?? "false") !== "false";
 
   async generateScript(input: GenerateScriptInput, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<ScriptContent> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
-      return this.mockScript(input);
+      throw new Error("Script generation skipped: API key is not configured");
     }
 
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
@@ -88,7 +88,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
   ): Promise<StoryboardContent> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
-      return this.mockStoryboard(input.script, input.cinematicStyle, input.shotDensity);
+      throw new Error("Storyboard generation skipped: API key is not configured");
     }
 
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
@@ -104,7 +104,10 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
       "Use normalized framing values such as ECU, CU, MCU, MS, MLS, LS, ELS, OTS, POV, bird-eye, low-angle, dutch-angle.",
       "Use normalized cameraMove values such as static, pan-left, pan-right, tilt-up, tilt-down, dolly-in, dolly-out, tracking, crane-up, crane-down, handheld, steadicam, whip-pan, zoom-in, zoom-out.",
       "Keep shotLabel concise, director-friendly, and sortable, such as 1A, 1B, 2A.",
-      "Preserve the source scene ids from the script in sceneId whenever possible.",
+      "CRITICAL: Multiple shots in the same scene MUST share the same sceneId.",
+      "If shotLabels are 1A, 1B, 1C they all belong to sceneId \"scene-1\".",
+      "The numeric prefix of shotLabel determines sceneId: shots 1A and 1B share \"scene-1\", shots 2A and 2B share \"scene-2\".",
+      "Preserve source scene ids from the script when they exist, otherwise derive sceneId from the shotLabel numeric prefix.",
       "visualDescription should describe composition, lighting, and subjects. actionDescription should describe blocking or character motion. notes should hold director reminders or editorial concerns.",
       `Cinematic style: ${input.cinematicStyle}`,
       `Shot density: ${input.shotDensity}`,
@@ -128,7 +131,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
   async generateSynopsis(input: GenerateSynopsisInput, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<string> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
-      return this.mockSynopsis(input);
+      throw new Error("Synopsis generation skipped: API key is not configured");
     }
 
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
@@ -180,7 +183,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
   async rewriteSegment(input: RewriteSegmentInput, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<string> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
-      return this.mockRewrite(input);
+      throw new Error("Segment rewrite skipped: API key is not configured");
     }
 
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
@@ -460,7 +463,10 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
       "Use normalized framing values such as ECU, CU, MCU, MS, MLS, LS, ELS, OTS, POV, bird-eye, low-angle, dutch-angle.",
       "Use normalized cameraMove values such as static, pan-left, pan-right, tilt-up, tilt-down, dolly-in, dolly-out, tracking, crane-up, crane-down, handheld, steadicam, whip-pan, zoom-in, zoom-out.",
       "Keep shotLabel concise, director-friendly, and sortable, such as 1A, 1B, 2A.",
-      "Preserve the source scene ids from the script in sceneId whenever possible.",
+      "CRITICAL: Multiple shots in the same scene MUST share the same sceneId.",
+      "If shotLabels are 1A, 1B, 1C they all belong to sceneId \"scene-1\".",
+      "The numeric prefix of shotLabel determines sceneId: shots 1A and 1B share \"scene-1\", shots 2A and 2B share \"scene-2\".",
+      "Preserve source scene ids from the script when they exist, otherwise derive sceneId from the shotLabel numeric prefix.",
       "visualDescription should describe composition, lighting, and subjects. actionDescription should describe blocking or character motion. notes should hold director reminders or editorial concerns.",
       `Cinematic style: ${input.cinematicStyle}`,
       `Shot density: ${input.shotDensity}`,

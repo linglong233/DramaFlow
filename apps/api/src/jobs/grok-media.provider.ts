@@ -53,8 +53,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
   ): Promise<GeneratedMediaContent> {
     const apiKey = config?.apiKey;
     if (!apiKey) {
-      console.warn("[GrokMediaProvider] No API key configured, returning mock image");
-      return this.mockImage(input);
+      throw new Error("Grok image generation skipped: API key is not configured");
     }
 
     const baseUrl = (config?.baseUrl || "http://localhost:8000").replace(/\/$/, "");
@@ -77,21 +76,19 @@ export class GrokMediaProvider implements MediaGenerationProvider {
         }),
       });
     } catch (err) {
-      console.error(`[GrokMediaProvider] Image generation fetch failed: ${err}`);
-      return this.mockImage(input);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      throw new Error(`Grok image generation request failed: ${message}`);
     }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      console.error(`[GrokMediaProvider] Image generation API returned HTTP ${response.status}: ${body.slice(0, 500)}`);
-      return this.mockImage(input);
+      throw new Error(`Grok image generation failed with HTTP ${response.status}: ${body.slice(0, 500)}`);
     }
 
     const data = (await response.json()) as GrokImageResponse;
     const item = data.data?.[0];
     if (!item) {
-      console.error("[GrokMediaProvider] Image generation response had no data items");
-      return this.mockImage(input);
+      throw new Error("Grok image generation response had no data items");
     }
 
     if (item.url) {
@@ -101,12 +98,11 @@ export class GrokMediaProvider implements MediaGenerationProvider {
       try {
         imageResponse = await fetch(imageUrl);
       } catch (err) {
-        console.error(`[GrokMediaProvider] Image download fetch failed: ${err}`);
-        return this.mockImage(input);
+        const message = err instanceof Error ? err.message : "Unknown error";
+        throw new Error(`Grok image download failed: ${message}`);
       }
       if (!imageResponse.ok) {
-        console.error(`[GrokMediaProvider] Image download returned HTTP ${imageResponse.status}`);
-        return this.mockImage(input);
+        throw new Error(`Grok image download failed with HTTP ${imageResponse.status}`);
       }
       const body = new Uint8Array(await imageResponse.arrayBuffer());
       return {
@@ -130,7 +126,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
       };
     }
 
-    return this.mockImage(input);
+    throw new Error("Grok image generation response had no usable image data");
   }
 
   async generateVideo(
@@ -139,7 +135,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
   ): Promise<GeneratedMediaContent> {
     const apiKey = config?.apiKey;
     if (!apiKey) {
-      return this.mockVideo(input);
+      throw new Error("Grok video generation skipped: API key is not configured");
     }
 
     const baseUrl = (config?.baseUrl || "http://localhost:8000").replace(/\/$/, "");
@@ -190,24 +186,25 @@ export class GrokMediaProvider implements MediaGenerationProvider {
     });
 
     if (!response.ok) {
-      return this.mockVideo(input);
+      const body = await response.text().catch(() => "");
+      throw new Error(`Grok video generation failed with HTTP ${response.status}: ${body.slice(0, 500)}`);
     }
 
     const data = (await response.json()) as GrokChatResponse;
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
-      return this.mockVideo(input);
+      throw new Error("Grok video generation response had no content");
     }
 
     // 从 HTML <video> 标签中提取视频 URL
     const videoUrl = this.extractVideoUrl(content);
     if (!videoUrl) {
-      return this.mockVideo(input);
+      throw new Error("Grok video generation response did not include a video URL");
     }
 
     const videoResponse = await fetch(this.ensureProtocol(videoUrl));
     if (!videoResponse.ok) {
-      return this.mockVideo(input);
+      throw new Error(`Grok video download failed with HTTP ${videoResponse.status}`);
     }
 
     const body = new Uint8Array(await videoResponse.arrayBuffer());
