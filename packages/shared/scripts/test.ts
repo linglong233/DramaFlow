@@ -130,4 +130,31 @@ assert.equal(normalizedWorldBible.locations.length, 0);
 assert.equal(normalizedWorldBible.voiceConfigs?.length, 1);
 assert.equal(normalizedWorldBible.voiceConfigs?.[0]?.settings?.speed, 1.1);
 
+// --- Label-based scene grouping tests ---
+
+// Content-level grouping: 4 shots with unique sceneIds → regrouped by label prefix
+const groupedContent = normalizeStoryboardContent({
+  overview: "Group test",
+  shots: [
+    { sceneId: "scene-1", shotLabel: "1A", framing: "MS", cameraMove: "static", durationSeconds: 3, visualDescription: "A" },
+    { sceneId: "scene-2", shotLabel: "1B", framing: "CU", cameraMove: "static", durationSeconds: 3, visualDescription: "B" },
+    { sceneId: "scene-3", shotLabel: "2A", framing: "LS", cameraMove: "dolly-in", durationSeconds: 4, visualDescription: "C" },
+    { sceneId: "scene-4", shotLabel: "2B", framing: "CU", cameraMove: "static", durationSeconds: 3, visualDescription: "D" },
+  ],
+});
+assert.equal(groupedContent.shots[0].sceneId, "scene-1");
+assert.equal(groupedContent.shots[1].sceneId, "scene-1");
+assert.equal(groupedContent.shots[2].sceneId, "scene-2");
+assert.equal(groupedContent.shots[3].sceneId, "scene-2");
+
+// Backward compat: non-standard label with custom sceneId preserved
+const customScene = normalizeStoryboardShot({
+  sceneId: "kitchen-scene",
+  framing: "MS",
+  cameraMove: "static",
+  durationSeconds: 3,
+  visualDescription: "Custom scene",
+}, 5);
+assert.equal(customScene.sceneId, "kitchen-scene");
+
 console.log("shared tests passed");

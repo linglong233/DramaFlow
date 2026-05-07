@@ -295,6 +295,16 @@ function ensureShotObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** 从镜头标签（如 "1A"、"2B"）推导场景分组 ID */
+function deriveSceneGroupFromLabel(shotLabel: string): string | undefined {
+  if (!shotLabel) return undefined;
+  const match = shotLabel.match(/^(?:S(?:cene)?\s*)?(\d+)\s*[-_]?[A-Za-z]/);
+  if (match) {
+    return `scene-${match[1]}`;
+  }
+  return undefined;
+}
+
 /** 规范化分镜场景 ID，尝试从多个字段推断 */
 function normalizeStoryboardSceneId(rawShot: Record<string, unknown>, index: number) {
   const direct = sanitizeString(rawShot.sceneId);
@@ -444,9 +454,25 @@ export function normalizeStoryboardContent(value: unknown): StoryboardContent {
   const rawContent = ensureShotObject(value);
   const rawShots = Array.isArray(rawContent.shots) ? rawContent.shots : [];
 
+  const shots = rawShots.map((shot, index) => normalizeStoryboardShot(shot, index));
+
+  // Post-process: if every shot has a unique sceneId, re-derive from shotLabel
+  const sceneIdSet = new Set(shots.map((s) => s.sceneId));
+  if (shots.length > 1 && sceneIdSet.size === shots.length) {
+    const relabeled = shots.map((shot) => {
+      const derived = deriveSceneGroupFromLabel(shot.shotLabel);
+      return derived ? { ...shot, sceneId: derived } : shot;
+    });
+    // Only apply if regrouping would reduce the number of unique sceneIds
+    const newSet = new Set(relabeled.map((s) => s.sceneId));
+    if (newSet.size < sceneIdSet.size) {
+      return { overview: sanitizeString(rawContent.overview), shots: relabeled };
+    }
+  }
+
   return {
     overview: sanitizeString(rawContent.overview),
-    shots: rawShots.map((shot, index) => normalizeStoryboardShot(shot, index)),
+    shots,
   };
 }
 

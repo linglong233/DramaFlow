@@ -97,9 +97,13 @@ function formatRelativeTime(dateString: string, t: TranslateFn): string {
 interface TaskPanelProps {
   projectId: string;
   shotIds: string[];
+  imageConfigSource?: string;
+  videoConfigSource?: string;
+  selectedImageProvider?: string;
+  selectedVideoProvider?: string;
 }
 
-export function TaskPanel({ projectId, shotIds }: TaskPanelProps) {
+export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImageProvider, selectedVideoProvider }: TaskPanelProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
@@ -127,7 +131,7 @@ export function TaskPanel({ projectId, shotIds }: TaskPanelProps) {
   });
 
   const batchImageMutation = useMutation({
-    mutationFn: () => apiFetch(`/projects/${projectId}/batch-image-jobs`, { method: "POST", body: { shotIds } }),
+    mutationFn: () => apiFetch(`/projects/${projectId}/batch-image-jobs`, { method: "POST", body: { shotIds, configSource: imageConfigSource, providerId: selectedImageProvider } }),
     onSuccess: () => {
       setFeedback({ message: t("taskPanel.batchImageStarted"), error: null });
       setConfirmBatch(null);
@@ -140,7 +144,7 @@ export function TaskPanel({ projectId, shotIds }: TaskPanelProps) {
   });
 
   const batchVideoMutation = useMutation({
-    mutationFn: () => apiFetch(`/projects/${projectId}/batch-video-jobs`, { method: "POST", body: { shotIds } }),
+    mutationFn: () => apiFetch(`/projects/${projectId}/batch-video-jobs`, { method: "POST", body: { shotIds, configSource: imageConfigSource, providerId: selectedVideoProvider } }),
     onSuccess: () => {
       setFeedback({ message: t("taskPanel.batchVideoStarted"), error: null });
       setConfirmBatch(null);

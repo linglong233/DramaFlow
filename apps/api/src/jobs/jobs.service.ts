@@ -297,6 +297,8 @@ export class JobsService {
     userId: string,
     projectId: string,
     shotIds: string[],
+    configSource?: ImageConfigSource,
+    providerId?: string,
   ): Promise<BatchJobGroupRecord> {
     await this.assertProjectReadable(userId, projectId);
 
@@ -311,7 +313,7 @@ export class JobsService {
         type: "image_generation",
         projectId,
         shotId,
-        input: { projectId, style: "cinematic", aspectRatio: "16:9" },
+        input: { projectId, shotId, style: "cinematic", aspectRatio: "16:9", configSource, providerId },
       });
       if (job.batchId === undefined) {
         // Will set batchId after creating the batch group
@@ -353,6 +355,8 @@ export class JobsService {
     userId: string,
     projectId: string,
     shotIds: string[],
+    configSource?: ImageConfigSource,
+    providerId?: string,
   ): Promise<BatchJobGroupRecord> {
     await this.assertProjectReadable(userId, projectId);
 
@@ -367,7 +371,7 @@ export class JobsService {
         type: "video_generation",
         projectId,
         shotId,
-        input: { projectId, style: "cinematic", aspectRatio: "16:9" },
+        input: { projectId, shotId, style: "cinematic", aspectRatio: "16:9", configSource, providerId },
       });
       jobIds.push(job.id);
     }

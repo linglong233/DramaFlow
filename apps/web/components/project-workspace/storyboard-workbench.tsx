@@ -366,7 +366,11 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const batchGenerateMissingImages = useMutation({
     mutationFn: async () => apiFetch(`/projects/${requireProjectId()}/batch-image-jobs`, {
       method: "POST",
-      body: { shotIds: safeContent.shots.filter((s) => !shotStateById.get(s.id)?.hasImage).map((s) => s.id) },
+      body: {
+        shotIds: safeContent.shots.filter((s) => !shotStateById.get(s.id)?.hasImage).map((s) => s.id),
+        configSource: imageConfigSource,
+        providerId: selectedImageProvider,
+      },
     }),
     onSuccess: async () => {
       setFeedback({ message: "Batch image job queued.", error: null });

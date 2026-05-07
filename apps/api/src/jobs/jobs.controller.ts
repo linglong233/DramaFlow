@@ -286,18 +286,18 @@ export class JobsController {
   createBatchImageJobs(
     @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
-    @Body() body: { shotIds: string[] },
+    @Body() body: { shotIds: string[]; configSource?: string; providerId?: string },
   ) {
-    return this.jobsService.createBatchImageJobs(user.id, projectId, body.shotIds);
+    return this.jobsService.createBatchImageJobs(user.id, projectId, body.shotIds, body.configSource as any, body.providerId);
   }
 
   @Post("projects/:id/batch-video-jobs")
   createBatchVideoJobs(
     @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
-    @Body() body: { shotIds: string[] },
+    @Body() body: { shotIds: string[]; configSource?: string; providerId?: string },
   ) {
-    return this.jobsService.createBatchVideoJobs(user.id, projectId, body.shotIds);
+    return this.jobsService.createBatchVideoJobs(user.id, projectId, body.shotIds, body.configSource as any, body.providerId);
   }
 
   @Get("batch-jobs/:batchId")
