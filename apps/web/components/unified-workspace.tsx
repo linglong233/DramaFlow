@@ -35,6 +35,7 @@ import { VersionList } from "./project-workspace/version-list";
 import { VersionView } from "./project-workspace/version-view";
 import { VideoDocumentViewer } from "./project-workspace/video-document-viewer";
 import { VersionDiffView } from "./project-workspace/version-diff-view";
+import { VersionManagementPanel } from "./project-workspace/version-management-panel";
 import { RichScriptEditor } from "./project-workspace/rich-script-editor";
 import { StoryboardEditor } from "./project-workspace/storyboard-editor";
 import { TextGeneratorPanel } from "./project-workspace/text-generator-panel";
@@ -47,11 +48,11 @@ import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { useRealtime } from "./realtime-provider";
 
-// Workspace modes: document (with sub-tabs: view/edit/generate), info, tasks, timeline
+// Workspace modes: document (with sub-tabs: view/edit/generate/versions), info, tasks, timeline
 type WorkspaceMode = "document" | "info" | "tasks" | "timeline";
 
 // Sub-tabs within document mode
-type DocSubTab = "view" | "edit" | "generate";
+type DocSubTab = "view" | "edit" | "generate" | "versions";
 
 // Backward-compat mapping for old URL mode params
 const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
@@ -156,6 +157,15 @@ function ChevronRightIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
       <path d="M4.5 2.5l3.5 3.5-3.5 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function VersionManagementIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M7 3.5v4l2.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -668,7 +678,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               <VersionList
                 documents={documents}
                 selectedDocId={selectedDocId || documents[0]?.id || ""}
-                selectedVersionId={selectedVersionId}
                 onSelectDoc={(id) => {
                   if (id === VIRTUAL_VIDEO_DOC_ID) {
                     handleModeChange("timeline");
@@ -681,18 +690,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   }
                   setSelectedVersionId(doc?.versions[0]?.id ?? "");
                 }}
-                onSelectVersion={(id, docId) => {
-                  setSelectedVersionId(id);
-                  if (docId) setSelectedDocId(docId);
-                  if (docSubTab === "edit") setDocSubTab("view");
-                }}
                 isCollapsed={!leftPanelOpen}
                 onToggleCollapse={() => {
                   const next = !leftPanelOpen;
                   setLeftPanelOpen(next);
                   localStorage.setItem("uw-left-panel", String(next));
                 }}
-                projectId={projectId}
               />
             </div>
             {leftPanelOpen && <JobStatusBar jobs={jobs} />}
@@ -735,6 +738,16 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     >
                       <SparkleIcon />
                       {t("projectWorkspace.workspace.modeGenerate")}
+                    </button>
+                    <button
+                      className={`uw-sub-tab${docSubTab === "versions" ? " uw-sub-tab--active" : ""}`}
+                      role="tab"
+                      aria-selected={docSubTab === "versions"}
+                      onClick={() => handleSubTabChange("versions")}
+                      type="button"
+                    >
+                      <VersionManagementIcon />
+                      {t("projectWorkspace.workspace.modeVersions")}
                     </button>
                   </div>
                 )}
@@ -837,6 +850,21 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   <TextGeneratorPanel projectId={projectId} project={payload} selectedVersion={selectedVersion} onEditResult={handleEditResult} />
                 </div>
 
+                {/* Versions management sub-tab */}
+                <div style={{ display: mode === "document" && docSubTab === "versions" ? undefined : "none" }}>
+                  {mode === "document" && selectedDoc && (
+                    <VersionManagementPanel
+                      key={selectedDoc.id}
+                      documentId={selectedDoc.id}
+                      documentTitle={selectedDoc.title}
+                      documentType={selectedDoc.type}
+                      versions={selectedDoc.versions}
+                      currentVersionId={selectedDoc.currentVersionId}
+                      projectId={projectId}
+                    />
+                  )}
+                </div>
+
               </div>
             </div>
           </div>
@@ -873,7 +901,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               <VersionList
                 documents={documents}
                 selectedDocId={selectedDocId || documents[0]?.id || ""}
-                selectedVersionId={selectedVersionId}
                 onSelectDoc={(id) => {
                   if (id === VIRTUAL_VIDEO_DOC_ID) {
                     handleModeChange("timeline");
@@ -886,13 +913,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   if (doc?.versions[0]) setSelectedVersionId(doc.versions[0].id);
                   setLeftDrawerOpen(false);
                 }}
-                onSelectVersion={(id, docId) => {
-                  setSelectedVersionId(id);
-                  if (docId) setSelectedDocId(docId);
-                  if (isEditing) setIsEditing(false);
-                  setLeftDrawerOpen(false);
-                }}
-                projectId={projectId}
               />
             </div>
             <JobStatusBar jobs={jobs} />
