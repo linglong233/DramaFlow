@@ -13,7 +13,7 @@ import {
 assert.equal(resolveReviewRequired("required", "bypass"), false);
 assert.equal(resolveReviewRequired("bypass", "required"), true);
 assert.equal(resolveReviewRequired("required", "inherit"), true);
-assert.equal(getSubmittedStatus(true), "pending_review");
+assert.equal(getSubmittedStatus(true), "submitted");
 assert.equal(getSubmittedStatus(false), "approved");
 assert.equal(canTransitionVersionStatus("pending_review", "approved"), true);
 assert.equal(canTransitionVersionStatus("approved", "draft"), false);

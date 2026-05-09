@@ -13,6 +13,7 @@ import type {
   ProjectRole,
   ReviewPolicyMode,
   TeamRole,
+  VersionRecord,
   VersionStatus,
 } from "./domain";
 
@@ -55,10 +56,20 @@ export function resolveReviewRequired(
 /**
  * 根据是否需要审核，确定版本提交后的状态
  * @param reviewRequired - 是否需要审核
- * @returns 需要审核则为 "pending_review"，否则直接 "approved"
+ * @returns 需要审核则为 "submitted"（缓冲态），否则直接 "approved"
  */
 export function getSubmittedStatus(reviewRequired: boolean): VersionStatus {
-  return reviewRequired ? "pending_review" : "approved";
+  return reviewRequired ? "submitted" : "approved";
+}
+
+/**
+ * 将 submitted 状态推进到 pending_review（审阅者拾取）
+ * @param currentStatus - 当前版本状态
+ * @returns 推进后的状态，仅在 submitted 时返回 "pending_review"
+ */
+export function advanceToReview(currentStatus: VersionStatus): VersionStatus | null {
+  if (currentStatus === "submitted") return "pending_review";
+  return null;
 }
 
 /**
@@ -213,4 +224,69 @@ export function canEditTimeline(context: AccessContext): boolean {
  */
 export function canExportProject(context: AccessContext): boolean {
   return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => TIMELINE_EDITOR_ROLES.includes(role));
+}
+
+/**
+ * 检查版本是否可以被采纳为基线
+ * @param versionStatus - 版本当前状态
+ * @returns 仅 approved 状态可被采纳
+ */
+export function canAdoptVersion(versionStatus: VersionStatus): boolean {
+  return versionStatus === "approved";
+}
+
+/**
+ * 检查版本是否可以被恢复（创建新草稿副本）
+ * @param versionStatus - 版本当前状态
+ * @returns 非 draft 状态均可恢复
+ */
+export function canRestoreVersion(versionStatus: VersionStatus): boolean {
+  return versionStatus !== "draft";
+}
+
+/**
+ * 检查版本是否可以被删除
+ * @param versionStatus - 版本当前状态
+ * @returns 仅 draft 状态可删除
+ */
+export function canDeleteVersion(versionStatus: VersionStatus): boolean {
+  return versionStatus === "draft";
+}
+
+/**
+ * 校验版本内容结构是否合法
+ * @param documentType - 文档类型
+ * @param content - 版本内容
+ * @returns null 表示合法，否则返回错误信息
+ */
+export function validateVersionContent(
+  documentType: string,
+  content: unknown,
+): string | null {
+  if (content === null || content === undefined) {
+    return "Content is required";
+  }
+  if (documentType === "storyboard" && typeof content === "object") {
+    const c = content as Record<string, unknown>;
+    if (!Array.isArray(c.shots)) {
+      return "Storyboard content must include a shots array";
+    }
+  }
+  if (documentType === "script" && typeof content === "object") {
+    const c = content as Record<string, unknown>;
+    if (!Array.isArray(c.scenes)) {
+      return "Script content must include a scenes array";
+    }
+  }
+  return null;
+}
+
+/**
+ * 计算文档的下一个版本号
+ * @param existingVersions - 同文档下已有的版本列表
+ * @returns 下一个版本号（从 1 开始递增）
+ */
+export function getNextVersionNumber(existingVersions: Array<{ versionNumber: number }>): number {
+  if (existingVersions.length === 0) return 1;
+  return existingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0) + 1;
 }

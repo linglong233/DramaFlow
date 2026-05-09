@@ -173,8 +173,13 @@ export class WorkspaceController {
   }
 
   @Get("projects/:id/versions")
-  listProjectVersions(@CurrentUser() user: { id: string }, @Param("id") projectId: string) {
-    return this.workspaceService.listProjectVersions(user.id, projectId);
+  listProjectVersions(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.workspaceService.listProjectVersions(user.id, projectId, limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
   }
 
   @Get("project-invites/pending")
@@ -233,8 +238,13 @@ export class WorkspaceController {
   }
 
   @Get("documents/:id/versions")
-  listVersions(@CurrentUser() user: { id: string }, @Param("id") documentId: string) {
-    return this.workspaceService.listVersions(user.id, documentId);
+  listVersions(
+    @CurrentUser() user: { id: string },
+    @Param("id") documentId: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.workspaceService.listVersions(user.id, documentId, limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
   }
 
   @Post("documents/:id/adopt-version")
@@ -299,6 +309,20 @@ export class WorkspaceController {
   @Post("versions/:id/restore")
   restoreVersion(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
     return this.workspaceService.restoreVersion(user.id, versionId);
+  }
+
+  @Post("versions/:id/adopt")
+  adoptVersionById(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
+    return this.workspaceService.adoptVersionById(user.id, versionId);
+  }
+
+  @Post("versions/:id/advance-to-review")
+  advanceToReview(
+    @CurrentUser() user: { id: string },
+    @Param("id") versionId: string,
+    @Body() body?: { comment?: string },
+  ) {
+    return this.workspaceService.advanceVersionToReview(user.id, versionId, body?.comment);
   }
 
   @Patch("versions/:id/media-binding")
@@ -414,6 +438,7 @@ export class WorkspaceController {
 
   @Get("projects/:id/audit-configs")
   getAuditConfigs(
+    @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
   ) {
     return this.auditService.getAuditConfigs(projectId);
@@ -421,6 +446,7 @@ export class WorkspaceController {
 
   @Patch("projects/:id/audit-configs/:contentType")
   upsertAuditConfig(
+    @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
     @Param("contentType") contentType: AuditContentType,
     @Body() body: { reviewRequired: boolean; autoApproveRoles?: ProjectRole[] },
@@ -430,6 +456,7 @@ export class WorkspaceController {
 
   @Get("projects/:id/audit-records")
   listAuditRecords(
+    @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
     @Query("type") type?: DocumentType,
     @Query("limit") limit?: string,
@@ -444,6 +471,7 @@ export class WorkspaceController {
 
   @Get("versions/:id/audit-records")
   getVersionAuditRecords(
+    @CurrentUser() user: { id: string },
     @Param("id") versionId: string,
   ) {
     return this.auditService.getAuditRecordsForVersion(versionId);

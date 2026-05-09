@@ -8,143 +8,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ScriptContent, StoryboardContent, VersionRecord } from "@dramaflow/shared";
-import { ensureMediaBindings, normalizeScriptContent, normalizeStoryboardContent } from "@dramaflow/shared";
+import type { VersionRecord } from "@dramaflow/shared";
+import { diffContents, type DiffEntry } from "@dramaflow/shared";
 
 import { useI18n } from "../../lib/i18n";
 
 interface Props {
   versions: Array<Pick<VersionRecord, "id" | "title" | "versionNumber" | "content" | "createdAt">>;
   onClose: () => void;
-}
-
-type DiffType = "added" | "removed" | "modified";
-
-interface DiffEntry {
-  type: DiffType;
-  label: string;
-  details: string[];
-}
-
-function isScriptContent(content: unknown): content is ScriptContent {
-  return typeof content === "object" && content !== null && "scenes" in content && Array.isArray((content as ScriptContent).scenes);
-}
-
-function isStoryboardContent(content: unknown): content is StoryboardContent {
-  return typeof content === "object" && content !== null && "shots" in content && Array.isArray((content as StoryboardContent).shots);
-}
-
-function diffScripts(base: ScriptContent, compare: ScriptContent): DiffEntry[] {
-  const entries: DiffEntry[] = [];
-
-  if (base.logline !== compare.logline) {
-    entries.push({ type: "modified", label: "Logline", details: ["Logline changed"] });
-  }
-  if (base.premise !== compare.premise) {
-    entries.push({ type: "modified", label: "Premise", details: ["Premise changed"] });
-  }
-
-  const baseChars = (base.characters ?? []).map((character) => character.name);
-  const compareChars = (compare.characters ?? []).map((character) => character.name);
-  const addedChars = compareChars.filter((name) => !baseChars.includes(name));
-  const removedChars = baseChars.filter((name) => !compareChars.includes(name));
-  if (addedChars.length || removedChars.length) {
-    const details: string[] = [];
-    if (addedChars.length) details.push(`+ ${addedChars.join(", ")}`);
-    if (removedChars.length) details.push(`- ${removedChars.join(", ")}`);
-    entries.push({ type: "modified", label: "Characters", details });
-  }
-
-  for (const scene of compare.scenes) {
-    if (!base.scenes.find((item) => item.id === scene.id)) {
-      entries.push({ type: "added", label: `Scene: ${scene.heading || scene.id}`, details: [scene.synopsis || ""] });
-    }
-  }
-
-  for (const scene of base.scenes) {
-    if (!compare.scenes.find((item) => item.id === scene.id)) {
-      entries.push({ type: "removed", label: `Scene: ${scene.heading || scene.id}`, details: [scene.synopsis || ""] });
-    }
-  }
-
-  for (const baseScene of base.scenes) {
-    const compareScene = compare.scenes.find((scene) => scene.id === baseScene.id);
-    if (!compareScene) {
-      continue;
-    }
-
-    const details: string[] = [];
-    if (baseScene.heading !== compareScene.heading) details.push("Heading changed");
-    if (baseScene.synopsis !== compareScene.synopsis) details.push("Synopsis changed");
-    if ((baseScene.directorNote ?? "") !== (compareScene.directorNote ?? "")) details.push("Director note changed");
-    if (baseScene.dialogue.length !== compareScene.dialogue.length) details.push(`Dialogue count: ${baseScene.dialogue.length} -> ${compareScene.dialogue.length}`);
-    if (details.length) {
-      entries.push({ type: "modified", label: `Scene: ${baseScene.heading || baseScene.id}`, details });
-    }
-  }
-
-  return entries;
-}
-
-function diffStoryboards(baseRaw: StoryboardContent, compareRaw: StoryboardContent): DiffEntry[] {
-  const base = ensureMediaBindings(normalizeStoryboardContent(baseRaw));
-  const compare = ensureMediaBindings(normalizeStoryboardContent(compareRaw));
-  const entries: DiffEntry[] = [];
-
-  if (base.overview !== compare.overview) {
-    entries.push({ type: "modified", label: "Overview", details: ["Overview changed"] });
-  }
-
-  const baseOrder = new Map(base.shots.map((shot, index) => [shot.id, index]));
-  const compareOrder = new Map(compare.shots.map((shot, index) => [shot.id, index]));
-
-  for (const shot of compare.shots) {
-    if (!baseOrder.has(shot.id)) {
-      entries.push({ type: "added", label: `Shot: ${shot.shotLabel || shot.id}`, details: [shot.visualDescription || ""] });
-    }
-  }
-
-  for (const shot of base.shots) {
-    if (!compareOrder.has(shot.id)) {
-      entries.push({ type: "removed", label: `Shot: ${shot.shotLabel || shot.id}`, details: [shot.visualDescription || ""] });
-    }
-  }
-
-  for (const baseShot of base.shots) {
-    const compareShot = compare.shots.find((shot) => shot.id === baseShot.id);
-    if (!compareShot) {
-      continue;
-    }
-
-    const details: string[] = [];
-    if (baseOrder.get(baseShot.id) !== compareOrder.get(baseShot.id)) details.push(`Order: ${baseOrder.get(baseShot.id)} -> ${compareOrder.get(baseShot.id)}`);
-    if (baseShot.sceneId !== compareShot.sceneId) details.push(`Scene: ${baseShot.sceneId} -> ${compareShot.sceneId}`);
-    if (baseShot.shotLabel !== compareShot.shotLabel) details.push(`Shot label: ${baseShot.shotLabel} -> ${compareShot.shotLabel}`);
-    if (baseShot.framing !== compareShot.framing) details.push(`Framing: ${baseShot.framing} -> ${compareShot.framing}`);
-    if (baseShot.cameraMove !== compareShot.cameraMove) details.push(`Camera move: ${baseShot.cameraMove} -> ${compareShot.cameraMove}`);
-    if (baseShot.durationSeconds !== compareShot.durationSeconds) details.push(`Duration: ${baseShot.durationSeconds}s -> ${compareShot.durationSeconds}s`);
-    if (baseShot.visualDescription !== compareShot.visualDescription) details.push("Visual description changed");
-    if ((baseShot.actionDescription ?? "") !== (compareShot.actionDescription ?? "")) details.push("Action description changed");
-    if ((baseShot.dialogue ?? "") !== (compareShot.dialogue ?? "")) details.push("Dialogue changed");
-    if ((baseShot.soundDesign ?? "") !== (compareShot.soundDesign ?? "")) details.push("Sound design changed");
-    if ((baseShot.notes ?? "") !== (compareShot.notes ?? "")) details.push("Notes changed");
-    if ((baseShot.imagePrompt ?? "") !== (compareShot.imagePrompt ?? "")) details.push("Image prompt changed");
-    if ((baseShot.videoPrompt ?? "") !== (compareShot.videoPrompt ?? "")) details.push("Video prompt changed");
-    if ((baseShot.characterIds ?? []).join(",") !== (compareShot.characterIds ?? []).join(",")) details.push("Character mapping changed");
-
-    const baseBinding = base.mediaBindings[baseShot.id] ?? {};
-    const compareBinding = compare.mediaBindings[baseShot.id] ?? {};
-    if (baseBinding.imageVersionId !== compareBinding.imageVersionId) details.push("Image version changed");
-    if (baseBinding.videoVersionId !== compareBinding.videoVersionId) details.push("Video version changed");
-    if (baseBinding.audioVersionId !== compareBinding.audioVersionId) details.push("Audio version changed");
-    if ((baseBinding.subtitle ?? "") !== (compareBinding.subtitle ?? "")) details.push("Subtitle changed");
-
-    if (details.length) {
-      entries.push({ type: "modified", label: `Shot: ${baseShot.shotLabel || baseShot.id}`, details });
-    }
-  }
-
-  return entries;
 }
 
 export function VersionDiffView({ versions, onClose }: Props) {
@@ -159,16 +30,7 @@ export function VersionDiffView({ versions, onClose }: Props) {
     if (!baseVersion?.content || !compareVersion?.content) {
       return null;
     }
-    if (isScriptContent(baseVersion.content) && isScriptContent(compareVersion.content)) {
-      return diffScripts(normalizeScriptContent(baseVersion.content), normalizeScriptContent(compareVersion.content));
-    }
-    if (isStoryboardContent(baseVersion.content) && isStoryboardContent(compareVersion.content)) {
-      return diffStoryboards(baseVersion.content, compareVersion.content);
-    }
-    if (JSON.stringify(baseVersion.content) === JSON.stringify(compareVersion.content)) {
-      return [];
-    }
-    return [{ type: "modified" as DiffType, label: "Content", details: ["Content changed"] }];
+    return diffContents(baseVersion.content, compareVersion.content);
   }, [baseVersion, compareVersion]);
 
   if (versions.length < 2) {

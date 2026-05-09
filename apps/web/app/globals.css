@@ -8627,6 +8627,12 @@ textarea.input {
   white-space: nowrap;
 }
 
+.vmp-item__doc-name {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-right: var(--space-1);
+}
+
 .vmp-item__time {
   font-size: var(--text-xs);
   color: var(--text-tertiary);

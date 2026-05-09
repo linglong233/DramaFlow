@@ -861,6 +861,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       versions={selectedDoc.versions}
                       currentVersionId={selectedDoc.currentVersionId}
                       projectId={projectId}
+                      allVersions={rawVersions}
+                      allDocuments={documents.map((d) => ({ id: d.id, title: d.title }))}
                     />
                   )}
                 </div>

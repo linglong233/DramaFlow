@@ -49,6 +49,7 @@ import type {
   TimelineTrackRecord,
   UploadTarget,
   VersionRecord,
+  VersionStatus,
   WorldBibleContent,
 } from "./domain";
 
@@ -193,8 +194,8 @@ export interface ProjectWorkspacePayload {
   members: ProjectMemberSummary[];
   invites: ProjectInviteSummary[];
   pendingReviews: ReviewQueueVersionSummary[];
-  documents: Array<Pick<DocumentRecord, "id" | "projectId" | "type" | "title" | "shotId" | "currentVersionId">>;
-  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "createdAt">>;
+  documents: Array<Pick<DocumentRecord, "id" | "projectId" | "type" | "title" | "shotId" | "currentVersionId" | "draftVersionId">>;
+  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt">>;
   jobs: ProjectJobSummary[];
   /** 世界观设定内容 */
   worldBible?: WorldBibleContent;
@@ -211,7 +212,36 @@ export interface ProjectWorkspaceSummaryPayload extends Omit<ProjectWorkspacePay
 
 /** 项目版本列表响应 */
 export interface ProjectVersionsResponse {
-  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "createdAt">>;
+  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt">>;
+  total: number;
+}
+
+/** 创建版本请求体 */
+export interface CreateVersionPayload {
+  title: string;
+  content: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+/** 恢复版本响应（新创建的 draft 版本摘要） */
+export interface RestoreVersionResponse {
+  version: Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "createdAt">;
+}
+
+/** 采纳版本请求体 */
+export interface AdoptVersionPayload {
+  versionId: string;
+}
+
+/** 推进版本到审阅（submitted → pending_review）请求体 */
+export interface AdvanceToReviewPayload {
+  comment?: string;
+}
+
+/** 版本列表分页响应 */
+export interface VersionListResponse {
+  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt">>;
+  total: number;
 }
 
 // =============================================

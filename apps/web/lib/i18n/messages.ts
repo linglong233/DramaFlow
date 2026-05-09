@@ -16,6 +16,7 @@ export const zhCNMessages = {
     reload: "重新加载",
     loading: "加载中...",
     submitting: "提交中...",
+    submit: "提交",
     creating: "创建中...",
     openWorkspace: "进入工作台",
     skipToMain: "跳到主要内容",
@@ -410,12 +411,24 @@ export const zhCNMessages = {
       selectVersionHint: "请从左侧时间线选择一个版本，查看其内容和讨论。",
       noVersionDiscussion: "未选择任何版本进行讨论。",
       statusLabel: "状态：{value}",
-      submitForReview: "提交审核"
+      submitForReview: "提交审核",
+      commentPlaceholder: "审核备注（可选）"
     },
     discussion: {
       title: "团队讨论",
       commentPlaceholder: "输入评论，或按 '/' 使用命令...",
-      authorPrefix: "用户 {id}"
+      authorPrefix: "用户 {id}",
+      reply: "回复",
+      auditTrail: "审核记录"
+    },
+    audit: {
+      submitted: "已提交",
+      advanced: "已推进审阅",
+      approved: "已批准",
+      rejected: "已驳回",
+      adopted: "已采纳",
+      restored: "已恢复",
+      deleted: "已删除"
     },
     media: {
       modelLabel: "模型",
@@ -494,6 +507,11 @@ export const zhCNMessages = {
       versionMeta: "V{versionNumber} · {date}",
       deleteDraftAction: "删除草稿",
       deleteDraftConfirm: "确认删除此草稿",
+      restoreAction: "恢复版本",
+      adoptAction: "采纳为基线",
+      deleteAction: "删除",
+      deleteWarning: "删除操作不可撤销，此草稿版本将被永久移除。",
+      adoptWarning: "采纳后此版本将成为文档的当前基线版本。",
       showMore: "展开其余 {count} 个版本",
       showLess: "收起旧版本"
     },
@@ -971,6 +989,9 @@ export const zhCNMessages = {
     noVersions: "暂无版本",
     filterAll: "全部",
     searchPlaceholder: "搜索版本...",
+    filterNeedsReview: "待审阅",
+    crossDocMode: "跨文档审阅",
+    singleDocMode: "当前文档",
     submitForReview: "提交审核",
     approve: "批准",
     reject: "拒绝",
@@ -990,6 +1011,7 @@ export const zhCNMessages = {
     delete: "删除",
     deleteConfirm: "确认删除？",
     deleteHint: "仅草稿可删除",
+    basedOn: "基于 {version}",
   },
   versionDiff: {
     title: "版本对比",
@@ -1404,6 +1426,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     reload: "Reload",
     loading: "Loading...",
     submitting: "Submitting...",
+    submit: "Submit",
     creating: "Creating...",
     openWorkspace: "Open workspace",
     skipToMain: "Skip to main content",
@@ -1798,12 +1821,24 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       selectVersionHint: "Please select a version from the left timeline to view its content and discussions.",
       noVersionDiscussion: "No version selected for discussion.",
       statusLabel: "Status: {value}",
-      submitForReview: "Submit for Review"
+      submitForReview: "Submit for Review",
+      commentPlaceholder: "Review note (optional)"
     },
     discussion: {
       title: "Team Discussion",
       commentPlaceholder: "Type a comment or press '/' for commands...",
-      authorPrefix: "Author {id}"
+      authorPrefix: "Author {id}",
+      reply: "Reply",
+      auditTrail: "Audit Trail"
+    },
+    audit: {
+      submitted: "Submitted",
+      advanced: "Advanced to Review",
+      approved: "Approved",
+      rejected: "Rejected",
+      adopted: "Adopted",
+      restored: "Restored",
+      deleted: "Deleted"
     },
     media: {
       modelLabel: "Model",
@@ -1882,6 +1917,11 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       versionMeta: "V{versionNumber} · {date}",
       deleteDraftAction: "Delete draft",
       deleteDraftConfirm: "Confirm deletion of this draft",
+      restoreAction: "Restore version",
+      adoptAction: "Adopt as baseline",
+      deleteAction: "Delete",
+      deleteWarning: "This action cannot be undone. This draft version will be permanently removed.",
+      adoptWarning: "Adopting will set this version as the document's current baseline.",
       showMore: "Show {count} more versions",
       showLess: "Show fewer versions"
     },
@@ -2359,6 +2399,9 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     noVersions: "No versions yet",
     filterAll: "All",
     searchPlaceholder: "Search versions...",
+    filterNeedsReview: "Needs Review",
+    crossDocMode: "Cross-Document Review",
+    singleDocMode: "Current Document",
     submitForReview: "Submit for Review",
     approve: "Approve",
     reject: "Reject",
@@ -2378,6 +2421,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     delete: "Delete",
     deleteConfirm: "Confirm delete?",
     deleteHint: "Only drafts can be deleted",
+    basedOn: "Based on {version}",
   },
   versionDiff: {
     title: "Version Diff",

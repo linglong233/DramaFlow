@@ -57,5 +57,21 @@ export function useVersionMutations(projectId: string) {
     onSuccess: async () => { await invalidateWorkspace(); },
   });
 
-  return { create, update, submit, approve, reject, restore };
+  const adopt = useMutation({
+    mutationFn: (versionId: string) => apiFetch(`/versions/${versionId}/adopt`, { method: "POST" }),
+    onSuccess: async () => { await invalidateWorkspace(); },
+  });
+
+  const advanceToReview = useMutation({
+    mutationFn: (vars: { versionId: string; comment?: string }) =>
+      apiFetch(`/versions/${vars.versionId}/advance-to-review`, { method: "POST", body: { comment: vars.comment || undefined } }),
+    onSuccess: async () => { await invalidateWorkspace(); },
+  });
+
+  const deleteVersion = useMutation({
+    mutationFn: (versionId: string) => apiFetch(`/versions/${versionId}`, { method: "DELETE" }),
+    onSuccess: async () => { await invalidateWorkspace(); },
+  });
+
+  return { create, update, submit, approve, reject, restore, adopt, advanceToReview, deleteVersion };
 }

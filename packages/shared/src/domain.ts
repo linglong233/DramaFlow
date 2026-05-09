@@ -83,8 +83,8 @@ export type JobPriority = "low" | "normal" | "high";
 /** 审核内容类型：剧本、分镜、图片、视频 */
 export type AuditContentType = "script" | "storyboard" | "image" | "video";
 
-/** 审核动作：提交审核、批准、拒绝 */
-export type AuditAction = "submitted" | "approved" | "rejected";
+/** 审核动作：提交审核、推进审阅、批准、拒绝、采纳、恢复、删除 */
+export type AuditAction = "submitted" | "advanced" | "approved" | "rejected" | "adopted" | "restored" | "deleted";
 
 /** 时间线轨道类型：视频、对白、音乐、音效、字幕 */
 export type TrackType = "video" | "dialogue" | "music" | "sfx" | "subtitle";
@@ -370,8 +370,10 @@ export interface DocumentRecord {
   title: string;
   /** 关联的镜头 ID（仅媒体类文档使用） */
   shotId?: string;
-  /** 当前采纳的版本 ID */
+  /** 当前采纳的基线版本 ID（仅 adopt 时更新） */
   currentVersionId?: string;
+  /** 当前工作草稿版本 ID（每次创建版本时更新） */
+  draftVersionId?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

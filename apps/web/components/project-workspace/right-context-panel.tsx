@@ -224,7 +224,7 @@ export function RightContextPanel({
                       className="input"
                       value={reviewComment}
                       onChange={(event) => setReviewComment(event.target.value)}
-                      placeholder="???? / Review note"
+                      placeholder={t("projectWorkspace.review.commentPlaceholder")}
                       style={{ minHeight: 88, resize: "none" }}
                     />
                     <div className="uw-review-btn-row">

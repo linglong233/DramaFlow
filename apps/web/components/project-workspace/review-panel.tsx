@@ -27,7 +27,7 @@ interface CommentItem {
 
 interface AuditRecord {
   id: string;
-  action: "submitted" | "approved" | "rejected";
+  action: "submitted" | "advanced" | "approved" | "rejected" | "adopted" | "restored" | "deleted";
   reviewerDisplayName: string;
   reviewerEmail: string;
   comment?: string | null;
@@ -38,10 +38,16 @@ interface Props {
   versionId: string | null;
 }
 
-const AUDIT_ACTION_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  submitted: { bg: "var(--color-info-subtle, #1e3a5f)", color: "var(--color-info, #38bdf8)", label: "??? / Submitted" },
-  approved: { bg: "var(--color-success-subtle, #14532d)", color: "var(--color-success, #34d399)", label: "??? / Approved" },
-  rejected: { bg: "var(--color-danger-subtle, #7f1d1d)", color: "var(--color-danger, #f87171)", label: "??? / Rejected" },
+type AuditLabelKey = "projectWorkspace.audit.submitted" | "projectWorkspace.audit.advanced" | "projectWorkspace.audit.approved" | "projectWorkspace.audit.rejected" | "projectWorkspace.audit.adopted" | "projectWorkspace.audit.restored" | "projectWorkspace.audit.deleted";
+
+const AUDIT_ACTION_STYLES: Record<string, { bg: string; color: string; labelKey: AuditLabelKey }> = {
+  submitted: { bg: "var(--color-info-subtle, #1e3a5f)", color: "var(--color-info, #38bdf8)", labelKey: "projectWorkspace.audit.submitted" },
+  advanced: { bg: "var(--color-info-subtle, #1e3a5f)", color: "var(--color-info, #38bdf8)", labelKey: "projectWorkspace.audit.advanced" },
+  approved: { bg: "var(--color-success-subtle, #14532d)", color: "var(--color-success, #34d399)", labelKey: "projectWorkspace.audit.approved" },
+  rejected: { bg: "var(--color-danger-subtle, #7f1d1d)", color: "var(--color-danger, #f87171)", labelKey: "projectWorkspace.audit.rejected" },
+  adopted: { bg: "var(--color-success-subtle, #14532d)", color: "var(--color-success, #34d399)", labelKey: "projectWorkspace.audit.adopted" },
+  restored: { bg: "var(--color-info-subtle, #1e3a5f)", color: "var(--color-info, #38bdf8)", labelKey: "projectWorkspace.audit.restored" },
+  deleted: { bg: "var(--color-danger-subtle, #7f1d1d)", color: "var(--color-danger, #f87171)", labelKey: "projectWorkspace.audit.deleted" },
 };
 
 export function ReviewPanel({ versionId }: Props) {
@@ -130,7 +136,7 @@ export function ReviewPanel({ versionId }: Props) {
                     className="btn btn-ghost btn-sm"
                     onClick={() => setReplyingTo((current) => current === item.id ? null : item.id)}
                   >
-                    ?? / Reply
+                    {t("projectWorkspace.discussion.reply")}
                   </button>
                 </div>
 
@@ -161,7 +167,7 @@ export function ReviewPanel({ versionId }: Props) {
                         disabled={addComment.isPending || !replyValue.trim()}
                         onClick={() => addComment.mutate({ body: replyValue, parentId: item.id })}
                       >
-                        {addComment.isPending ? t("common.submitting") : "????"}
+                        {addComment.isPending ? t("common.submitting") : t("common.submit")}
                       </button>
                     </div>
                   </div>
@@ -191,7 +197,7 @@ export function ReviewPanel({ versionId }: Props) {
               fontSize: "0.875rem",
             }}
           >
-            <span>???? / Audit Trail ({auditRecords.length})</span>
+            <span>{t("projectWorkspace.discussion.auditTrail")} ({auditRecords.length})</span>
             <span style={{ transform: auditTrailOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>&#9662;</span>
           </button>
           {auditTrailOpen ? (
@@ -212,7 +218,7 @@ export function ReviewPanel({ versionId }: Props) {
                           color: style.color,
                         }}
                       >
-                        {style.label}
+                        {t(style.labelKey)}
                       </span>
                       <strong>{record.reviewerDisplayName}</strong>
                       <span className="muted text-sm">{record.reviewerEmail}</span>

@@ -24,6 +24,7 @@ import {
   canReviewProject,
   canTransitionVersionStatus,
   getSubmittedStatus,
+  getNextVersionNumber,
   resolveContentReviewRequired,
   normalizeStoryboardContent,
   ensureMediaBindings,
@@ -84,6 +85,12 @@ interface ActorContext {
   globalRole: "platform_super_admin" | "user";
   teamRoles: TeamRole[];
   projectRoles: ProjectRole[];
+}
+
+function applyPagination<T>(items: T[], limit?: number, offset?: number): T[] {
+  const start = offset ?? 0;
+  if (limit != null) return items.slice(start, start + limit);
+  return items.slice(start);
 }
 
 /** 工作区核心业务服务，聚合团队、项目、文档、版本、审核、世界观等操作 */
@@ -879,32 +886,39 @@ export class WorkspaceService {
     });
   }
 
-  async listVersions(userId: string, documentId: string) {
+  async listVersions(userId: string, documentId: string, limit?: number, offset?: number) {
     return this.database.query((db) => {
       const document = this.mustFindDocument(db, documentId);
       this.assertProjectReadable(db, document.projectId, userId);
-      return db.versions
+      const all = db.versions
         .filter((version) => version.documentId === documentId)
         .sort((left, right) => right.versionNumber - left.versionNumber);
+      return {
+        versions: applyPagination(all, limit, offset),
+        total: all.length,
+      };
     });
   }
 
-  async listProjectVersions(userId: string, projectId: string) {
+  async listProjectVersions(userId: string, projectId: string, limit?: number, offset?: number) {
     return this.database.query((db) => {
       this.assertProjectReadable(db, projectId, userId);
       const documentIds = db.documents
         .filter((document) => document.projectId === projectId)
         .map((document) => document.id);
 
+      const all = db.versions
+        .filter((version) => documentIds.includes(version.documentId))
+        .sort((left, right) => {
+          if (left.documentId === right.documentId) {
+            return right.versionNumber - left.versionNumber;
+          }
+          return right.createdAt.localeCompare(left.createdAt);
+        });
+
       return {
-        versions: db.versions
-          .filter((version) => documentIds.includes(version.documentId))
-          .sort((left, right) => {
-            if (left.documentId === right.documentId) {
-              return right.versionNumber - left.versionNumber;
-            }
-            return right.createdAt.localeCompare(left.createdAt);
-          }),
+        versions: applyPagination(all, limit, offset),
+        total: all.length,
       };
     });
   }
@@ -916,7 +930,7 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to adopt a candidate version");
     }
 
-    return this.database.mutate((db) => {
+    const result = await this.database.mutate((db) => {
       const liveDocument = this.mustFindDocument(db, documentId);
       const liveVersion = this.mustFindVersion(db, versionId);
       if (liveVersion.documentId !== liveDocument.id) {
@@ -927,6 +941,19 @@ export class WorkspaceService {
       liveDocument.updatedAt = new Date().toISOString();
       return liveDocument;
     });
+
+    if (this.getAuditContentType(document.type)) {
+      await this.auditService.recordAuditAction({
+        projectId: document.projectId,
+        versionId,
+        documentType: document.type,
+        action: "adopted",
+        reviewerId: userId,
+        comment: "Adopted as current version",
+      });
+    }
+
+    return result;
   }
 
   async createVersion(
@@ -1001,29 +1028,43 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to delete this version");
     }
 
-    return this.database.mutate((db) => {
+    await this.database.mutate((db) => {
       const liveVersion = this.mustFindVersion(db, versionId);
       if (liveVersion.status !== "draft") {
         throw new BadRequestException("Only draft versions can be deleted");
       }
       const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
 
-      // Remove the version
       const versionIndex = db.versions.findIndex((v) => v.id === versionId);
       if (versionIndex !== -1) db.versions.splice(versionIndex, 1);
 
-      // Remove associated comments
       db.comments = db.comments.filter((c) => c.versionId !== versionId);
 
-      // If the document pointed to this version, fall back to the latest remaining version
       if (liveDocument.currentVersionId === versionId) {
         const remaining = db.versions
           .filter((v) => v.documentId === liveDocument.id)
           .sort((a, b) => b.versionNumber - a.versionNumber);
         liveDocument.currentVersionId = remaining[0]?.id;
-        liveDocument.updatedAt = new Date().toISOString();
       }
+      if (liveDocument.draftVersionId === versionId) {
+        const remaining = db.versions
+          .filter((v) => v.documentId === liveDocument.id && v.status === "draft")
+          .sort((a, b) => b.versionNumber - a.versionNumber);
+        liveDocument.draftVersionId = remaining[0]?.id;
+      }
+      liveDocument.updatedAt = new Date().toISOString();
     });
+
+    if (this.getAuditContentType(document.type)) {
+      await this.auditService.recordAuditAction({
+        projectId: document.projectId,
+        versionId,
+        documentType: document.type,
+        action: "deleted",
+        reviewerId: userId,
+        comment: `Version v${version.versionNumber} deleted`,
+      });
+    }
   }
 
   async restoreVersion(userId: string, versionId: string) {
@@ -1034,7 +1075,7 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to restore versions");
     }
 
-    return this.createVersionForDocument({
+    const restoredVersion = await this.createVersionForDocument({
       documentId: document.id,
       title: `${version.title} - Restored`,
       content: version.content,
@@ -1046,6 +1087,65 @@ export class WorkspaceService {
       createdBy: userId,
       status: "draft",
     });
+
+    if (this.getAuditContentType(document.type)) {
+      await this.auditService.recordAuditAction({
+        projectId: document.projectId,
+        versionId: restoredVersion.id,
+        documentType: document.type,
+        action: "restored",
+        reviewerId: userId,
+        comment: `Restored from v${version.versionNumber}`,
+      });
+    }
+
+    return restoredVersion;
+  }
+
+  async adoptVersionById(userId: string, versionId: string) {
+    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    return this.adoptDocumentVersion(userId, version.documentId, versionId);
+  }
+
+  async advanceVersionToReview(userId: string, versionId: string, comment?: string) {
+    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const actor = await this.getActor(userId, document.projectId);
+    if (!canReviewProject(actor)) {
+      throw new ForbiddenException("You do not have permission to advance versions to review");
+    }
+
+    const updatedVersion = await this.database.mutate((db) => {
+      const liveVersion = this.mustFindVersion(db, versionId);
+      if (!canTransitionVersionStatus(liveVersion.status, "pending_review")) {
+        throw new BadRequestException(`Cannot advance from ${liveVersion.status} to pending_review`);
+      }
+      liveVersion.status = "pending_review";
+      return liveVersion;
+    });
+
+    const trimmedComment = comment?.trim() || undefined;
+    const auditContentType = this.getAuditContentType(document.type);
+    if (auditContentType) {
+      await this.auditService.recordAuditAction({
+        projectId: document.projectId,
+        versionId,
+        documentType: document.type,
+        action: "advanced",
+        reviewerId: userId,
+        comment: trimmedComment,
+      });
+    }
+
+    this.realtimeEvents.emitReviewUpdated({
+      projectId: document.projectId,
+      versionId,
+      documentId: document.id,
+      status: updatedVersion.status,
+      action: "submitted",
+    });
+
+    return updatedVersion;
   }
 
   async submitVersion(userId: string, versionId: string) {
@@ -1503,10 +1603,11 @@ export class WorkspaceService {
           [`${mediaType}VersionId`]: mediaVersionId,
         };
         const now = new Date().toISOString();
+        const siblingVersions = db.versions.filter((v) => v.documentId === sbDoc.id);
         const version: VersionRecord = {
           id: createId("version"),
           documentId: sbDoc.id,
-          versionNumber: (currentVersion?.versionNumber ?? 0) + 1,
+          versionNumber: getNextVersionNumber(siblingVersions),
           status: "draft",
           title: "Auto draft (media binding)",
           content,
@@ -1515,7 +1616,7 @@ export class WorkspaceService {
           createdBy,
           createdAt: now,
         };
-        sbDoc.currentVersionId = version.id;
+        sbDoc.draftVersionId = version.id;
         sbDoc.updatedAt = now;
         db.versions.push(version);
       }
@@ -1572,7 +1673,7 @@ export class WorkspaceService {
       const version: VersionRecord = {
         id: createId("version"),
         documentId: document.id,
-        versionNumber: (latestVersion?.versionNumber ?? 0) + 1,
+        versionNumber: getNextVersionNumber(siblingVersions),
         status: options.status ?? "draft",
         title: options.title,
         content: normalizedContent,
@@ -1582,7 +1683,7 @@ export class WorkspaceService {
         createdAt: now,
       };
 
-      document.currentVersionId = version.id;
+      document.draftVersionId = version.id;
       document.updatedAt = now;
       db.versions.push(version);
 
@@ -2012,13 +2113,12 @@ export class WorkspaceService {
 
       const updatedContent: ScriptContent = { ...content, characters: updatedCharacters, scenes: updatedScenes };
       const siblingVersions = db.versions.filter((v) => v.documentId === doc.id);
-      const latestNumber = siblingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
       const now = new Date().toISOString();
       const newVersion: VersionRecord = {
         id: createId("version"),
         documentId: doc.id,
-        versionNumber: latestNumber + 1,
-        status: "approved",
+        versionNumber: getNextVersionNumber(siblingVersions),
+        status: "draft",
         title: `角色同步: ${oldName} → ${newName}`,
         content: updatedContent,
         metadata: { source: "world-bible-sync", characterId, oldName, newName },
@@ -2027,7 +2127,7 @@ export class WorkspaceService {
         createdAt: now,
       };
       db.versions.push(newVersion);
-      doc.currentVersionId = newVersion.id;
+      doc.draftVersionId = newVersion.id;
       doc.updatedAt = now;
     }
   }
@@ -2055,13 +2155,12 @@ export class WorkspaceService {
     const updatedWb: WorldBibleContent = { ...wb, characters: [...wb.characters] };
 
     const siblingVersions = db.versions.filter((v) => v.documentId === wbDoc.id);
-    const latestNumber = siblingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
     const now = new Date().toISOString();
     const newVersion: VersionRecord = {
       id: createId("version"),
       documentId: wbDoc.id,
-      versionNumber: latestNumber + 1,
-      status: "approved",
+      versionNumber: getNextVersionNumber(siblingVersions),
+      status: "draft",
       title: `剧本同步: 角色 ${newName}`,
       content: updatedWb,
       metadata: { source: "script-sync", characterId, newName },
@@ -2070,7 +2169,7 @@ export class WorkspaceService {
       createdAt: now,
     };
     db.versions.push(newVersion);
-    wbDoc.currentVersionId = newVersion.id;
+    wbDoc.draftVersionId = newVersion.id;
     wbDoc.updatedAt = now;
   }
 
@@ -2105,13 +2204,12 @@ export class WorkspaceService {
 
       const updatedContent: ScriptContent = { ...content, characters: updatedCharacters };
       const siblingVersions = db.versions.filter((v) => v.documentId === doc.id);
-      const latestNumber = siblingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
       const now = new Date().toISOString();
       const newVersion: VersionRecord = {
         id: createId("version"),
         documentId: doc.id,
-        versionNumber: latestNumber + 1,
-        status: "approved",
+        versionNumber: getNextVersionNumber(siblingVersions),
+        status: "draft",
         title: "角色关联清理",
         content: updatedContent,
         metadata: { source: "world-bible-sync", deletedCharacterId: characterId },
@@ -2120,7 +2218,7 @@ export class WorkspaceService {
         createdAt: now,
       };
       db.versions.push(newVersion);
-      doc.currentVersionId = newVersion.id;
+      doc.draftVersionId = newVersion.id;
       doc.updatedAt = now;
     }
   }
@@ -2156,13 +2254,12 @@ export class WorkspaceService {
 
       const updatedContent: ScriptContent = { ...content, scenes: updatedScenes };
       const siblingVersions = db.versions.filter((v) => v.documentId === doc.id);
-      const latestNumber = siblingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
       const now = new Date().toISOString();
       const newVersion: VersionRecord = {
         id: createId("version"),
         documentId: doc.id,
-        versionNumber: latestNumber + 1,
-        status: "approved",
+        versionNumber: getNextVersionNumber(siblingVersions),
+        status: "draft",
         title: "地点关联清理",
         content: updatedContent,
         metadata: { source: "world-bible-sync", deletedLocationId: locationId },
@@ -2171,7 +2268,7 @@ export class WorkspaceService {
         createdAt: now,
       };
       db.versions.push(newVersion);
-      doc.currentVersionId = newVersion.id;
+      doc.draftVersionId = newVersion.id;
       doc.updatedAt = now;
     }
   }
@@ -2221,25 +2318,25 @@ export class WorkspaceService {
     }
 
     const siblingVersions = db.versions.filter((v) => v.documentId === wbDoc!.id);
-    const latestNumber = siblingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
+    const latestVersion = siblingVersions.length > 0
+      ? siblingVersions.reduce((latest, v) => v.versionNumber > latest.versionNumber ? v : latest, siblingVersions[0])
+      : undefined;
 
     const version: VersionRecord = {
       id: createId("version"),
       documentId: wbDoc.id,
-      versionNumber: latestNumber + 1,
-      status: "approved",
+      versionNumber: getNextVersionNumber(siblingVersions),
+      status: "draft",
       title: "\u4e16\u754c\u89c2\u8bbe\u5b9a\u66f4\u65b0",
       content,
       metadata: { source: "world-bible-editor" },
-      parentVersionId: siblingVersions.length > 0
-        ? siblingVersions.reduce((latest, v) => v.versionNumber > latest.versionNumber ? v : latest, siblingVersions[0]).id
-        : undefined,
+      parentVersionId: latestVersion?.id,
       createdBy: userId,
       createdAt: now,
     };
 
     db.versions.push(version);
-    wbDoc.currentVersionId = version.id;
+    wbDoc.draftVersionId = version.id;
     wbDoc.updatedAt = now;
   }
 

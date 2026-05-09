@@ -13,3 +13,4 @@ export * from "./providers";
 export * from "./storyboard";
 export * from "./storage";
 export * from "./document-content";
+export * from "./version-diff";

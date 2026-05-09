@@ -9,16 +9,17 @@
 
 import { useState, useMemo, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { VersionRecord } from "@dramaflow/shared";
 import {
+  diffContents,
+  type DiffEntry,
   normalizeScriptContent,
   normalizeStoryboardContent,
   normalizeWorldBibleContent,
 } from "@dramaflow/shared";
 import { useI18n, getVersionStatusLabel } from "../../lib/i18n";
-import { apiFetch } from "../../lib/api";
-import { queryKeys } from "../../lib/query-keys";
+import { useVersionMutations } from "../../lib/hooks";
+import { VersionActionDialog, type VersionActionType } from "./version-action-dialog";
 import {
   ScriptView,
   StoryboardView,
@@ -31,286 +32,35 @@ import {
 /* ─── Types ──────────────────────────────────────────────────── */
 
 interface Props {
-  documentId: string;
-  documentTitle: string;
-  documentType: string;
+  documentId?: string;
+  documentTitle?: string;
+  documentType?: string;
   versions: Array<
     Pick<
       VersionRecord,
       "id" | "title" | "versionNumber" | "status" | "content" | "createdAt"
-    >
+    > & Partial<Pick<VersionRecord, "documentId" | "parentVersionId" | "createdBy">>
   >;
   currentVersionId?: string;
   projectId: string;
+  allVersions?: Array<
+    Pick<
+      VersionRecord,
+      "id" | "documentId" | "title" | "versionNumber" | "status" | "content" | "createdAt"
+    > & Partial<Pick<VersionRecord, "parentVersionId" | "createdBy">>
+  >;
+  allDocuments?: Array<{ id: string; title: string }>;
 }
 
 type StatusFilter =
   | "all"
+  | "needs_review"
   | "draft"
   | "submitted"
   | "pending_review"
   | "approved"
   | "rejected";
 
-/* ─── Diff helpers (inline) ──────────────────────────────────── */
-
-type DiffType = "added" | "removed" | "modified";
-
-interface DiffEntry {
-  type: DiffType;
-  label: string;
-  details: string[];
-}
-
-function diffStrings(base: string, compare: string): DiffEntry[] {
-  if (base === compare) return [];
-  return [{ type: "modified", label: "Content", details: ["Content changed"] }];
-}
-
-function diffJson(base: unknown, compare: unknown): DiffEntry[] {
-  if (JSON.stringify(base) === JSON.stringify(compare)) return [];
-  return [{ type: "modified", label: "Content", details: ["Content changed"] }];
-}
-
-function computeDiff(
-  baseContent: unknown,
-  compareContent: unknown,
-): DiffEntry[] {
-  if (baseContent == null || compareContent == null) return [];
-
-  const baseIsString = typeof baseContent === "string";
-  const compareIsString = typeof compareContent === "string";
-
-  if (baseIsString && compareIsString) {
-    return diffStrings(baseContent, compareContent);
-  }
-
-  if (isScriptContent(baseContent) && isScriptContent(compareContent)) {
-    return diffScriptsInline(
-      normalizeScriptContent(baseContent),
-      normalizeScriptContent(compareContent),
-    );
-  }
-
-  if (
-    isStoryboardContent(baseContent) &&
-    isStoryboardContent(compareContent)
-  ) {
-    return diffStoryboardsInline(
-      normalizeStoryboardContent(baseContent),
-      normalizeStoryboardContent(compareContent),
-    );
-  }
-
-  if (isWorldBibleContent(baseContent) && isWorldBibleContent(compareContent)) {
-    return diffWorldBiblesInline(
-      normalizeWorldBibleContent(baseContent),
-      normalizeWorldBibleContent(compareContent),
-    );
-  }
-
-  return diffJson(baseContent, compareContent);
-}
-
-function diffScriptsInline(
-  base: ReturnType<typeof normalizeScriptContent>,
-  compare: ReturnType<typeof normalizeScriptContent>,
-): DiffEntry[] {
-  const entries: DiffEntry[] = [];
-
-  if (base.logline !== compare.logline) {
-    entries.push({
-      type: "modified",
-      label: "Logline",
-      details: ["Logline changed"],
-    });
-  }
-  if (base.premise !== compare.premise) {
-    entries.push({
-      type: "modified",
-      label: "Premise",
-      details: ["Premise changed"],
-    });
-  }
-
-  const baseChars = (base.characters ?? []).map((c) => c.name);
-  const compareChars = (compare.characters ?? []).map((c) => c.name);
-  const addedChars = compareChars.filter((n) => !baseChars.includes(n));
-  const removedChars = baseChars.filter((n) => !compareChars.includes(n));
-  if (addedChars.length || removedChars.length) {
-    const details: string[] = [];
-    if (addedChars.length) details.push(`+ ${addedChars.join(", ")}`);
-    if (removedChars.length) details.push(`- ${removedChars.join(", ")}`);
-    entries.push({ type: "modified", label: "Characters", details });
-  }
-
-  for (const scene of compare.scenes) {
-    if (!base.scenes.find((s) => s.id === scene.id)) {
-      entries.push({
-        type: "added",
-        label: `Scene: ${scene.heading || scene.id}`,
-        details: [scene.synopsis || ""],
-      });
-    }
-  }
-
-  for (const scene of base.scenes) {
-    if (!compare.scenes.find((s) => s.id === scene.id)) {
-      entries.push({
-        type: "removed",
-        label: `Scene: ${scene.heading || scene.id}`,
-        details: [scene.synopsis || ""],
-      });
-    }
-  }
-
-  for (const baseScene of base.scenes) {
-    const compareScene = compare.scenes.find((s) => s.id === baseScene.id);
-    if (!compareScene) continue;
-
-    const details: string[] = [];
-    if (baseScene.heading !== compareScene.heading)
-      details.push("Heading changed");
-    if (baseScene.synopsis !== compareScene.synopsis)
-      details.push("Synopsis changed");
-    if ((baseScene.directorNote ?? "") !== (compareScene.directorNote ?? ""))
-      details.push("Director note changed");
-    if (baseScene.dialogue.length !== compareScene.dialogue.length)
-      details.push(
-        `Dialogue count: ${baseScene.dialogue.length} -> ${compareScene.dialogue.length}`,
-      );
-
-    if (details.length) {
-      entries.push({
-        type: "modified",
-        label: `Scene: ${baseScene.heading || baseScene.id}`,
-        details,
-      });
-    }
-  }
-
-  return entries;
-}
-
-function diffStoryboardsInline(
-  base: ReturnType<typeof normalizeStoryboardContent>,
-  compare: ReturnType<typeof normalizeStoryboardContent>,
-): DiffEntry[] {
-  const entries: DiffEntry[] = [];
-
-  if (base.overview !== compare.overview) {
-    entries.push({
-      type: "modified",
-      label: "Overview",
-      details: ["Overview changed"],
-    });
-  }
-
-  const baseIds = new Set(base.shots.map((s) => s.id));
-  const compareIds = new Set(compare.shots.map((s) => s.id));
-
-  for (const shot of compare.shots) {
-    if (!baseIds.has(shot.id)) {
-      entries.push({
-        type: "added",
-        label: `Shot: ${shot.shotLabel || shot.id}`,
-        details: [shot.visualDescription || ""],
-      });
-    }
-  }
-
-  for (const shot of base.shots) {
-    if (!compareIds.has(shot.id)) {
-      entries.push({
-        type: "removed",
-        label: `Shot: ${shot.shotLabel || shot.id}`,
-        details: [shot.visualDescription || ""],
-      });
-    }
-  }
-
-  for (const baseShot of base.shots) {
-    const compareShot = compare.shots.find((s) => s.id === baseShot.id);
-    if (!compareShot) continue;
-
-    const details: string[] = [];
-    if (baseShot.shotLabel !== compareShot.shotLabel)
-      details.push(
-        `Shot label: ${baseShot.shotLabel} -> ${compareShot.shotLabel}`,
-      );
-    if (baseShot.framing !== compareShot.framing)
-      details.push(`Framing: ${baseShot.framing} -> ${compareShot.framing}`);
-    if (baseShot.cameraMove !== compareShot.cameraMove)
-      details.push(
-        `Camera move: ${baseShot.cameraMove} -> ${compareShot.cameraMove}`,
-      );
-    if (baseShot.durationSeconds !== compareShot.durationSeconds)
-      details.push(
-        `Duration: ${baseShot.durationSeconds}s -> ${compareShot.durationSeconds}s`,
-      );
-    if (baseShot.visualDescription !== compareShot.visualDescription)
-      details.push("Visual description changed");
-    if ((baseShot.actionDescription ?? "") !== (compareShot.actionDescription ?? ""))
-      details.push("Action description changed");
-    if ((baseShot.dialogue ?? "") !== (compareShot.dialogue ?? ""))
-      details.push("Dialogue changed");
-    if ((baseShot.notes ?? "") !== (compareShot.notes ?? ""))
-      details.push("Notes changed");
-
-    if (details.length) {
-      entries.push({
-        type: "modified",
-        label: `Shot: ${baseShot.shotLabel || baseShot.id}`,
-        details,
-      });
-    }
-  }
-
-  return entries;
-}
-
-function diffWorldBiblesInline(
-  base: ReturnType<typeof normalizeWorldBibleContent>,
-  compare: ReturnType<typeof normalizeWorldBibleContent>,
-): DiffEntry[] {
-  const entries: DiffEntry[] = [];
-
-  const baseCharNames = base.characters.map((c) => c.name);
-  const compareCharNames = compare.characters.map((c) => c.name);
-  const addedChars = compareCharNames.filter((n) => !baseCharNames.includes(n));
-  const removedChars = baseCharNames.filter((n) => !compareCharNames.includes(n));
-  if (addedChars.length) {
-    entries.push({
-      type: "added",
-      label: "Characters",
-      details: addedChars,
-    });
-  }
-  if (removedChars.length) {
-    entries.push({
-      type: "removed",
-      label: "Characters",
-      details: removedChars,
-    });
-  }
-
-  const baseLocNames = base.locations.map((l) => l.name);
-  const compareLocNames = compare.locations.map((l) => l.name);
-  const addedLocs = compareLocNames.filter((n) => !baseLocNames.includes(n));
-  const removedLocs = baseLocNames.filter((n) => !compareLocNames.includes(n));
-  if (addedLocs.length) {
-    entries.push({ type: "added", label: "Locations", details: addedLocs });
-  }
-  if (removedLocs.length) {
-    entries.push({
-      type: "removed",
-      label: "Locations",
-      details: removedLocs,
-    });
-  }
-
-  return entries;
-}
 
 /* ─── Relative time helper ───────────────────────────────────── */
 
@@ -392,9 +142,23 @@ export function VersionManagementPanel({
   versions,
   currentVersionId,
   projectId,
+  allVersions,
+  allDocuments,
 }: Props) {
   const { t } = useI18n();
-  const queryClient = useQueryClient();
+
+  const canCrossDoc = !!(allVersions?.length && allDocuments?.length);
+  const [crossDocument, setCrossDocument] = useState(false);
+
+  const activeVersions = useMemo(() => {
+    if (!crossDocument || !allVersions) return versions;
+    return allVersions;
+  }, [crossDocument, allVersions, versions]);
+
+  const docNameMap = useMemo(() => {
+    if (!allDocuments) return new Map<string, string>();
+    return new Map(allDocuments.map((d) => [d.id, d.title]));
+  }, [allDocuments]);
 
   /* ── State ── */
   const [selectedVersionId, setSelectedVersionId] = useState<string>(
@@ -406,120 +170,52 @@ export function VersionManagementPanel({
   >(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    type: VersionActionType;
+    versionId: string;
+    versionTitle: string;
+    versionNumber: number;
+  } | null>(null);
 
   /* ── Mutations ── */
-  const submitMutation = useMutation({
-    mutationFn: (versionId: string) =>
-      apiFetch(`/versions/${versionId}/submit`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.project(projectId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projectVersions(projectId),
-      });
-    },
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: (versionId: string) =>
-      apiFetch(`/versions/${versionId}/approve`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.project(projectId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projectVersions(projectId),
-      });
-    },
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: (versionId: string) =>
-      apiFetch(`/versions/${versionId}/reject`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.project(projectId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projectVersions(projectId),
-      });
-    },
-  });
-
-  const restoreMutation = useMutation({
-    mutationFn: (versionId: string) =>
-      apiFetch(`/versions/${versionId}/restore`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.project(projectId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projectVersions(projectId),
-      });
-    },
-  });
-
-  const adoptMutation = useMutation({
-    mutationFn: (versionId: string) =>
-      apiFetch(`/versions/${versionId}/adopt`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.project(projectId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projectVersions(projectId),
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (versionId: string) =>
-      apiFetch(`/versions/${versionId}`, { method: "DELETE" }),
-    onSuccess: () => {
-      setConfirmDeleteId(null);
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.project(projectId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projectVersions(projectId),
-      });
-    },
-  });
+  const mutations = useVersionMutations(projectId);
 
   /* ── Filtered & sorted versions ── */
   const filteredVersions = useMemo(() => {
-    const sorted = [...versions].sort(
+    const sorted = [...activeVersions].sort(
       (a, b) => b.versionNumber - a.versionNumber,
     );
     return sorted.filter((v) => {
-      if (statusFilter !== "all" && v.status !== statusFilter) return false;
+      if (statusFilter === "needs_review") {
+        if (v.status !== "submitted" && v.status !== "pending_review") return false;
+      } else if (statusFilter !== "all" && v.status !== statusFilter) {
+        return false;
+      }
       if (searchQuery && !v.title.toLowerCase().includes(searchQuery.toLowerCase()))
         return false;
       return true;
     });
-  }, [versions, statusFilter, searchQuery]);
+  }, [activeVersions, statusFilter, searchQuery]);
 
   /* ── Selected version data ── */
   const selectedVersion = useMemo(
-    () => versions.find((v) => v.id === selectedVersionId) ?? null,
-    [versions, selectedVersionId],
+    () => activeVersions.find((v) => v.id === selectedVersionId) ?? null,
+    [activeVersions, selectedVersionId],
   );
 
   /* ── Compare data ── */
   const compareBase = useMemo(
-    () => (compareVersionIds ? versions.find((v) => v.id === compareVersionIds[0]) ?? null : null),
-    [versions, compareVersionIds],
+    () => (compareVersionIds ? activeVersions.find((v) => v.id === compareVersionIds[0]) ?? null : null),
+    [activeVersions, compareVersionIds],
   );
   const compareTarget = useMemo(
-    () => (compareVersionIds ? versions.find((v) => v.id === compareVersionIds[1]) ?? null : null),
-    [versions, compareVersionIds],
+    () => (compareVersionIds ? activeVersions.find((v) => v.id === compareVersionIds[1]) ?? null : null),
+    [activeVersions, compareVersionIds],
   );
 
   const diffEntries = useMemo(() => {
     if (!compareBase?.content || !compareTarget?.content) return null;
-    return computeDiff(compareBase.content, compareTarget.content);
+    return diffContents(compareBase.content, compareTarget.content);
   }, [compareBase, compareTarget]);
 
   /* ── Handlers ── */
@@ -554,6 +250,39 @@ export function VersionManagementPanel({
     },
     [compareMode],
   );
+
+  const handleActionConfirm = useCallback(
+    (comment?: string) => {
+      if (!pendingAction) return;
+      const { type, versionId } = pendingAction;
+      const settled = { onSettled: () => setPendingAction(null) };
+      switch (type) {
+        case "submit":
+          mutations.submit.mutate(versionId, settled);
+          break;
+        case "approve":
+          mutations.approve.mutate({ versionId, comment }, settled);
+          break;
+        case "reject":
+          mutations.reject.mutate({ versionId, comment }, settled);
+          break;
+        case "adopt":
+          mutations.adopt.mutate(versionId, settled);
+          break;
+        case "restore":
+          mutations.restore.mutate(versionId, settled);
+          break;
+        case "delete":
+          mutations.deleteVersion.mutate(versionId, settled);
+          break;
+      }
+    },
+    [pendingAction, mutations],
+  );
+
+  const isActionPending = pendingAction
+    ? (pendingAction.type === "delete" ? mutations.deleteVersion.isPending : mutations[pendingAction.type].isPending)
+    : false;
 
   /* ── Diff summary rendering ── */
   function renderDiffSummary() {
@@ -630,6 +359,15 @@ export function VersionManagementPanel({
     const isPending =
       version.status === "pending_review" || version.status === "submitted";
 
+    const openAction = (type: VersionActionType) => {
+      setPendingAction({
+        type,
+        versionId: version.id,
+        versionTitle: version.title,
+        versionNumber: version.versionNumber,
+      });
+    };
+
     return (
       <div className="vmp-actions">
         {version.status === "draft" && (
@@ -637,22 +375,16 @@ export function VersionManagementPanel({
             <button
               className="btn btn-secondary btn-sm"
               type="button"
-              onClick={() => submitMutation.mutate(version.id)}
-              disabled={submitMutation.isPending}
+              onClick={() => openAction("submit")}
             >
-              {submitMutation.isPending
-                ? "..."
-                : t("versionManagement.submitForReview")}
+              {t("versionManagement.submitForReview")}
             </button>
             <button
               className="btn btn-danger btn-sm"
               type="button"
-              onClick={() => deleteMutation.mutate(version.id)}
-              disabled={deleteMutation.isPending}
+              onClick={() => openAction("delete")}
             >
-              {deleteMutation.isPending
-                ? "..."
-                : t("versionManagement.delete")}
+              {t("versionManagement.delete")}
             </button>
           </>
         )}
@@ -661,22 +393,16 @@ export function VersionManagementPanel({
             <button
               className="btn btn-primary btn-sm"
               type="button"
-              onClick={() => approveMutation.mutate(version.id)}
-              disabled={approveMutation.isPending}
+              onClick={() => openAction("approve")}
             >
-              {approveMutation.isPending
-                ? "..."
-                : t("versionManagement.approve")}
+              {t("versionManagement.approve")}
             </button>
             <button
               className="btn btn-danger btn-sm"
               type="button"
-              onClick={() => rejectMutation.mutate(version.id)}
-              disabled={rejectMutation.isPending}
+              onClick={() => openAction("reject")}
             >
-              {rejectMutation.isPending
-                ? "..."
-                : t("versionManagement.reject")}
+              {t("versionManagement.reject")}
             </button>
           </>
         )}
@@ -685,22 +411,16 @@ export function VersionManagementPanel({
             <button
               className="btn btn-primary btn-sm"
               type="button"
-              onClick={() => adoptMutation.mutate(version.id)}
-              disabled={adoptMutation.isPending}
+              onClick={() => openAction("adopt")}
             >
-              {adoptMutation.isPending
-                ? "..."
-                : t("versionManagement.adopt")}
+              {t("versionManagement.adopt")}
             </button>
             <button
               className="btn btn-secondary btn-sm"
               type="button"
-              onClick={() => restoreMutation.mutate(version.id)}
-              disabled={restoreMutation.isPending}
+              onClick={() => openAction("restore")}
             >
-              {restoreMutation.isPending
-                ? "..."
-                : t("versionManagement.restore")}
+              {t("versionManagement.restore")}
             </button>
           </>
         )}
@@ -708,24 +428,18 @@ export function VersionManagementPanel({
           <button
             className="btn btn-secondary btn-sm"
             type="button"
-            onClick={() => restoreMutation.mutate(version.id)}
-            disabled={restoreMutation.isPending}
+            onClick={() => openAction("restore")}
           >
-            {restoreMutation.isPending
-              ? "..."
-              : t("versionManagement.restore")}
+            {t("versionManagement.restore")}
           </button>
         )}
         {version.status === "rejected" && (
           <button
             className="btn btn-secondary btn-sm"
             type="button"
-            onClick={() => restoreMutation.mutate(version.id)}
-            disabled={restoreMutation.isPending}
+            onClick={() => openAction("restore")}
           >
-            {restoreMutation.isPending
-              ? "..."
-              : t("versionManagement.restore")}
+            {t("versionManagement.restore")}
           </button>
         )}
       </div>
@@ -742,6 +456,10 @@ export function VersionManagementPanel({
       );
     }
 
+    const parentVersion = selectedVersion.parentVersionId
+      ? activeVersions.find((v) => v.id === selectedVersion.parentVersionId)
+      : undefined;
+
     return (
       <div className="vmp-preview">
         <div className="vmp-preview__header">
@@ -750,6 +468,12 @@ export function VersionManagementPanel({
             <span className="vmp-preview__meta">
               V{selectedVersion.versionNumber} ·{" "}
               {getRelativeTime(selectedVersion.createdAt, t)}
+              {selectedVersion.createdBy && (
+                <> · {selectedVersion.createdBy}</>
+              )}
+              {parentVersion && (
+                <> · {t("versionManagement.basedOn", { version: `V${parentVersion.versionNumber}` }) as string}</>
+              )}
             </span>
           </div>
           <div className="vmp-preview__status">
@@ -834,8 +558,24 @@ export function VersionManagementPanel({
       <div className="vmp-left">
         <div className="vmp-left-header">
           <h3>{t("versionManagement.versionList")}</h3>
-          <span className="vmp-left-header__count">{versions.length}</span>
+          <span className="vmp-left-header__count">{activeVersions.length}</span>
         </div>
+
+        {canCrossDoc && (
+          <button
+            type="button"
+            className={`btn btn-sm ${crossDocument ? "btn-primary" : "btn-ghost"}`}
+            style={{ marginBottom: "var(--space-2)", width: "100%", justifyContent: "center", fontSize: 12 }}
+            onClick={() => {
+              const next = !crossDocument;
+              setCrossDocument(next);
+              if (next) setStatusFilter("needs_review");
+              else setStatusFilter("all");
+            }}
+          >
+            {crossDocument ? t("versionManagement.singleDocMode") : t("versionManagement.crossDocMode")}
+          </button>
+        )}
 
         <div className="vmp-filters">
           <select
@@ -844,6 +584,11 @@ export function VersionManagementPanel({
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           >
             <option value="all">{t("versionManagement.filterAll")}</option>
+            {crossDocument && (
+              <option value="needs_review">
+                {t("versionManagement.filterNeedsReview")}
+              </option>
+            )}
             <option value="draft">
               {getVersionStatusLabel(t, "draft")}
             </option>
@@ -885,7 +630,7 @@ export function VersionManagementPanel({
               return (
                 <div
                   key={version.id}
-                  className={`vmp-item${isSelected ? " vmp-item--selected" : ""}${confirmDeleteId === version.id ? " vmp-item--confirming" : ""}`}
+                  className={`vmp-item${isSelected ? " vmp-item--selected" : ""}`}
                   onClick={() => handleVersionClick(version.id)}
                   role="button"
                   tabIndex={0}
@@ -915,6 +660,9 @@ export function VersionManagementPanel({
                   </div>
                   <div className="vmp-item__center">
                     <span className="vmp-item__title" title={version.title}>
+                      {crossDocument && version.documentId && docNameMap.has(version.documentId) && (
+                        <span className="vmp-item__doc-name">{docNameMap.get(version.documentId)}</span>
+                      )}
                       {version.title}
                     </span>
                     <span className="vmp-item__time">
@@ -927,42 +675,26 @@ export function VersionManagementPanel({
                   >
                     {getVersionStatusLabel(t, version.status as never)}
                   </span>
-                  {version.status === "draft" && !compareMode && confirmDeleteId !== version.id && (
+                  {version.status === "draft" && !compareMode && (
                     <button
                       type="button"
                       className="vmp-item__delete"
                       title={t("versionManagement.delete")}
-                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(version.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingAction({
+                          type: "delete",
+                          versionId: version.id,
+                          versionTitle: version.title,
+                          versionNumber: version.versionNumber,
+                        });
+                      }}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6" />
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>
                     </button>
-                  )}
-                  {confirmDeleteId === version.id && (
-                    <div className="vmp-item__confirm" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        className="vmp-item__confirm-btn vmp-item__confirm-btn--cancel"
-                        onClick={() => setConfirmDeleteId(null)}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="vmp-item__confirm-btn vmp-item__confirm-btn--ok"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => deleteMutation.mutate(version.id)}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </button>
-                    </div>
                   )}
                 </div>
               );
@@ -987,6 +719,16 @@ export function VersionManagementPanel({
       <div className="vmp-right">
         {compareMode ? renderCompareView() : renderSingleView()}
       </div>
+
+      <VersionActionDialog
+        open={!!pendingAction}
+        action={pendingAction?.type ?? "submit"}
+        versionTitle={pendingAction?.versionTitle ?? ""}
+        versionNumber={pendingAction?.versionNumber ?? 0}
+        onConfirm={handleActionConfirm}
+        onCancel={() => setPendingAction(null)}
+        isPending={isActionPending}
+      />
     </div>
   );
 }
