@@ -545,12 +545,24 @@ export interface StoryboardShot {
   characterIds?: string[];
 }
 
+/** 镜头媒体绑定（记录镜头与媒体版本、字幕的关联） */
+export interface ShotMediaBinding {
+  imageVersionId?: string;
+  videoVersionId?: string;
+  audioVersionId?: string;
+  subtitle?: string;
+}
+
 /** 分镜内容（VersionRecord 的 content 泛型参数） */
 export interface StoryboardContent {
   /** 分镜总览 */
   overview: string;
   /** 镜头列表 */
   shots: StoryboardShot[];
+  /** 每个镜头的媒体版本引用 */
+  mediaBindings: Record<string, ShotMediaBinding>;
+  /** 旧 shotId → 新 shotId 的映射（AI 重新生成时产出） */
+  shotIdMappings?: Record<string, string>;
 }
 
 // =============================================

@@ -1071,6 +1071,16 @@ export class JobsService {
       status: "approved",
     });
 
+    if (job.shotId) {
+      await this.workspaceService.bindMediaToStoryboardDraft(
+        job.projectId,
+        job.shotId,
+        mediaType,
+        version.id,
+        job.createdBy,
+      );
+    }
+
     return this.completeJob(job.id, {
       documentId: document.id,
       versionId: version.id,

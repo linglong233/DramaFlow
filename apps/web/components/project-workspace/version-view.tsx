@@ -10,6 +10,7 @@
 import { useState, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import {
+  ensureMediaBindings,
   normalizeScriptContent,
   normalizeStoryboardContent,
   normalizeWorldBibleContent,
@@ -150,7 +151,7 @@ export function StoryboardView({
   allowProjectMutations?: boolean;
   onChange?: (content: StoryboardContent) => void;
 }) {
-  const safeContent = normalizeStoryboardContent(content);
+  const safeContent = ensureMediaBindings(normalizeStoryboardContent(content));
 
   return (
     <StoryboardWorkbench

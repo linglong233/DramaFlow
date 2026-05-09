@@ -9,6 +9,6 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dramaflow/shared": "file:../../packages/shared"
+    "@dramaflow/shared": "*"
   }
 }

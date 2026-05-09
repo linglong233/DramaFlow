@@ -1371,7 +1371,11 @@ export const zhCNMessages = {
     next: "下一个",
     up: "上移",
     down: "下移",
-    delete: "删除"
+    delete: "删除",
+    select: "选择",
+    subtitleLabel: "字幕",
+    subtitlePlaceholder: "输入该镜头的字幕文本...",
+    mediaSelected: "已选择媒体。"
   },
   storyboardWorkbench: {
     noShotsYet: "暂无分镜镜头。",
@@ -2755,7 +2759,11 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     next: "Next",
     up: "Up",
     down: "Down",
-    delete: "Delete"
+    delete: "Delete",
+    select: "Select",
+    subtitleLabel: "Subtitle",
+    subtitlePlaceholder: "Enter subtitle text for this shot...",
+    mediaSelected: "Media selected."
   },
   storyboardWorkbench: {
     noShotsYet: "No storyboard shots yet.",

@@ -301,6 +301,20 @@ export class WorkspaceController {
     return this.workspaceService.restoreVersion(user.id, versionId);
   }
 
+  @Patch("versions/:id/media-binding")
+  updateDraftMediaBinding(
+    @CurrentUser() user: { id: string },
+    @Param("id") versionId: string,
+    @Body() body: { shotId: string; binding: Partial<import("@dramaflow/shared").ShotMediaBinding> },
+  ) {
+    return this.workspaceService.updateDraftMediaBinding(
+      user.id,
+      versionId,
+      body.shotId,
+      body.binding,
+    );
+  }
+
   @Get("versions/:id/comments")
   listComments(@CurrentUser() user: { id: string }, @Param("id") versionId: string) {
     return this.workspaceService.listComments(user.id, versionId);

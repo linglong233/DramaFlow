@@ -9,7 +9,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dramaflow/shared": "file:../../packages/shared",
+    "@dramaflow/shared": "*",
     "@nestjs/platform-socket.io": "^11.0.0",
     "@nestjs/websockets": "^11.0.0",
     "@tanstack/react-query": "^5.94.5",

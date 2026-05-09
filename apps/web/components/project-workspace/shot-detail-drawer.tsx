@@ -76,6 +76,9 @@ interface Props {
   onGenerateVideo: (shotId: string, prompt?: string, referenceImageAssetId?: string) => void;
   onGenerateTts: (shotId: string, characterId: string, text: string) => void;
   onAdoptVersion: (documentId: string, versionId: string) => void;
+  onSelectMediaVersion?: (shotId: string, mediaType: "image" | "video" | "audio", versionId: string) => void;
+  onSubtitleChange?: (shotId: string, subtitle: string) => void;
+  currentSubtitle?: string;
   onMoveShot: (shotId: string, direction: -1 | 1) => void;
   onRemoveShot: (shotId: string) => void;
   isImagePending: boolean;
@@ -152,6 +155,9 @@ export function ShotDetailDrawer({
   onGenerateVideo,
   onGenerateTts,
   onAdoptVersion,
+  onSelectMediaVersion,
+  onSubtitleChange,
+  currentSubtitle,
   onMoveShot,
   onRemoveShot,
   isImagePending,
@@ -258,6 +264,7 @@ export function ShotDetailDrawer({
     candidates: ProjectWorkspacePayload["versions"],
     currentVersionId: string | undefined,
     documentId: string | undefined,
+    mediaType?: "image" | "video" | "audio",
   ) {
     if (!candidates.length) return null;
     return (
@@ -267,20 +274,32 @@ export function ShotDetailDrawer({
           {candidates.map((candidate) => {
             const content = (candidate.content ?? {}) as MediaVersionContent;
             const adopted = candidate.id === currentVersionId;
+            const canSelect = canMutateProject && onSelectMediaVersion && mediaType && !adopted;
             return (
               <div key={candidate.id} className="drawer-candidate">
                 <div className="drawer-candidate__info">
                   <strong>{candidate.title}</strong>
                   <span>V{candidate.versionNumber}{content.model ? ` · ${content.model}` : ""}</span>
                 </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  disabled={!canMutateProject || isAdoptPending || adopted}
-                  onClick={() => documentId && onAdoptVersion(documentId, candidate.id)}
-                >
-                  {adopted ? t("shotDetailDrawer.adopted") : t("shotDetailDrawer.adopt")}
-                </button>
+                <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                  {canSelect && (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      type="button"
+                      onClick={() => onSelectMediaVersion!(shot.id, mediaType!, candidate.id)}
+                    >
+                      {t("shotDetailDrawer.select")}
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    disabled={!canMutateProject || isAdoptPending || adopted}
+                    onClick={() => documentId && onAdoptVersion(documentId, candidate.id)}
+                  >
+                    {adopted ? t("shotDetailDrawer.adopted") : t("shotDetailDrawer.adopt")}
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -382,6 +401,22 @@ export function ShotDetailDrawer({
           {currentAudioUrl && <audio controls src={currentAudioUrl} className="drawer-audio-player" />}
         </div>
 
+        {/* Subtitle */}
+        {editable && onSubtitleChange && (
+          <div className="drawer-section">
+            <label className="drawer-field">
+              <span className="drawer-field__label">{t("shotDetailDrawer.subtitleLabel")}</span>
+              <textarea
+                className="input"
+                rows={2}
+                value={currentSubtitle ?? ""}
+                onChange={(e) => onSubtitleChange(shot.id, e.target.value)}
+                placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
+              />
+            </label>
+          </div>
+        )}
+
         {/* Generate buttons */}
         {canUseProject && (
           <div className="drawer-section">
@@ -424,8 +459,8 @@ export function ShotDetailDrawer({
         {/* Candidates */}
         {canUseProject && (
           <>
-            {renderCandidates(t("shotDetailDrawer.imageCandidates"), state?.imageCandidates ?? [], state?.imageDocument?.currentVersionId, state?.imageDocument?.id)}
-            {renderCandidates(t("shotDetailDrawer.videoCandidates"), state?.videoCandidates ?? [], state?.videoDocument?.currentVersionId, state?.videoDocument?.id)}
+            {renderCandidates(t("shotDetailDrawer.imageCandidates"), state?.imageCandidates ?? [], state?.imageDocument?.currentVersionId, state?.imageDocument?.id, "image")}
+            {renderCandidates(t("shotDetailDrawer.videoCandidates"), state?.videoCandidates ?? [], state?.videoDocument?.currentVersionId, state?.videoDocument?.id, "video")}
           </>
         )}
       </div>

@@ -445,16 +445,54 @@ export function normalizeStoryboardShot(value: unknown, index = 0): StoryboardSh
   };
 }
 
+/** 对比新旧镜头列表，推断 shotId 映射关系 */
+export function buildShotIdMappings(
+  oldShots: StoryboardShot[],
+  newShots: StoryboardShot[],
+): Record<string, string> {
+  const mappings: Record<string, string> = {};
+
+  for (const newShot of newShots) {
+    // 1. ID 直接匹配
+    const byId = oldShots.find((o) => o.id === newShot.id);
+    if (byId) continue; // same id, no mapping needed
+
+    // 2. sceneId + shotLabel 匹配
+    const byLabel = oldShots.find(
+      (o) => o.sceneId === newShot.sceneId && o.shotLabel === newShot.shotLabel,
+    );
+    if (byLabel) {
+      mappings[byLabel.id] = newShot.id;
+      continue;
+    }
+
+    // 3. 同场景同位置匹配
+    const newSceneIndex = newShots.filter(
+      (s, i) => i < newShots.indexOf(newShot) && s.sceneId === newShot.sceneId,
+    ).length;
+    const oldSceneShots = oldShots.filter((o) => o.sceneId === newShot.sceneId);
+    if (newSceneIndex < oldSceneShots.length) {
+      mappings[oldSceneShots[newSceneIndex].id] = newShot.id;
+    }
+  }
+
+  return mappings;
+}
+
 /**
  * 规范化完整分镜内容
  * @param value - AI 返回的原始分镜数据
  * @returns 标准化的 StoryboardContent
  */
-export function normalizeStoryboardContent(value: unknown): StoryboardContent {
+export function normalizeStoryboardContent(value: unknown, previousShots?: StoryboardShot[]): StoryboardContent {
   const rawContent = ensureShotObject(value);
   const rawShots = Array.isArray(rawContent.shots) ? rawContent.shots : [];
 
   const shots = rawShots.map((shot, index) => normalizeStoryboardShot(shot, index));
+  const mediaBindings = (rawContent.mediaBindings && typeof rawContent.mediaBindings === "object")
+    ? rawContent.mediaBindings as Record<string, import("./domain").ShotMediaBinding>
+    : {};
+  const shotIdMappings = previousShots ? buildShotIdMappings(previousShots, shots) : undefined;
 
   // Post-process: if every shot has a unique sceneId, re-derive from shotLabel
   const sceneIdSet = new Set(shots.map((s) => s.sceneId));
@@ -463,16 +501,17 @@ export function normalizeStoryboardContent(value: unknown): StoryboardContent {
       const derived = deriveSceneGroupFromLabel(shot.shotLabel);
       return derived ? { ...shot, sceneId: derived } : shot;
     });
-    // Only apply if regrouping would reduce the number of unique sceneIds
     const newSet = new Set(relabeled.map((s) => s.sceneId));
     if (newSet.size < sceneIdSet.size) {
-      return { overview: sanitizeString(rawContent.overview), shots: relabeled };
+      return { overview: sanitizeString(rawContent.overview), shots: relabeled, mediaBindings, shotIdMappings };
     }
   }
 
   return {
     overview: sanitizeString(rawContent.overview),
     shots,
+    mediaBindings,
+    shotIdMappings,
   };
 }
 
@@ -484,6 +523,15 @@ export function isStoryboardContent(value: unknown): value is StoryboardContent 
 
   const normalized = value as Partial<StoryboardContent>;
   return typeof normalized.overview === "string" && Array.isArray(normalized.shots);
+}
+
+/** 补全 StoryboardContent 的可选字段（兼容旧数据） */
+export function ensureMediaBindings(content: StoryboardContent): StoryboardContent {
+  return {
+    ...content,
+    mediaBindings: content.mediaBindings ?? {},
+    shotIdMappings: content.shotIdMappings,
+  };
 }
 
 /**

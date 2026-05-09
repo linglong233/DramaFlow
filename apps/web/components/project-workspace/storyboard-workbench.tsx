@@ -7,11 +7,12 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ImageConfigSource, ProjectWorkspacePayload, StoryboardContent, StoryboardShot } from "@dramaflow/shared";
+import type { ImageConfigSource, ProjectWorkspacePayload, StoryboardContent, StoryboardShot, ShotMediaBinding } from "@dramaflow/shared";
 import {
   STORYBOARD_FRAMING_OPTIONS,
+  ensureMediaBindings,
   getStoryboardEstimatedDuration,
   getStoryboardSceneIds,
   normalizeScriptContent,
@@ -100,7 +101,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const editable = Boolean(onChange);
   const canUseProject = Boolean(projectId && project);
   const canMutateProject = canUseProject && allowProjectMutations;
-  const safeContent = useMemo(() => normalizeStoryboardContent(content), [content]);
+  const safeContent = useMemo(() => ensureMediaBindings(normalizeStoryboardContent(content)), [content]);
   const safeWorldBible = useMemo(() => normalizeWorldBibleContent(project?.worldBible), [project?.worldBible]);
 
   const [selectedShotId, setSelectedShotId] = useState(safeContent.shots[0]?.id ?? "");
@@ -183,20 +184,37 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   }, [project, safeContent]);
 
   const shotStateById = useMemo(() => {
+    const reverseMappings = new Map<string, string>();
+    if (safeContent.shotIdMappings) {
+      for (const [oldId, newId] of Object.entries(safeContent.shotIdMappings)) {
+        reverseMappings.set(newId, oldId);
+      }
+    }
+
     const map = new Map<string, ShotProjectState>();
     for (const shot of safeContent.shots) {
+      const binding: ShotMediaBinding | undefined = safeContent.mediaBindings[shot.id]
+        ?? (reverseMappings.has(shot.id) ? safeContent.mediaBindings[reverseMappings.get(shot.id)!] : undefined);
       const docs = documentsByShot.get(shot.id) ?? {};
-      const currentImage = docs.image?.currentVersionId ? versionsById.get(docs.image.currentVersionId) ?? null : null;
-      const currentVideo = docs.video?.currentVersionId ? versionsById.get(docs.video.currentVersionId) ?? null : null;
-      const currentAudio = docs.audio?.currentVersionId ? versionsById.get(docs.audio.currentVersionId) ?? null : null;
+
+      const currentImage = binding?.imageVersionId
+        ? versionsById.get(binding.imageVersionId) ?? null
+        : docs.image?.currentVersionId ? versionsById.get(docs.image.currentVersionId) ?? null : null;
+      const currentVideo = binding?.videoVersionId
+        ? versionsById.get(binding.videoVersionId) ?? null
+        : docs.video?.currentVersionId ? versionsById.get(docs.video.currentVersionId) ?? null : null;
+      const currentAudio = binding?.audioVersionId
+        ? versionsById.get(binding.audioVersionId) ?? null
+        : docs.audio?.currentVersionId ? versionsById.get(docs.audio.currentVersionId) ?? null : null;
+
       const imageCandidates = docs.image ? versionsByDocument.get(docs.image.id) ?? [] : [];
       const videoCandidates = docs.video ? versionsByDocument.get(docs.video.id) ?? [] : [];
       const hasImage = Boolean((currentImage?.content as MediaVersionContent | undefined)?.assetUrl);
       const hasVideo = Boolean((currentVideo?.content as MediaVersionContent | undefined)?.assetUrl);
       const hasAudio = Boolean((currentAudio?.content as MediaVersionContent | undefined)?.assetUrl);
       const requiresTts = Boolean(shot.dialogue?.trim());
-      const hasPendingCandidates = imageCandidates.some((c) => c.id !== docs.image?.currentVersionId)
-        || videoCandidates.some((c) => c.id !== docs.video?.currentVersionId);
+      const hasPendingCandidates = imageCandidates.some((c) => c.id !== (binding?.imageVersionId ?? docs.image?.currentVersionId))
+        || videoCandidates.some((c) => c.id !== (binding?.videoVersionId ?? docs.video?.currentVersionId));
 
       map.set(shot.id, {
         imageDocument: docs.image ?? null,
@@ -211,7 +229,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       });
     }
     return map;
-  }, [safeContent.shots, documentsByShot, latestJobsByShot, versionsByDocument, versionsById]);
+  }, [safeContent, documentsByShot, latestJobsByShot, versionsByDocument, versionsById]);
 
   const visibleShots = useMemo(() => safeContent.shots.filter((shot) => {
     const state = shotStateById.get(shot.id);
@@ -407,6 +425,33 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     onError: setMutationError,
   });
 
+  const storyboardDocId = project?.documents.find((d) => d.type === "storyboard")?.id;
+  const storyboardDraftVersionId = storyboardDocId
+    ? project?.versions.find((v) => v.documentId === storyboardDocId && v.status === "draft")?.id
+    : undefined;
+
+  const selectMediaVersion = useMutation({
+    mutationFn: async ({ shotId, mediaType, versionId }: { shotId: string; mediaType: "image" | "video" | "audio"; versionId: string }) => {
+      if (!storyboardDraftVersionId) throw new Error("No storyboard draft version");
+      return apiFetch(`/versions/${storyboardDraftVersionId}/media-binding`, {
+        method: "PATCH",
+        body: { shotId, binding: { [`${mediaType}VersionId`]: versionId } },
+      });
+    },
+    onSuccess: async () => {
+      setFeedback({ message: t("shotDetailDrawer.mediaSelected"), error: null });
+      await invalidateWorkspace();
+    },
+    onError: setMutationError,
+  });
+
+  const handleSubtitleChange = useCallback((shotId: string, subtitle: string) => {
+    if (!onChange) return;
+    const updated = { ...safeContent };
+    updated.mediaBindings = { ...updated.mediaBindings, [shotId]: { ...(updated.mediaBindings[shotId] ?? {}), subtitle } };
+    onChange(updated);
+  }, [onChange, safeContent]);
+
   return (
     <div className="swb-root-v2">
       {/* Feedback */}
@@ -499,6 +544,9 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           onGenerateVideo={(shotId, prompt, ref) => generateVideo.mutate({ shotId, prompt, referenceImageAssetId: ref })}
           onGenerateTts={(shotId, characterId, text) => generateTts.mutate({ shotId, characterId, text })}
           onAdoptVersion={(documentId, versionId) => adoptVersion.mutate({ documentId, versionId })}
+          onSelectMediaVersion={storyboardDraftVersionId ? (shotId, mediaType, versionId) => selectMediaVersion.mutate({ shotId, mediaType, versionId }) : undefined}
+          onSubtitleChange={editable ? handleSubtitleChange : undefined}
+          currentSubtitle={selectedShotId ? safeContent.mediaBindings[selectedShotId]?.subtitle : undefined}
           onMoveShot={moveShot}
           onRemoveShot={removeShot}
           isImagePending={generateImage.isPending}

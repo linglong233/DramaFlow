@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import type { ScriptContent, StoryboardContent, VersionRecord } from "@dramaflow/shared";
-import { normalizeScriptContent, normalizeStoryboardContent } from "@dramaflow/shared";
+import { ensureMediaBindings, normalizeScriptContent, normalizeStoryboardContent } from "@dramaflow/shared";
 
 import { useI18n } from "../../lib/i18n";
 
@@ -87,8 +87,8 @@ function diffScripts(base: ScriptContent, compare: ScriptContent): DiffEntry[] {
 }
 
 function diffStoryboards(baseRaw: StoryboardContent, compareRaw: StoryboardContent): DiffEntry[] {
-  const base = normalizeStoryboardContent(baseRaw);
-  const compare = normalizeStoryboardContent(compareRaw);
+  const base = ensureMediaBindings(normalizeStoryboardContent(baseRaw));
+  const compare = ensureMediaBindings(normalizeStoryboardContent(compareRaw));
   const entries: DiffEntry[] = [];
 
   if (base.overview !== compare.overview) {
@@ -131,6 +131,13 @@ function diffStoryboards(baseRaw: StoryboardContent, compareRaw: StoryboardConte
     if ((baseShot.imagePrompt ?? "") !== (compareShot.imagePrompt ?? "")) details.push("Image prompt changed");
     if ((baseShot.videoPrompt ?? "") !== (compareShot.videoPrompt ?? "")) details.push("Video prompt changed");
     if ((baseShot.characterIds ?? []).join(",") !== (compareShot.characterIds ?? []).join(",")) details.push("Character mapping changed");
+
+    const baseBinding = base.mediaBindings[baseShot.id] ?? {};
+    const compareBinding = compare.mediaBindings[baseShot.id] ?? {};
+    if (baseBinding.imageVersionId !== compareBinding.imageVersionId) details.push("Image version changed");
+    if (baseBinding.videoVersionId !== compareBinding.videoVersionId) details.push("Video version changed");
+    if (baseBinding.audioVersionId !== compareBinding.audioVersionId) details.push("Audio version changed");
+    if ((baseBinding.subtitle ?? "") !== (compareBinding.subtitle ?? "")) details.push("Subtitle changed");
 
     if (details.length) {
       entries.push({ type: "modified", label: `Shot: ${baseShot.shotLabel || baseShot.id}`, details });

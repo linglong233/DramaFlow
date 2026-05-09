@@ -26,6 +26,7 @@ import {
   getSubmittedStatus,
   resolveContentReviewRequired,
   normalizeStoryboardContent,
+  ensureMediaBindings,
   resolveReviewRequired,
   type AnchorType,
   type AuditContentType,
@@ -49,6 +50,7 @@ import {
   type ScriptContent,
   type StyleGuideProfile,
   type StoryboardContent,
+  type ShotMediaBinding,
   type TeamSettingsLlmConfig,
   type TeamSettingsResponse,
   type TeamInviteLinkRecord,
@@ -971,9 +973,17 @@ export class WorkspaceService {
       const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
       if (input.title !== undefined) liveVersion.title = input.title;
       if (input.content !== undefined) {
-        liveVersion.content = liveDocument.type === "storyboard"
-          ? normalizeStoryboardContent(input.content)
-          : input.content;
+        if (liveDocument.type === "storyboard") {
+          const normalized = ensureMediaBindings(normalizeStoryboardContent(input.content));
+          const existing = ensureMediaBindings(liveVersion.content as StoryboardContent);
+          liveVersion.content = {
+            ...normalized,
+            mediaBindings: { ...existing.mediaBindings, ...normalized.mediaBindings },
+            shotIdMappings: normalized.shotIdMappings ?? existing.shotIdMappings,
+          };
+        } else {
+          liveVersion.content = input.content;
+        }
       }
       liveDocument.updatedAt = new Date().toISOString();
       return liveVersion;
@@ -1457,6 +1467,86 @@ export class WorkspaceService {
     });
   }
 
+  async bindMediaToStoryboardDraft(
+    projectId: string,
+    shotId: string,
+    mediaType: "image" | "video" | "audio",
+    mediaVersionId: string,
+    createdBy: string,
+  ): Promise<void> {
+    return this.database.mutate((db) => {
+      const sbDoc = db.documents.find(
+        (d) => d.projectId === projectId && d.type === "storyboard",
+      );
+      if (!sbDoc) return;
+
+      const draft = db.versions.find(
+        (v) => v.documentId === sbDoc.id && v.status === "draft",
+      );
+
+      if (draft) {
+        const content = ensureMediaBindings(draft.content as StoryboardContent);
+        content.mediaBindings[shotId] = {
+          ...(content.mediaBindings[shotId] ?? {}),
+          [`${mediaType}VersionId`]: mediaVersionId,
+        };
+        draft.content = content;
+      } else {
+        const currentVersion = sbDoc.currentVersionId
+          ? db.versions.find((v) => v.id === sbDoc.currentVersionId)
+          : undefined;
+        const content = ensureMediaBindings(
+          (currentVersion?.content as StoryboardContent) ?? { overview: "", shots: [] },
+        );
+        content.mediaBindings[shotId] = {
+          ...(content.mediaBindings[shotId] ?? {}),
+          [`${mediaType}VersionId`]: mediaVersionId,
+        };
+        const now = new Date().toISOString();
+        const version: VersionRecord = {
+          id: createId("version"),
+          documentId: sbDoc.id,
+          versionNumber: (currentVersion?.versionNumber ?? 0) + 1,
+          status: "draft",
+          title: "Auto draft (media binding)",
+          content,
+          metadata: { source: "auto-media-binding" },
+          parentVersionId: currentVersion?.id,
+          createdBy,
+          createdAt: now,
+        };
+        sbDoc.currentVersionId = version.id;
+        sbDoc.updatedAt = now;
+        db.versions.push(version);
+      }
+    });
+  }
+
+  async updateDraftMediaBinding(
+    userId: string,
+    versionId: string,
+    shotId: string,
+    binding: Partial<ShotMediaBinding>,
+  ) {
+    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const actor = await this.getActor(userId, document.projectId);
+    if (!canEditProject(actor)) {
+      throw new ForbiddenException("You do not have permission to update media bindings");
+    }
+
+    return this.database.mutate((db) => {
+      const liveVersion = this.mustFindVersion(db, versionId);
+      if (liveVersion.status !== "draft") {
+        throw new BadRequestException("Media bindings can only be updated on draft versions");
+      }
+      const content = ensureMediaBindings(liveVersion.content as StoryboardContent);
+      content.mediaBindings[shotId] = { ...(content.mediaBindings[shotId] ?? {}), ...binding };
+      liveVersion.content = content;
+      return liveVersion;
+    });
+  }
+
   async createVersionForDocument(options: {
     documentId: string;
     title: string;
@@ -1476,7 +1566,7 @@ export class WorkspaceService {
       }, undefined);
 
       const normalizedContent = document.type === "storyboard"
-        ? normalizeStoryboardContent(options.content)
+        ? ensureMediaBindings(normalizeStoryboardContent(options.content))
         : options.content;
       const now = new Date().toISOString();
       const version: VersionRecord = {
