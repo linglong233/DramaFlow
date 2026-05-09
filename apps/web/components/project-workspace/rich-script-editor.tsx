@@ -38,6 +38,8 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
     normalized?.characters ?? [],
   );
   const [charInput, setCharInput] = useState({ name: "", profile: "" });
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState({ name: "", profile: "" });
 
   const editor = useEditor({
     extensions: [
@@ -70,6 +72,27 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
 
   const removeCharacter = useCallback((idx: number) => {
     setCharacters((prev) => prev.filter((_, i) => i !== idx));
+    if (editingIdx === idx) setEditingIdx(null);
+  }, [editingIdx]);
+
+  const startEdit = useCallback((idx: number) => {
+    const c = characters[idx];
+    setEditDraft({ name: c.name, profile: c.profile });
+    setEditingIdx(idx);
+  }, [characters]);
+
+  const commitEdit = useCallback(() => {
+    if (editingIdx === null) return;
+    setCharacters((prev) =>
+      prev.map((c, i) =>
+        i === editingIdx ? { ...c, name: editDraft.name.trim(), profile: editDraft.profile.trim() } : c,
+      ),
+    );
+    setEditingIdx(null);
+  }, [editingIdx, editDraft]);
+
+  const cancelEdit = useCallback(() => {
+    setEditingIdx(null);
   }, []);
 
   const handleUploadJson = useCallback(
@@ -173,9 +196,56 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
         {characters.length > 0 && (
           <div className="se-char-list">
             {characters.map((c, i) => (
-              <div key={i} className="se-char-row">
-                <strong>{c.name}</strong>
-                <span className="muted">{c.profile}</span>
+              <div
+                key={i}
+                className={`se-char-row${editingIdx === i ? " se-char-row--editing" : ""}`}
+                onBlur={() => {
+                  setTimeout(() => {
+                    if (editingIdx === i) commitEdit();
+                  }, 0);
+                }}
+              >
+                {editingIdx === i ? (
+                  <>
+                    <input
+                      className="input se-input-sm"
+                      value={editDraft.name}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      style={{ flex: 1 }}
+                      autoFocus
+                    />
+                    <input
+                      className="input se-input-sm"
+                      value={editDraft.profile}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, profile: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      style={{ flex: 2 }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <strong
+                      onClick={() => startEdit(i)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {c.name}
+                    </strong>
+                    <span
+                      className="muted"
+                      onClick={() => startEdit(i)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {c.profile}
+                    </span>
+                  </>
+                )}
                 <button
                   className="se-remove-btn"
                   type="button"
