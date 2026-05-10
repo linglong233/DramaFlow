@@ -7,8 +7,11 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { ImageConfigSource, ProjectWorkspacePayload, StoryboardContent, StoryboardShot, ShotMediaBinding } from "@dramaflow/shared";
 import {
   STORYBOARD_FRAMING_OPTIONS,
@@ -27,7 +30,7 @@ import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
 import { ShotCard } from "./shot-card";
 import { StoryboardToolbar } from "./storyboard-toolbar";
-import { ShotDetailDrawer } from "./shot-detail-drawer";
+import { ShotDetailDrawer, type DrawerTab } from "./shot-detail-drawer";
 import { useProviderEntries } from "./provider-selector";
 
 interface Props {
@@ -95,6 +98,38 @@ function createEmptyShot(sceneId: string, index: number): StoryboardShot {
   };
 }
 
+function SortableShotCard({ shot, state, isSelected, multiSelected, onClick, onDoubleClick, onQuickEdit }: {
+  shot: StoryboardShot;
+  state: ShotProjectState | null;
+  isSelected: boolean;
+  multiSelected: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onDoubleClick: () => void;
+  onQuickEdit: (field: string, value: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: shot.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return (
+    <ShotCard
+      ref={setNodeRef}
+      shot={shot}
+      state={state}
+      isSelected={isSelected}
+      multiSelected={multiSelected}
+      isDragging={isDragging}
+      style={style}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onQuickEdit={onQuickEdit}
+      dragHandleProps={listeners}
+      {...attributes}
+    />
+  );
+}
+
 export function StoryboardWorkbench({ content, onChange, projectId, project, allowProjectMutations = true }: Props) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -110,8 +145,19 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
   const [ttsDrafts, setTtsDrafts] = useState<Record<string, { text: string; characterId: string }>>({});
   const { feedback, setFeedback } = useFeedback();
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set());
+  const [focusedShotIndex, setFocusedShotIndex] = useState(0);
+  const lastSelectedIndex = useRef(-1);
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  );
+
   const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
   const [selectedVideoProvider, setSelectedVideoProvider] = useState<string | undefined>();
+  const [tabByShot, setTabByShot] = useState<Record<string, DrawerTab>>({});
 
   const providerEntries = useProviderEntries(imageConfigSource, project?.team?.id);
 
@@ -195,17 +241,16 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     for (const shot of safeContent.shots) {
       const binding: ShotMediaBinding | undefined = safeContent.mediaBindings[shot.id]
         ?? (reverseMappings.has(shot.id) ? safeContent.mediaBindings[reverseMappings.get(shot.id)!] : undefined);
-      const docs = documentsByShot.get(shot.id) ?? {};
+      const docs = documentsByShot.get(shot.id)
+        ?? (reverseMappings.has(shot.id) ? documentsByShot.get(reverseMappings.get(shot.id)!) : undefined)
+        ?? {};
 
-      const currentImage = binding?.imageVersionId
-        ? versionsById.get(binding.imageVersionId) ?? null
-        : docs.image?.currentVersionId ? versionsById.get(docs.image.currentVersionId) ?? null : null;
-      const currentVideo = binding?.videoVersionId
-        ? versionsById.get(binding.videoVersionId) ?? null
-        : docs.video?.currentVersionId ? versionsById.get(docs.video.currentVersionId) ?? null : null;
-      const currentAudio = binding?.audioVersionId
-        ? versionsById.get(binding.audioVersionId) ?? null
-        : docs.audio?.currentVersionId ? versionsById.get(docs.audio.currentVersionId) ?? null : null;
+      const effectiveImgVerId = binding?.imageVersionId ?? docs.image?.currentVersionId ?? docs.image?.draftVersionId;
+      const effectiveVidVerId = binding?.videoVersionId ?? docs.video?.currentVersionId ?? docs.video?.draftVersionId;
+      const effectiveAudVerId = binding?.audioVersionId ?? docs.audio?.currentVersionId ?? docs.audio?.draftVersionId;
+      const currentImage = effectiveImgVerId ? versionsById.get(effectiveImgVerId) ?? null : null;
+      const currentVideo = effectiveVidVerId ? versionsById.get(effectiveVidVerId) ?? null : null;
+      const currentAudio = effectiveAudVerId ? versionsById.get(effectiveAudVerId) ?? null : null;
 
       const imageCandidates = docs.image ? versionsByDocument.get(docs.image.id) ?? [] : [];
       const videoCandidates = docs.video ? versionsByDocument.get(docs.video.id) ?? [] : [];
@@ -213,8 +258,12 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       const hasVideo = Boolean((currentVideo?.content as MediaVersionContent | undefined)?.assetUrl);
       const hasAudio = Boolean((currentAudio?.content as MediaVersionContent | undefined)?.assetUrl);
       const requiresTts = Boolean(shot.dialogue?.trim());
-      const hasPendingCandidates = imageCandidates.some((c) => c.id !== (binding?.imageVersionId ?? docs.image?.currentVersionId))
-        || videoCandidates.some((c) => c.id !== (binding?.videoVersionId ?? docs.video?.currentVersionId));
+      const hasPendingCandidates = imageCandidates.some((c) => c.id !== effectiveImgVerId)
+        || videoCandidates.some((c) => c.id !== effectiveVidVerId);
+
+      const shotJobs = latestJobsByShot.get(shot.id)
+        ?? (reverseMappings.has(shot.id) ? latestJobsByShot.get(reverseMappings.get(shot.id)!) : undefined)
+        ?? {};
 
       map.set(shot.id, {
         imageDocument: docs.image ?? null,
@@ -222,7 +271,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         audioDocument: docs.audio ?? null,
         currentImage, currentVideo, currentAudio,
         imageCandidates, videoCandidates,
-        jobs: latestJobsByShot.get(shot.id) ?? {},
+        jobs: shotJobs,
         hasImage, hasVideo, hasAudio,
         hasPendingCandidates,
         isFinished: hasImage && hasVideo && (!requiresTts || hasAudio),
@@ -255,6 +304,13 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     setSelectedShotId(visibleShots[0]?.id ?? "");
   }, [selectedShotId, visibleShots]);
 
+  // Scroll selected card into view when navigating with drawer open
+  useEffect(() => {
+    if (!drawerOpen || !selectedShotId) return;
+    const el = document.querySelector(`[data-shot-id="${selectedShotId}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }, [selectedShotId, drawerOpen]);
+
   const selectedShot = safeContent.shots.find((s) => s.id === selectedShotId) ?? visibleShots[0] ?? null;
   const selectedState = selectedShot ? shotStateById.get(selectedShot.id) ?? null : null;
   const selectedDraft = selectedShot ? (ttsDrafts[selectedShot.id] ?? {
@@ -264,6 +320,10 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
 
   // Selected scene for toolbar
   const selectedSceneId = selectedShot?.sceneId ?? visibleSceneGroups[0]?.sceneId ?? "";
+
+  // Filter counts (based on all shots, not current filter)
+  const unfinishedCount = safeContent.shots.filter((s) => !shotStateById.get(s.id)?.isFinished).length;
+  const candidatesCount = safeContent.shots.filter((s) => shotStateById.get(s.id)?.hasPendingCandidates).length;
 
   // Prev/next navigation within the visible shots list
   const selectedIndex = visibleShots.findIndex((s) => s.id === selectedShotId);
@@ -280,6 +340,60 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       ...current,
       shots: current.shots.map((s) => (s.id === shotId ? { ...s, ...patch } : s)),
     }));
+  }
+
+  const multiSelectActive = selectedShotIds.size > 1;
+
+  function handleDragEnd(event: { active: { id: string | number }; over: { id: string | number } | null }) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeShot = safeContent.shots.find((s) => s.id === active.id);
+    const overShot = safeContent.shots.find((s) => s.id === over.id);
+    if (!activeShot || !overShot || activeShot.sceneId !== overShot.sceneId) return;
+    const oldIndex = safeContent.shots.findIndex((s) => s.id === active.id);
+    const newIndex = safeContent.shots.findIndex((s) => s.id === over.id);
+    updateContent((current) => ({ ...current, shots: arrayMove(current.shots, oldIndex, newIndex) }));
+  }
+
+  function handleCardClick(shot: StoryboardShot, index: number, e: React.MouseEvent) {
+    if (e.shiftKey && lastSelectedIndex.current >= 0) {
+      const start = Math.min(lastSelectedIndex.current, index);
+      const end = Math.max(lastSelectedIndex.current, index);
+      setSelectedShotIds(new Set(visibleShots.slice(start, end + 1).map((s) => s.id)));
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedShotIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(shot.id)) next.delete(shot.id);
+        else next.add(shot.id);
+        return next;
+      });
+      lastSelectedIndex.current = index;
+      return;
+    }
+    setSelectedShotIds(new Set());
+    lastSelectedIndex.current = index;
+    setSelectedShotId(shot.id);
+    setDrawerOpen(true);
+  }
+
+  function handleGridKeyDown(e: React.KeyboardEvent) {
+    if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    const total = visibleShots.length;
+    if (total === 0) return;
+    let next = focusedShotIndex;
+    if (e.key === "ArrowRight") { next = (focusedShotIndex + 1) % total; e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { next = (focusedShotIndex - 1 + total) % total; e.preventDefault(); }
+    else if (e.key === "Enter") {
+      const shot = visibleShots[focusedShotIndex];
+      if (shot) { setSelectedShotId(shot.id); setDrawerOpen(true); }
+      return;
+    }
+    else return;
+    setFocusedShotIndex(next);
+    const el = gridRef.current?.querySelector(`[data-shot-id="${visibleShots[next]?.id}"]`) as HTMLElement | null;
+    el?.focus();
   }
 
   function addScene(sceneId: string) {
@@ -391,7 +505,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       },
     }),
     onSuccess: async () => {
-      setFeedback({ message: "Batch image job queued.", error: null });
+      setFeedback({ message: t("storyboardWorkbench.batchImageJobQueued"), error: null });
       await invalidateWorkspace();
     },
     onError: setMutationError,
@@ -419,7 +533,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       body: { versionId },
     }),
     onSuccess: async () => {
-      setFeedback({ message: "Candidate adopted.", error: null });
+      setFeedback({ message: t("storyboardWorkbench.candidateAdopted"), error: null });
       await invalidateWorkspace();
     },
     onError: setMutationError,
@@ -476,61 +590,92 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         onSceneSelect={(sceneId) => {
           const firstShot = visibleShots.find((s) => s.sceneId === sceneId);
           if (firstShot) setSelectedShotId(firstShot.id);
+          requestAnimationFrame(() => {
+            document.getElementById(`scene-group-${sceneId}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
         }}
         onBatchSceneTts={() => batchSceneTts.mutate()}
         isBatchTtsPending={batchSceneTts.isPending}
         hasEligibleTtsShots={safeContent.shots.filter((s) => s.sceneId === selectedSceneId).some((s) => s.dialogue?.trim() && s.characterIds?.[0])}
+        unfinishedCount={unfinishedCount}
+        candidatesCount={candidatesCount}
       />
 
       {/* Card grid */}
-      <div className="swb-grid-scroll">
-        {visibleSceneGroups.length === 0 ? (
-          <div className="swb-empty">
-            <p>{safeContent.shots.length === 0 ? t("storyboardWorkbench.noShotsYet") : t("storyboardWorkbench.noShotsMatchFilter")}</p>
-            {editable && safeContent.shots.length === 0 && (
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => addScene(`scene-1`)}>
-                {t("storyboardWorkbench.createFirstShot")}
+      <div className="swb-grid-scroll" ref={gridRef} onKeyDown={handleGridKeyDown}>
+        {multiSelectActive && (
+          <div className="swb-multi-bar">
+            <span>{t("storyboardWorkbench.multiSelected", { count: String(selectedShotIds.size) })}</span>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setSelectedShotIds(new Set())}>
+              {t("common.cancel")}
+            </button>
+            {editable && (
+              <button className="btn btn-danger btn-sm" type="button" onClick={() => {
+                updateContent((current) => ({ ...current, shots: current.shots.filter((s) => !selectedShotIds.has(s.id)) }));
+                setSelectedShotIds(new Set());
+              }}>
+                {t("shotDetailDrawer.delete")}
               </button>
             )}
           </div>
-        ) : (
-          visibleSceneGroups.map((group, groupIndex) => (
-            <div key={group.sceneId} className="swb-scene-group">
-              <div className="swb-scene-group__header">
-                <span className="swb-scene-group__index">{t("storyboardToolbar.scenePrefix", { index: String(groupIndex + 1) })}</span>
-                <h4 className="swb-scene-group__heading">{group.heading || t("storyboardToolbar.untitledScene")}</h4>
-                {editable && (
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => addShot(group.sceneId)}>
-                    {t("storyboardWorkbench.addShot")}
-                  </button>
-                )}
-              </div>
-              <div className="swb-card-grid">
-                {group.shots.map((shot) => {
-                  const state = shotStateById.get(shot.id) ?? null;
-                  const isSelected = selectedShot?.id === shot.id;
-                  return (
-                    <ShotCard
-                      key={shot.id}
-                      shot={shot}
-                      state={state}
-                      isSelected={isSelected}
-                      onClick={() => {
-                        setSelectedShotId(shot.id);
-                        setDrawerOpen(true);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          ))
         )}
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          {visibleSceneGroups.length === 0 ? (
+            <div className="swb-empty">
+              <p>{safeContent.shots.length === 0 ? t("storyboardWorkbench.noShotsYet") : t("storyboardWorkbench.noShotsMatchFilter")}</p>
+              {editable && safeContent.shots.length === 0 && (
+                <button className="btn btn-primary btn-sm" type="button" onClick={() => addScene(`scene-1`)}>
+                  {t("storyboardWorkbench.createFirstShot")}
+                </button>
+              )}
+            </div>
+          ) : (
+            visibleSceneGroups.map((group, groupIndex) => (
+              <div key={group.sceneId} className="swb-scene-group" id={`scene-group-${group.sceneId}`}>
+                <div className="swb-scene-group__header">
+                  <span className="swb-scene-group__index">{t("storyboardToolbar.scenePrefix", { index: String(groupIndex + 1) })}</span>
+                  <h4 className="swb-scene-group__heading">{group.heading || t("storyboardToolbar.untitledScene")}</h4>
+                  {editable && (
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => addShot(group.sceneId)}>
+                      {t("storyboardWorkbench.addShot")}
+                    </button>
+                  )}
+                </div>
+                <SortableContext items={group.shots.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                  <div className="swb-card-grid">
+                    {group.shots.map((shot) => {
+                      const state = shotStateById.get(shot.id) ?? null;
+                      const isSelected = selectedShot?.id === shot.id;
+                      const shotIndex = visibleShots.findIndex((s) => s.id === shot.id);
+                      return (
+                        <SortableShotCard
+                          key={shot.id}
+                          shot={shot}
+                          state={state}
+                          isSelected={isSelected}
+                          multiSelected={selectedShotIds.has(shot.id)}
+                          onClick={(e) => handleCardClick(shot, shotIndex, e)}
+                          onDoubleClick={() => {
+                            setSelectedShotId(shot.id);
+                            setDrawerOpen(true);
+                          }}
+                          onQuickEdit={(field, value) => updateShot(shot.id, { [field]: value })}
+                        />
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              </div>
+            ))
+          )}
+        </DndContext>
       </div>
 
       {/* Detail drawer */}
-      {drawerOpen && selectedShot && (
+      {selectedShot && (
         <ShotDetailDrawer
+          visible={drawerOpen}
           shot={selectedShot}
           state={selectedState}
           editable={editable}
@@ -539,6 +684,16 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           characters={characters.map((c) => ({ id: c.id, name: c.name }))}
           voiceConfigs={voiceConfigs.map((v) => ({ characterId: v.characterId, voiceName: v.voiceName }))}
           sceneHeadingMap={sceneHeadingMap}
+          activeTab={tabByShot[selectedShotId] ?? "text"}
+          onTabChange={(tab) => setTabByShot((prev) => ({ ...prev, [selectedShotId]: tab }))}
+          shotPositionInScene={(() => {
+            const sceneShots = safeContent.shots.filter((s) => s.sceneId === selectedShot?.sceneId);
+            const idx = sceneShots.findIndex((s) => s.id === selectedShotId);
+            return idx >= 0 ? idx + 1 : undefined;
+          })()}
+          sceneShotCount={(() => {
+            return safeContent.shots.filter((s) => s.sceneId === selectedShot?.sceneId).length || undefined;
+          })()}
           onShotUpdate={updateShot}
           onGenerateImage={(shotId, prompt) => generateImage.mutate({ shotId, prompt })}
           onGenerateVideo={(shotId, prompt, ref) => generateVideo.mutate({ shotId, prompt, referenceImageAssetId: ref })}
@@ -549,9 +704,9 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           currentSubtitle={selectedShotId ? safeContent.mediaBindings[selectedShotId]?.subtitle : undefined}
           onMoveShot={moveShot}
           onRemoveShot={removeShot}
-          isImagePending={generateImage.isPending}
-          isVideoPending={generateVideo.isPending}
-          isTtsPending={generateTts.isPending}
+          isImagePending={generateImage.isPending && generateImage.variables?.shotId === selectedShotId}
+          isVideoPending={generateVideo.isPending && generateVideo.variables?.shotId === selectedShotId}
+          isTtsPending={generateTts.isPending && generateTts.variables?.shotId === selectedShotId}
           isAdoptPending={adoptVersion.isPending}
           hasPrev={hasPrev}
           hasNext={hasNext}

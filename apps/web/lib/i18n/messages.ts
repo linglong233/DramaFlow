@@ -1397,13 +1397,23 @@ export const zhCNMessages = {
     select: "选择",
     subtitleLabel: "字幕",
     subtitlePlaceholder: "输入该镜头的字幕文本...",
-    mediaSelected: "已选择媒体。"
+    mediaSelected: "已选择媒体。",
+    confirmDelete: "确认删除？再次点击确认",
+    positionInScene: "{current}/{total} 在当前场景"
+  },
+  shotCard: {
+    statusDone: "已完成",
+    statusRunning: "运行中",
+    statusNotStarted: "未开始"
   },
   storyboardWorkbench: {
     noShotsYet: "暂无分镜镜头。",
     noShotsMatchFilter: "没有镜头匹配当前筛选条件。",
     createFirstShot: "创建第一个镜头",
-    addShot: "+ 添加镜头"
+    addShot: "+ 添加镜头",
+    batchImageJobQueued: "批量图片任务已提交。",
+    candidateAdopted: "候选已采纳。",
+    multiSelected: "已选 {count} 个镜头"
   }
 } as const;
 
@@ -2807,13 +2817,23 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     select: "Select",
     subtitleLabel: "Subtitle",
     subtitlePlaceholder: "Enter subtitle text for this shot...",
-    mediaSelected: "Media selected."
+    mediaSelected: "Media selected.",
+    confirmDelete: "Confirm delete? Click again",
+    positionInScene: "{current}/{total} in scene"
+  },
+  shotCard: {
+    statusDone: "Done",
+    statusRunning: "Running",
+    statusNotStarted: "Not started"
   },
   storyboardWorkbench: {
     noShotsYet: "No storyboard shots yet.",
     noShotsMatchFilter: "No shots match the current filter.",
     createFirstShot: "Create first shot",
-    addShot: "+ Add shot"
+    addShot: "+ Add shot",
+    batchImageJobQueued: "Batch image job queued.",
+    candidateAdopted: "Candidate adopted.",
+    multiSelected: "{count} shots selected"
   }
 };
 

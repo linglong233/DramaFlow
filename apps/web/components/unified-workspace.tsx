@@ -75,6 +75,7 @@ interface DocumentWithVersions {
   title: string;
   shotId?: string;
   currentVersionId?: string;
+  draftVersionId?: string;
   versions: Array<Pick<VersionRecord, "id" | "title" | "versionNumber" | "status" | "content" | "createdAt">>;
 }
 
@@ -236,24 +237,31 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const jobs = jobsQuery.data?.jobs ?? [];
   const hasActiveJobs = jobs.some((j) => j.status === "queued" || j.status === "running");
   const previousHasActiveJobs = useRef(hasActiveJobs);
+  const previousCompletedIds = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!hasActiveJobs || connected) return;
+    if (!hasActiveJobs) return;
     const interval = setInterval(() => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectJobs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) });
     }, 5000);
     return () => clearInterval(interval);
-  }, [connected, hasActiveJobs, projectId, queryClient]);
+  }, [hasActiveJobs, projectId, queryClient]);
 
   useEffect(() => {
-    if (previousHasActiveJobs.current && !hasActiveJobs) {
+    const completed = jobs.filter((j) => j.status === "completed" || j.status === "failed");
+    const currentIds = new Set(completed.map((j) => j.id));
+    const newCompletions = completed.some((j) => !previousCompletedIds.current.has(j.id));
+    previousCompletedIds.current = currentIds;
+
+    if (newCompletions) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(projectId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.exports(projectId) });
     }
-    previousHasActiveJobs.current = hasActiveJobs;
-  }, [hasActiveJobs, projectId, queryClient]);
+  }, [jobs, projectId, queryClient]);
 
   const documents: DocumentWithVersions[] = useMemo(() => {
     const docTypes = new Set(["synopsis", "script", "storyboard", "world_bible"]);
@@ -271,6 +279,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         title: doc.title,
         shotId: doc.shotId,
         currentVersionId: doc.currentVersionId,
+        draftVersionId: doc.draftVersionId,
         versions: docVersions,
       };
     });
@@ -284,6 +293,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         title: "",
         shotId: undefined,
         currentVersionId: undefined,
+        draftVersionId: undefined,
         versions: [],
       });
       realDocs.sort((a, b) => (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99));
@@ -296,6 +306,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       title: "",
       shotId: undefined,
       currentVersionId: undefined,
+      draftVersionId: undefined,
       versions: [],
     });
 
@@ -782,7 +793,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                           isLoading={(projectQuery.isFetching || jobsQuery.isFetching) && !projectQuery.data}
                           projectId={projectId}
                           project={payload}
-                          allowStoryboardMutations={selectedDoc?.currentVersionId === selectedVersion?.id}
+                          allowStoryboardMutations={
+                            !selectedDoc || selectedDoc.versions[0]?.id === selectedVersion?.id
+                          }
                           onStoryboardChange={handleInlineStoryboardChange}
                           onSubmitForReview={(versionId) => versionMutations.submit.mutate(versionId)}
                           isSubmitting={versionMutations.submit.isPending}

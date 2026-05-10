@@ -39,6 +39,8 @@ interface Props {
   onBatchSceneTts: () => void;
   isBatchTtsPending: boolean;
   hasEligibleTtsShots: boolean;
+  unfinishedCount?: number;
+  candidatesCount?: number;
 }
 
 function ChevronDownIcon() {
@@ -85,6 +87,8 @@ export function StoryboardToolbar({
   onBatchSceneTts,
   isBatchTtsPending,
   hasEligibleTtsShots,
+  unfinishedCount,
+  candidatesCount,
 }: Props) {
   const { t } = useI18n();
   const [sceneDropdownOpen, setSceneDropdownOpen] = useState(false);
@@ -120,10 +124,10 @@ export function StoryboardToolbar({
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const filters: { key: ShotFilter; label: string }[] = [
+  const filters: { key: ShotFilter; label: string; count?: number }[] = [
     { key: "all", label: t("storyboardToolbar.filterAll") },
-    { key: "unfinished", label: t("storyboardToolbar.filterUnfinished") },
-    { key: "candidates", label: t("storyboardToolbar.filterCandidates") },
+    { key: "unfinished", label: t("storyboardToolbar.filterUnfinished"), count: unfinishedCount },
+    { key: "candidates", label: t("storyboardToolbar.filterCandidates"), count: candidatesCount },
   ];
 
   return (
@@ -188,7 +192,7 @@ export function StoryboardToolbar({
               type="button"
               onClick={() => onFilterChange(f.key)}
             >
-              {f.label}
+              {f.label}{f.count !== undefined ? ` (${f.count})` : ""}
             </button>
           ))}
         </div>

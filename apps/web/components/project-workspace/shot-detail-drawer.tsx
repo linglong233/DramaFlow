@@ -22,6 +22,7 @@ import {
 } from "@dramaflow/shared";
 
 import { getJobStatusLabel, useI18n } from "../../lib/i18n";
+import { useDebouncedField } from "../../lib/hooks";
 import { ProviderSelector } from "./provider-selector";
 
 interface MediaVersionContent {
@@ -60,9 +61,10 @@ interface ShotProjectState {
   isFinished: boolean;
 }
 
-type DrawerTab = "text" | "media" | "prompts" | "tts";
+export type DrawerTab = "text" | "media" | "prompts" | "tts";
 
 interface Props {
+  visible: boolean;
   shot: StoryboardShot;
   state: ShotProjectState | null;
   editable: boolean;
@@ -71,6 +73,10 @@ interface Props {
   characters: { id: string; name: string }[];
   voiceConfigs: { characterId: string; voiceName: string }[];
   sceneHeadingMap: Map<string, string>;
+  activeTab: DrawerTab;
+  onTabChange: (tab: DrawerTab) => void;
+  shotPositionInScene?: number;
+  sceneShotCount?: number;
   onShotUpdate: (shotId: string, patch: Partial<StoryboardShot>) => void;
   onGenerateImage: (shotId: string, prompt?: string) => void;
   onGenerateVideo: (shotId: string, prompt?: string, referenceImageAssetId?: string) => void;
@@ -141,7 +147,24 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
+function DebouncedTextarea({ value, onChange, rows, disabled, placeholder }: {
+  value: string; onChange: (v: string) => void; rows: number; disabled?: boolean; placeholder?: string;
+}) {
+  const [draft, setDraft] = useDebouncedField(value, onChange);
+  return (
+    <textarea
+      className="input"
+      rows={rows}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      disabled={disabled}
+      placeholder={placeholder}
+    />
+  );
+}
+
 export function ShotDetailDrawer({
+  visible,
   shot,
   state,
   editable,
@@ -150,6 +173,10 @@ export function ShotDetailDrawer({
   characters,
   voiceConfigs,
   sceneHeadingMap,
+  activeTab,
+  onTabChange,
+  shotPositionInScene,
+  sceneShotCount,
   onShotUpdate,
   onGenerateImage,
   onGenerateVideo,
@@ -182,17 +209,49 @@ export function ShotDetailDrawer({
 }: Props) {
   const { t, locale, formatDate } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
-  const [activeTab, setActiveTab] = useState<DrawerTab>("text");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mounted, setMounted] = useState(visible);
+  const [closing, setClosing] = useState(false);
 
-  // Close on Esc
+  // Handle visible state transitions with animation
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      setClosing(false);
+    } else if (mounted) {
+      setClosing(true);
+      const timer = setTimeout(() => {
+        setMounted(false);
+        setClosing(false);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, mounted]);
+
+  // Close on Esc, navigate with arrows, quick-switch tabs with 1-4
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-  }, [onClose]);
+    const inEditor = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+    if (e.key === "Escape") {
+      if (confirmDelete) { setConfirmDelete(false); return; }
+      onClose();
+      return;
+    }
+    if (inEditor) return;
+    if (e.key === "ArrowLeft" && hasPrev) { e.preventDefault(); onPrev(); }
+    else if (e.key === "ArrowRight" && hasNext) { e.preventDefault(); onNext(); }
+    else if (e.key === "1") onTabChange("text");
+    else if (e.key === "2") onTabChange("media");
+    else if (e.key === "3") onTabChange("prompts");
+    else if (e.key === "4") onTabChange("tts");
+  }, [onClose, confirmDelete, hasPrev, hasNext, onPrev, onNext, onTabChange]);
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  // Reset confirm delete when shot changes
+  useEffect(() => { setConfirmDelete(false); }, [shot.id]);
 
   const voiceConfigsByCharacterId = new Map(voiceConfigs.map((v) => [v.characterId, v]));
   const selectedCharacters = shot.characterIds?.length ? shot.characterIds : characters.map((c) => c.id);
@@ -220,11 +279,10 @@ export function ShotDetailDrawer({
       <label className="drawer-field">
         <span className="drawer-field__label">{label}</span>
         {editable ? (
-          <textarea
-            className="input"
-            rows={rows}
+          <DebouncedTextarea
             value={value}
-            onChange={(e) => onShotUpdate(shot.id, { [field]: e.target.value })}
+            onChange={(v) => onShotUpdate(shot.id, { [field]: v })}
+            rows={rows}
           />
         ) : (
           <div className="drawer-field__static">{value || "—"}</div>
@@ -565,15 +623,22 @@ export function ShotDetailDrawer({
     );
   }
 
+  if (!mounted) return null;
+
   return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={(e) => e.stopPropagation()}>
+    <div className={`drawer-overlay${closing ? " drawer-overlay--closing" : ""}`} onClick={closing ? undefined : onClose}>
+      <div className={`drawer${closing ? " drawer--closing" : ""}`} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="drawer-header">
           <div className="drawer-header__info">
             <span className="drawer-header__shot-label">{shot.shotLabel}</span>
             <span className="drawer-header__meta">
               {framingLabel} · {cameraLabel} · {sceneHeading}
+              {shotPositionInScene != null && sceneShotCount != null && (
+                <span className="drawer-header__position">
+                  {" "}· {t("shotDetailDrawer.positionInScene", { current: String(shotPositionInScene), total: String(sceneShotCount) })}
+                </span>
+              )}
             </span>
           </div>
           <button className="drawer-header__close" type="button" onClick={onClose}>
@@ -590,7 +655,7 @@ export function ShotDetailDrawer({
               role="tab"
               aria-selected={activeTab === tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => onTabChange(tab.key)}
             >
               {tab.label}
             </button>
@@ -617,7 +682,14 @@ export function ShotDetailDrawer({
             <div style={{ display: "flex", gap: "var(--space-1)" }}>
               <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, -1)}>{t("shotDetailDrawer.up")}</button>
               <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, 1)}>{t("shotDetailDrawer.down")}</button>
-              <button className="btn btn-danger btn-sm" type="button" onClick={() => onRemoveShot(shot.id)}>{t("shotDetailDrawer.delete")}</button>
+              <button className="btn btn-danger btn-sm" type="button" onClick={() => {
+                if (!confirmDelete) { setConfirmDelete(true); return; }
+                onRemoveShot(shot.id);
+              }}
+              style={confirmDelete ? { animation: "uw-pulse 1s ease-in-out infinite" } : undefined}
+              >
+                {confirmDelete ? t("shotDetailDrawer.confirmDelete") : t("shotDetailDrawer.delete")}
+              </button>
             </div>
           )}
           <button
