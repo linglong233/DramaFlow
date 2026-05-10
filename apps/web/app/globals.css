@@ -12599,7 +12599,7 @@ textarea.input {
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
-  z-index: var(--z-modal-backdrop, 40);
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -12611,7 +12611,7 @@ textarea.input {
 }
 
 .sm-dialog {
-  width: min(900px, 90vw);
+  width: min(1300px, 92vw);
   max-height: 85vh;
   background: var(--bg-elevated);
   backdrop-filter: blur(20px);
@@ -12711,6 +12711,17 @@ textarea.input {
 .sm-col--right {
   flex: 45;
   min-width: 0;
+}
+
+/* Card container for visual grouping */
+.sm-card {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 /* Sections */
@@ -12843,10 +12854,7 @@ textarea.input {
 
 /* TTS section */
 .sm-tts {
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-subtle);
+  /* inherits .sm-card styles */
 }
 
 /* Collapsible */
@@ -13006,8 +13014,8 @@ textarea.input {
   flex-shrink: 0;
 }
 
-/* Responsive: single column below 900px */
-@media (max-width: 899px) {
+/* Responsive: single column below 1300px */
+@media (max-width: 1299px) {
   .sm-dialog {
     width: min(720px, 95vw);
     max-height: 90vh;

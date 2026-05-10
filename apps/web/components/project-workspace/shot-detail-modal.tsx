@@ -8,6 +8,7 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   ProjectWorkspacePayload,
   ProviderEntry,
@@ -418,7 +419,7 @@ export function ShotDetailModal({
 
   const totalCandidates = (state?.imageCandidates?.length ?? 0) + (state?.videoCandidates?.length ?? 0);
 
-  return (
+  return createPortal(
     <div className={`sm-overlay${closing ? " sm-overlay--closing" : ""}`} onClick={closing ? undefined : onClose}>
       <div className={`sm-dialog${closing ? " sm-dialog--closing" : ""}`} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -449,8 +450,8 @@ export function ShotDetailModal({
         <div className="sm-body">
           {/* Left column: Media Production Zone */}
           <div className="sm-col sm-col--left">
-            {/* Media Preview */}
-            <div className="sm-section">
+            {/* ① Media Preview Card */}
+            <div className="sm-card">
               <div className="sm-preview">
                 {currentVideoUrl ? (
                   <video controls playsInline className="sm-preview__media">
@@ -463,11 +464,7 @@ export function ShotDetailModal({
                 )}
               </div>
               {currentAudioUrl && <audio controls src={currentAudioUrl} className="sm-audio-player" />}
-            </div>
-
-            {/* Subtitle */}
-            {editable && onSubtitleChange && (
-              <div className="sm-section">
+              {editable && onSubtitleChange && (
                 <label className="sm-field">
                   <span className="sm-field__label">{t("shotDetailDrawer.subtitleLabel")}</span>
                   <textarea
@@ -478,12 +475,12 @@ export function ShotDetailModal({
                     placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
                   />
                 </label>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Generate buttons */}
+            {/* ② Generate Controls Card */}
             {canUseProject && (
-              <div className="sm-section">
+              <div className="sm-card">
                 <div className="sm-generate-row">
                   <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
                     {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
@@ -509,36 +506,38 @@ export function ShotDetailModal({
               </div>
             )}
 
-            {/* Job status (compact) */}
+            {/* ③ Job Status Card */}
             {canUseProject && (state?.jobs.image || state?.jobs.video || state?.jobs.tts) && (
-              <div className="sm-section sm-jobs">
+              <div className="sm-card sm-jobs">
                 {renderJobRow("Img", state?.jobs.image)}
                 {renderJobRow("Vid", state?.jobs.video)}
                 {renderJobRow("TTS", state?.jobs.tts)}
               </div>
             )}
 
-            {/* TTS Section */}
-            <div className="sm-section sm-tts">
+            {/* ④ TTS Card */}
+            <div className="sm-card sm-tts">
               <h4 className="sm-section__title">TTS</h4>
-              <label className="sm-field">
-                <span className="sm-field__label">{t("shotDetailDrawer.characterLabel")}</span>
-                <select
-                  className="input"
-                  value={ttsDraft?.characterId ?? ""}
-                  onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
-                  disabled={!editable}
-                >
-                  {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
-                  {selectedCharacters.map((cid) => (
-                    <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="sm-field">
-                <span className="sm-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
-                <div className="sm-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
-              </label>
+              <div style={{ display: "flex", gap: "var(--space-3)" }}>
+                <label className="sm-field" style={{ flex: 1 }}>
+                  <span className="sm-field__label">{t("shotDetailDrawer.characterLabel")}</span>
+                  <select
+                    className="input"
+                    value={ttsDraft?.characterId ?? ""}
+                    onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
+                    disabled={!editable}
+                  >
+                    {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
+                    {selectedCharacters.map((cid) => (
+                      <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="sm-field" style={{ flex: 1 }}>
+                  <span className="sm-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
+                  <div className="sm-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
+                </label>
+              </div>
               <label className="sm-field">
                 <span className="sm-field__label">{t("shotDetailDrawer.ttsTextLabel")}</span>
                 <textarea
@@ -562,9 +561,9 @@ export function ShotDetailModal({
               )}
             </div>
 
-            {/* Candidates (collapsible) */}
+            {/* ⑤ Candidates Card (collapsible) */}
             {canUseProject && totalCandidates > 0 && (
-              <div className="sm-section">
+              <div className="sm-card">
                 <button
                   className="sm-collapsible-toggle"
                   type="button"
@@ -585,8 +584,8 @@ export function ShotDetailModal({
 
           {/* Right column: Text Information Zone */}
           <div className="sm-col sm-col--right">
-            {/* Basic fields 2×2 grid */}
-            <div className="sm-section">
+            {/* ① Basic Info Card */}
+            <div className="sm-card">
               <div className="sm-form-grid">
                 <label className="sm-field">
                   <span className="sm-field__label">{t("storyboardEditor.shotLabelField")}</span>
@@ -627,14 +626,16 @@ export function ShotDetailModal({
               </div>
             </div>
 
-            {/* Text fields */}
-            <div className="sm-section sm-text-fields">
+            {/* ② Text Descriptions Card */}
+            <div className="sm-card">
               {renderField(t("shotReference.visualLabel"), shot.visualDescription, "visualDescription", 4)}
               {renderField(t("shotReference.actionLabel"), shot.actionDescription ?? "", "actionDescription", 3)}
               {renderField(t("storyboardEditor.dialogueLabel"), shot.dialogue ?? "", "dialogue", 3)}
-              {renderField(t("storyboardEditor.soundDesignLabel"), shot.soundDesign ?? "", "soundDesign", 2)}
+            </div>
 
-              {/* Characters tag input */}
+            {/* ③ Auxiliary Info Card */}
+            <div className="sm-card">
+              {renderField(t("storyboardEditor.soundDesignLabel"), shot.soundDesign ?? "", "soundDesign", 2)}
               <label className="sm-field">
                 <span className="sm-field__label">{t("shotDetailDrawer.charactersLabel")}</span>
                 {editable ? (
@@ -650,12 +651,11 @@ export function ShotDetailModal({
                   </div>
                 )}
               </label>
-
               {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
             </div>
 
-            {/* Prompts (collapsible) */}
-            <div className="sm-section">
+            {/* ④ Prompts Card (collapsible) */}
+            <div className="sm-card">
               <button
                 className="sm-collapsible-toggle"
                 type="button"
@@ -700,6 +700,7 @@ export function ShotDetailModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
