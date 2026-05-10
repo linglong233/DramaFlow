@@ -30,7 +30,7 @@ import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
 import { ShotCard } from "./shot-card";
 import { StoryboardToolbar } from "./storyboard-toolbar";
-import { ShotDetailDrawer, type DrawerTab } from "./shot-detail-drawer";
+import { ShotDetailModal } from "./shot-detail-modal";
 import { useProviderEntries } from "./provider-selector";
 
 interface Props {
@@ -157,7 +157,6 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
 
   const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
   const [selectedVideoProvider, setSelectedVideoProvider] = useState<string | undefined>();
-  const [tabByShot, setTabByShot] = useState<Record<string, DrawerTab>>({});
 
   const providerEntries = useProviderEntries(imageConfigSource, project?.team?.id);
 
@@ -672,9 +671,9 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         </DndContext>
       </div>
 
-      {/* Detail drawer */}
+      {/* Detail modal */}
       {selectedShot && (
-        <ShotDetailDrawer
+        <ShotDetailModal
           visible={drawerOpen}
           shot={selectedShot}
           state={selectedState}
@@ -684,8 +683,6 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           characters={characters.map((c) => ({ id: c.id, name: c.name }))}
           voiceConfigs={voiceConfigs.map((v) => ({ characterId: v.characterId, voiceName: v.voiceName }))}
           sceneHeadingMap={sceneHeadingMap}
-          activeTab={tabByShot[selectedShotId] ?? "text"}
-          onTabChange={(tab) => setTabByShot((prev) => ({ ...prev, [selectedShotId]: tab }))}
           shotPositionInScene={(() => {
             const sceneShots = safeContent.shots.filter((s) => s.sceneId === selectedShot?.sceneId);
             const idx = sceneShots.findIndex((s) => s.id === selectedShotId);
