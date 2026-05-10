@@ -677,6 +677,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           visible={drawerOpen}
           shot={selectedShot}
           state={selectedState}
+          projectId={projectId}
           editable={editable}
           canMutateProject={canMutateProject}
           canUseProject={canUseProject}

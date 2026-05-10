@@ -22,6 +22,7 @@ import {
 
 import { getJobStatusLabel, useI18n } from "../../lib/i18n";
 import { useDebouncedField } from "../../lib/hooks";
+import { apiFetch } from "../../lib/api";
 import { ProviderSelector } from "./provider-selector";
 
 interface MediaVersionContent {
@@ -64,6 +65,7 @@ interface Props {
   visible: boolean;
   shot: StoryboardShot;
   state: ShotProjectState | null;
+  projectId?: string;
   editable: boolean;
   canMutateProject: boolean;
   canUseProject: boolean;
@@ -212,6 +214,7 @@ export function ShotDetailModal({
   visible,
   shot,
   state,
+  projectId,
   editable,
   canMutateProject,
   canUseProject,
@@ -257,6 +260,8 @@ export function ShotDetailModal({
   const [closing, setClosing] = useState(false);
   const [promptsExpanded, setPromptsExpanded] = useState(false);
   const [candidatesExpanded, setCandidatesExpanded] = useState(false);
+  const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
+  const [videoPromptPreview, setVideoPromptPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -294,6 +299,23 @@ export function ShotDetailModal({
   }, [handleKeyDown]);
 
   useEffect(() => { setConfirmDelete(false); }, [shot.id]);
+
+  useEffect(() => {
+    if (!promptsExpanded || !projectId) return;
+    apiFetch<{ positivePrompt?: string }>(`/shots/${shot.id}/preview-prompt`, {
+      method: "POST",
+      body: { projectId },
+    })
+      .then((data) => setImagePromptPreview(data.positivePrompt ?? ""))
+      .catch(() => setImagePromptPreview(""));
+
+    apiFetch<{ positivePrompt?: string }>(`/shots/${shot.id}/preview-video-prompt`, {
+      method: "POST",
+      body: { projectId },
+    })
+      .then((data) => setVideoPromptPreview(data.positivePrompt ?? ""))
+      .catch(() => setVideoPromptPreview(""));
+  }, [promptsExpanded, shot.id, projectId]);
 
   const voiceConfigsByCharacterId = new Map(voiceConfigs.map((v) => [v.characterId, v]));
   const selectedCharacters = shot.characterIds?.length ? shot.characterIds : characters.map((c) => c.id);
@@ -644,8 +666,8 @@ export function ShotDetailModal({
               </button>
               {promptsExpanded && (
                 <>
-                  {renderField(t("shotDetailDrawer.imagePrompt"), shot.imagePrompt ?? "", "imagePrompt", 5)}
-                  {renderField(t("shotDetailDrawer.videoPrompt"), shot.videoPrompt ?? "", "videoPrompt", 5)}
+                  {renderField(t("shotDetailDrawer.imagePrompt"), shot.imagePrompt ?? imagePromptPreview ?? "", "imagePrompt", 5)}
+                  {renderField(t("shotDetailDrawer.videoPrompt"), shot.videoPrompt ?? videoPromptPreview ?? "", "videoPrompt", 5)}
                 </>
               )}
             </div>
