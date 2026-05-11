@@ -1,6 +1,6 @@
 # DramaFlow
 
-DramaFlow is a TypeScript monorepo for a director- and studio-facing short-drama workflow. The repository currently ships a runnable `web + api + worker + shared` stack for authentication, collaboration, AI-assisted writing, media generation, review and audit flows, TTS, timeline assembly, notifications, realtime updates, and dual storage backends.
+DramaFlow is a TypeScript monorepo for a director- and studio-facing short-drama production platform. The repository ships a runnable `web + api + worker + shared` stack covering authentication, team and project collaboration, AI-assisted writing, media generation, review workflows, TTS, timeline assembly, notifications, realtime updates, and dual storage backends.
 
 ## Overview
 
@@ -15,14 +15,14 @@ DramaFlow is a TypeScript monorepo for a director- and studio-facing short-drama
 
 ## Current State
 
-DramaFlow is development-ready, but it is not fully productionized yet.
+DramaFlow is development-ready, but not fully productionized.
 
-- Runtime data access still uses the file-backed `DevDatabaseService`; Prisma is not wired into the live code path yet.
-- Background jobs still use the simplified polling worker + internal API flow; Redis / BullMQ is a future direction, not a current dependency.
-- The project workspace now uses split data loading: `GET /projects/:id` returns summary data, while versions, jobs, timeline, and exports refresh through dedicated endpoints.
-- Realtime delivery is available through a NestJS + Socket.IO gateway for `job.updated`, `review.updated`, and `notification.created`, with polling kept as the fallback path.
-- Text generation, image generation, video generation, and TTS can talk to configured providers, but mock fallback paths are still intentionally preserved so the product can run without external services.
-- Video export now uses FFmpeg when available and can fall back to a mock export artifact when explicitly allowed.
+- Runtime data access uses the file-backed `DevDatabaseService`; Prisma is not wired into the live code path yet.
+- Background jobs use a simplified polling worker + internal API flow; Redis / BullMQ is a future direction, not a current dependency.
+- The project workspace uses split data loading: `GET /projects/:id` returns summary data, while versions, jobs, timeline, and exports refresh through dedicated endpoints.
+- Realtime delivery is available through a NestJS + Socket.IO gateway for `job.updated`, `review.updated`, and `notification.created`, with polling as the fallback path.
+- Text generation, image generation, video generation, and TTS can talk to configured providers, with mock fallback paths preserved for running without external services.
+- Video export uses FFmpeg when available, with mock export fallback when explicitly allowed.
 
 ## Architecture
 
@@ -30,90 +30,288 @@ DramaFlow is development-ready, but it is not fully productionized yet.
 
 The Next.js frontend includes:
 
-- public routes for landing, login, forgot password, reset password, team invite acceptance, and project invite acceptance
-- protected dashboard routes for projects, platform admin, team admin, team settings, profile settings, language settings, and notifications
-- a unified project workspace at `/projects/[projectId]/workspace` with these modes:
-  - `info`
-  - `document`
-  - `worldbible`
-  - `generate`
-  - `media`
-  - `tasks`
-  - `timeline`
-- document version browsing, diffing, restore, and manual editing for script and storyboard content
-- review actions, threaded comments, audit support, and AI rewrite tools
+- Public routes: landing, login, forgot password, reset password, team invite acceptance, project invite acceptance
+- Protected dashboard routes: projects, platform admin, team admin, team settings, profile settings, language settings, notifications
+- A unified project workspace at `/projects/[projectId]/workspace` with these modes (switched via `?mode=` URL parameter):
+  - `info` — project info panel
+  - `document` — document mode with sub-tabs: view, edit, generate, versions (worldbible and media are mapped into this mode)
+  - `tasks` — task panel
+  - `timeline` — timeline editor
+- Additional project routes: `/projects/:id/generate` (AI generation), `/projects/:id/review` (review panel), `/projects/:id/drafts` (draft management)
+- Document version browsing, diffing, restore, and manual editing for script and storyboard content
+- Review actions, threaded comments, audit support, and AI rewrite tools
 - SSE-based synopsis, script, storyboard, and rewrite generation
-- per-shot and batch image/video creation, media candidates, and explicit candidate adoption
-- world-bible character, location, style-guide, and character voice configuration UI with reference uploads and voice sample playback
-- timeline auto-assembly, save, export submission, and websocket-aware polling fallback
+- Per-shot and batch image/video creation, media candidates with thumbnail grid, lightbox preview, and explicit candidate adoption
+- Shot detail modal with three-column layout:
+  - Left: editable metadata, shot navigation, action buttons
+  - Center: media workspace (tab-driven image/video preview, candidate thumbnails, generation controls)
+  - Right: shot content, TTS with audio playback and subtitle preview, linked prompt preview
+- Storyboard workbench with drag-and-drop reordering (dnd-kit), multi-select, animated drawer, and auto-display of bound media
+- World-bible character, location, style-guide, and character voice configuration UI with reference uploads and voice sample playback
+- AI reference image generation for characters, locations, and style guides
+- Timeline auto-assembly, save, export submission, and websocket-aware polling fallback
+- Provider selector for choosing personal or team image/video providers during generation
+- Notification center with unread count, mark read, and mark all read
 
 ### `apps/api`
 
 The NestJS API includes:
 
-- `/health` and Swagger docs at `/docs`
-- auth flows for register, login, refresh, logout, forgot password, reset password, profile updates, and per-user model listing
-- workspace flows for team CRUD, team members, team invite links, project CRUD, project invites, project invite acceptance, project members, document versions, threaded comments, review transitions, world-bible CRUD, audit configs, audit records, timeline save/auto-assemble, and export listing
-- dedicated workspace data endpoints for summary, versions, jobs, timeline, and exports
-- jobs for:
-  - script generation
-  - synopsis generation
-  - storyboard generation
-  - rewrite
-  - image generation
-  - video generation
-  - TTS generation
-  - export jobs
-- batch image/video jobs and scene-level batch TTS jobs
-- prompt preview endpoints
-- notifications APIs and realtime websocket events
-- storage APIs for direct upload targets and asset URLs
+- `/health` health check and `/docs` Swagger documentation
+- **Auth flows**: register, login (with IP-based rate limiting), refresh, logout, forgot password, reset password, profile updates (including LLM config, multi-provider config, default provider), per-user model listing
+- **Team flows**: team CRUD, team members (add/remove/role change), team invite links (create/list/revoke/query/accept), team LLM model listing, team settings (LLM, image generation config)
+- **Project flows**: project CRUD, project members (invite/add), project invite acceptance, pending invites, project review policy, workspace summary
+- **Document & version flows**: version listing (with pagination), version creation, draft editing, deletion, submission, advance-to-review, approval, rejection, restoration, adoption, media binding updates
+- **Comment flows**: version-scoped comments with threaded replies (`parentId`)
+- **World-bible flows**: full CRUD for characters (with costumes), locations, style guide, character voice config, AI reference image generation
+- **Audit flows**: per-content-type audit config (review required, auto-approve roles), audit record listing (with type filtering and pagination)
+- **Job types**:
+  - Script generation (sync + SSE stream)
+  - Synopsis generation (sync + SSE stream)
+  - Storyboard generation (sync + SSE stream)
+  - Rewrite (sync + SSE stream)
+  - Image generation (per-shot, batch)
+  - Video generation (per-shot, batch)
+  - TTS generation (per-shot, per-scene batch)
+  - Export jobs
+- **Prompt preview**: image and video prompt preview endpoints
+- **Batch operations**: batch image/video jobs with batch status tracking
+- **Export**: capability detection (FFmpeg availability), export job creation
+- **Notifications**: listing (with unread filter and pagination), unread count, mark read, mark all read
+- **Storage**: direct upload targets, direct file upload, asset URL retrieval, project asset registration
+- **Realtime**: WebSocket events for `job.updated`, `review.updated`, `notification.created`
+- **Internal endpoints** (worker-only, protected by API key): job claiming, processing, and system-level retry
+- **Admin**: platform overview, team dashboard, team settings
 
 ### `apps/worker`
 
 The worker is intentionally lightweight:
 
-- it polls `GET /internal/jobs/next`
-- it triggers processing through `POST /internal/jobs/:id/process`
-- it retries through `POST /internal/jobs/:id/retry`
-- it does not contain generation business logic itself; execution remains in the API service layer
+- Polls `GET /internal/jobs/next` (configurable interval)
+- Triggers processing through `POST /internal/jobs/:id/process`
+- Retries through `POST /internal/jobs/:id/retry`
+- Does not contain generation business logic itself; execution remains in the API service layer
 
 ### `packages/shared`
 
 The shared package is the contract layer across the stack:
 
-- domain types and enums
-- API contract types
-- provider interfaces
-- review, permission, job-management, timeline, and export business rules
+- Domain types and enums (roles, document types, job types, version statuses, etc.)
+- API contract types (generation inputs, timeline records, export records, etc.)
+- Provider interfaces (LLM, image generation, video generation, TTS)
+- Review, permission, job-management, timeline, and export business rules
 
-## API Highlights
+## API Reference
 
-These are the most important workspace-facing surfaces right now:
+### Auth
 
-- `GET /projects/:id`: workspace summary only
-- `GET /projects/:id/versions`: document versions payload
-- `GET /projects/:id/jobs`: task list payload
-- `GET /projects/:id/timeline`: timeline payload
-- `GET /projects/:id/exports`: export list payload
-- `POST /project-invites/:id/accept`: accept a pending project invite
-- `POST /scenes/:id/batch-tts-jobs`: generate TTS jobs for the shots in a scene
-- websocket events:
-  - `job.updated`
-  - `review.updated`
-  - `notification.created`
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/register` | User registration |
+| POST | `/auth/login` | Login (with IP rate limiting) |
+| POST | `/auth/refresh` | Refresh access token |
+| POST | `/auth/logout` | Logout |
+| POST | `/auth/forgot-password` | Initiate password reset |
+| POST | `/auth/reset-password` | Execute password reset |
+| GET | `/auth/me` | Get current user profile |
+| PATCH | `/auth/me` | Update profile (LLM config, providers, defaults) |
+| POST | `/auth/me/llm-models` | List available LLM models |
+
+### Teams
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/teams` | List user's teams |
+| GET | `/teams/:id` | Get team details |
+| POST | `/teams` | Create team |
+| PATCH | `/teams/:id` | Update team |
+| DELETE | `/teams/:id` | Delete team |
+| POST | `/teams/:id/llm-models` | List team LLM models |
+| POST | `/teams/:id/members` | Add team member |
+| DELETE | `/teams/:teamId/members/:memberId` | Remove team member |
+| PATCH | `/teams/:teamId/members/:memberId` | Change member role |
+| POST | `/teams/:id/invite-links` | Create invite link |
+| GET | `/teams/:id/invite-links` | List invite links |
+| DELETE | `/teams/:teamId/invite-links/:linkId` | Revoke invite link |
+| GET | `/invite-links/:token` | Get invite link info |
+| POST | `/invite-links/:token/accept` | Accept team invite |
+
+### Projects
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects` | List user's projects |
+| POST | `/projects` | Create project |
+| GET | `/projects/:id` | Workspace summary |
+| PATCH | `/projects/:id` | Update project |
+| DELETE | `/projects/:id` | Delete project |
+| PATCH | `/projects/:id/review-policy` | Update review policy |
+| POST | `/projects/:id/invites` | Invite project member |
+| POST | `/projects/:id/members` | Add project member |
+| GET | `/project-invites/pending` | List pending invites |
+| POST | `/project-invites/:id/accept` | Accept project invite |
+
+### Documents & Versions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects/:id/versions` | List project versions (paginated) |
+| GET | `/documents/:id/versions` | List document versions (paginated) |
+| POST | `/documents/:id/versions` | Create version |
+| PATCH | `/versions/:id` | Update draft version content |
+| DELETE | `/versions/:id` | Delete draft version |
+| POST | `/documents/:id/adopt-version` | Adopt version as baseline |
+| POST | `/versions/:id/adopt` | Adopt version |
+| POST | `/versions/:id/submit` | Submit version |
+| POST | `/versions/:id/advance-to-review` | Advance to review |
+| POST | `/versions/:id/approve` | Approve version |
+| POST | `/versions/:id/reject` | Reject version |
+| POST | `/versions/:id/restore` | Restore version |
+| PATCH | `/versions/:id/media-binding` | Update draft media binding |
+
+### Comments
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/versions/:id/comments` | List version comments |
+| POST | `/versions/:id/comments` | Add comment (threaded) |
+
+### World Bible
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects/:id/world-bible` | Get world bible |
+| PATCH | `/projects/:id/world-bible` | Update world bible |
+| POST | `/projects/:id/world-bible/characters` | Add character |
+| PATCH | `/projects/:projectId/world-bible/characters/:characterId` | Update character |
+| DELETE | `/projects/:projectId/world-bible/characters/:characterId` | Delete character |
+| POST | `/projects/:id/world-bible/locations` | Add location |
+| PATCH | `/projects/:projectId/world-bible/locations/:locationId` | Update location |
+| DELETE | `/projects/:projectId/world-bible/locations/:locationId` | Delete location |
+| PATCH | `/projects/:id/world-bible/style-guide` | Update style guide |
+| PATCH | `/projects/:projectId/world-bible/characters/:characterId/voice` | Update character voice |
+
+### Audit
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects/:id/audit-configs` | Get audit configs |
+| PATCH | `/projects/:id/audit-configs/:contentType` | Upsert audit config |
+| GET | `/projects/:id/audit-records` | List audit records (filterable, paginated) |
+| GET | `/versions/:id/audit-records` | List version audit records |
+
+### Generation Jobs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/projects/:id/script-jobs` | Create script generation job |
+| POST | `/projects/:id/script-jobs/stream` | SSE stream script generation |
+| POST | `/projects/:id/synopsis-jobs` | Create synopsis generation job |
+| POST | `/projects/:id/synopsis-jobs/stream` | SSE stream synopsis generation |
+| POST | `/projects/:id/storyboard-jobs` | Create storyboard generation job |
+| POST | `/projects/:id/storyboard-jobs/stream` | SSE stream storyboard generation |
+| POST | `/projects/:id/rewrite-jobs` | Create rewrite job |
+| POST | `/projects/:id/rewrite-jobs/stream` | SSE stream rewrite |
+| POST | `/shots/:id/image-jobs` | Create image generation job |
+| POST | `/shots/:id/video-jobs` | Create video generation job |
+| POST | `/shots/:id/tts-jobs` | Create TTS job |
+| POST | `/scenes/:id/batch-tts-jobs` | Batch TTS for scene shots |
+| POST | `/projects/:id/batch-image-jobs` | Batch image generation |
+| POST | `/projects/:id/batch-video-jobs` | Batch video generation |
+| GET | `/batch-jobs/:batchId` | Get batch job status |
+| POST | `/shots/:id/preview-prompt` | Preview image prompt |
+| POST | `/shots/:id/preview-video-prompt` | Preview video prompt |
+
+### World Bible Reference Image Generation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/projects/:projectId/world-bible/characters/:characterId/generate-reference-image` | Generate character reference image |
+| POST | `/projects/:projectId/world-bible/locations/:locationId/generate-reference-image` | Generate location reference image |
+| POST | `/projects/:projectId/world-bible/style-guide/generate-reference-image` | Generate style guide reference image |
+
+### Job Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects/:id/jobs` | List project jobs (filterable, paginated) |
+| GET | `/jobs/:id` | Get job details |
+| POST | `/jobs/:id/cancel` | Cancel job |
+| POST | `/jobs/:id/retry` | Retry failed job |
+
+### Timeline & Export
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects/:id/timeline` | Get timeline |
+| PUT | `/projects/:id/timeline` | Save timeline |
+| POST | `/projects/:id/timeline/auto-assemble` | Auto-assemble timeline |
+| GET | `/export/capabilities` | Check export capabilities (FFmpeg) |
+| POST | `/projects/:id/export-jobs` | Create export job |
+| GET | `/projects/:id/exports` | List export records |
+
+### TTS
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/tts/voices` | List available TTS voices |
+
+### Storage
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/uploads` | Create upload target |
+| PUT | `/uploads/direct/:key` | Direct file upload |
+| GET | `/assets/:id/url` | Get asset URL |
+| POST | `/projects/:id/assets` | Register project asset |
+
+### Notifications
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/notifications` | List notifications (filterable, paginated) |
+| GET | `/notifications/unread-count` | Get unread count |
+| PATCH | `/notifications/:id/read` | Mark as read |
+| POST | `/notifications/mark-all-read` | Mark all as read |
+
+### Admin
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/admin/platform/overview` | Platform overview metrics |
+| GET | `/admin/teams/:id/overview` | Team dashboard |
+| GET | `/admin/teams/:id/settings` | Team settings |
+
+### WebSocket Events
+
+- `job.updated`
+- `review.updated`
+- `notification.created`
+
+### Internal (Worker)
+
+These endpoints are protected by `InternalApiKeyGuard` and not exposed publicly.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/internal/jobs/next` | Claim next pending job (priority-sorted) |
+| POST | `/internal/jobs/:id/process` | Execute job |
+| POST | `/internal/jobs/:id/retry` | System-level retry |
 
 ## Repository Layout
 
 ```text
 .
 |-- apps
-|   |-- api
-|   |-- web
-|   `-- worker
+|   |-- api          # NestJS backend
+|   |-- web          # Next.js frontend
+|   `-- worker       # Polling job worker
 |-- packages
-|   `-- shared
+|   `-- shared       # Cross-stack types and business rules
 |-- scripts
+|-- tests
+|-- .env.example
+|-- AGENTS.md
 |-- README.md
 |-- README_ZH.md
 |-- package.json
@@ -133,7 +331,7 @@ These are the most important workspace-facing surfaces right now:
 npm install
 ```
 
-If PowerShell blocks `npm.ps1`, use:
+If PowerShell blocks `npm.ps1`:
 
 ```powershell
 npm.cmd install
@@ -165,9 +363,7 @@ npm run build
 
 ### 4. Start the services
 
-Recommended local validation path:
-
-- use the root launcher, which copies `.env` if missing, checks ports, builds the workspace, launches API/Web/Worker, and waits for readiness
+Recommended: use the root launcher, which copies `.env` if missing, checks ports, builds the workspace, launches API/Web/Worker, and waits for readiness.
 
 Windows:
 
@@ -189,7 +385,7 @@ npm --workspace @dramaflow/web run start
 npm --workspace @dramaflow/worker run start
 ```
 
-Development scripts also exist:
+Development scripts:
 
 ```bash
 npm run dev:api
@@ -206,61 +402,79 @@ npm run dev:worker
 
 ## Environment Variables
 
-`.env.example` covers the main app, storage, OpenAI-compatible text/media settings, and Google Gemini image defaults. A few runtime variables are still code-level only, so treat the list below as the authoritative overview.
+`.env.example` covers the core app, storage, and provider settings. Some runtime variables are code-level only; the list below is the authoritative overview.
 
 ### Core app and auth
 
-- `APP_URL`: frontend origin used by the API for CORS
-- `API_URL`: backend origin used by the worker and startup scripts
-- `NEXT_PUBLIC_API_URL`: backend origin used by the web app
-- `PORT`: API or Web port override when starting services directly
-- `JWT_ACCESS_SECRET`: access-token signing secret
-- `JWT_REFRESH_SECRET`: startup-time production safety requirement
-- `INTERNAL_API_KEY`: shared secret for worker-to-API internal job endpoints
+| Variable | Description |
+|----------|-------------|
+| `APP_URL` | Frontend origin for CORS |
+| `API_URL` | Backend origin for worker and startup scripts |
+| `NEXT_PUBLIC_API_URL` | Backend origin for the web app |
+| `PORT` | Override API or Web port |
+| `JWT_ACCESS_SECRET` | Access token signing secret |
+| `JWT_REFRESH_SECRET` | Refresh token secret |
+| `INTERNAL_API_KEY` | Shared secret for worker-to-API internal endpoints |
 
 ### Persistence and storage
 
-- `DATA_DIR`: directory for `dev-db.json`
-- `UPLOADS_DIR`: local uploads directory
-- `STORAGE_DRIVER`: `local` or `s3`
-- `LOCAL_STORAGE_PUBLIC_URL`: public base URL for locally served files
-- `S3_ENDPOINT`
-- `S3_REGION`
-- `S3_BUCKET`
-- `S3_ACCESS_KEY`
-- `S3_SECRET_KEY`
+| Variable | Description |
+|----------|-------------|
+| `DATA_DIR` | Directory for `dev-db.json` |
+| `UPLOADS_DIR` | Local uploads directory |
+| `STORAGE_DRIVER` | `local` or `s3` |
+| `LOCAL_STORAGE_PUBLIC_URL` | Public base URL for locally served files |
+| `S3_ENDPOINT` | S3 endpoint URL |
+| `S3_REGION` | S3 region |
+| `S3_BUCKET` | S3 bucket name |
+| `S3_ACCESS_KEY` | S3 access key |
+| `S3_SECRET_KEY` | S3 secret key |
 
-### Text and media generation providers
+### Text generation
 
-Image jobs can use either native Google Gemini image generation through the dedicated team/personal image config, or the legacy OpenAI-compatible fallback path when no explicit image config source is selected.
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_COMPAT_BASE_URL` | OpenAI-compatible API base URL |
+| `OPENAI_COMPAT_API_KEY` | OpenAI-compatible API key |
+| `OPENAI_TEXT_MODEL` | Text generation model name |
+| `OPENAI_COMPAT_MOCK_FALLBACK` | Fall back to mock if provider fails (`true`/`false`) |
 
-- `OPENAI_COMPAT_BASE_URL`
-- `OPENAI_COMPAT_API_KEY`
-- `OPENAI_TEXT_MODEL`
-- `OPENAI_COMPAT_MOCK_FALLBACK`
-- `GOOGLE_IMAGE_API_KEY`
-- `GOOGLE_IMAGE_MODEL`
-- `GOOGLE_IMAGE_BASE_URL`
-- `MEDIA_IMAGE_MODEL`
-- `MEDIA_VIDEO_MODEL`
+### Image generation
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_IMAGE_API_KEY` | Google Gemini image API key |
+| `GOOGLE_IMAGE_MODEL` | Gemini image model name |
+| `GOOGLE_IMAGE_BASE_URL` | Gemini API base URL |
+| `MEDIA_IMAGE_MODEL` | Default image generation model |
+| `SD_WEBUI_BASE_URL` | Stable Diffusion WebUI base URL |
+| `SD_WEBUI_API_KEY` | Stable Diffusion WebUI API key |
+| `COMFYUI_BASE_URL` | ComfyUI base URL |
+| `COMFYUI_API_KEY` | ComfyUI API key |
+
+### Video generation
+
+| Variable | Description |
+|----------|-------------|
+| `MEDIA_VIDEO_MODEL` | Default video generation model |
 
 ### TTS
 
-These are used by the API TTS adapter and may still need to be added to `.env.example` depending on your local branch state:
-
-- `OPENAI_BASE_URL`
-- `OPENAI_API_KEY`
-- `OPENAI_TTS_MODEL`
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_BASE_URL` | OpenAI API base URL for TTS |
+| `OPENAI_API_KEY` | OpenAI API key for TTS |
+| `OPENAI_TTS_MODEL` | TTS model name |
 
 ### Export and worker overrides
 
-These are also code-level runtime variables that may not yet be listed in `.env.example`:
-
-- `FFMPEG_PATH`
-- `EXPORT_KEEP_TEMP`
-- `WORKER_POLL_INTERVAL_MS`
-- `DRAMAFLOW_START_INLINE`
-- `DRAMAFLOW_START_TIMEOUT_MS`
+| Variable | Description |
+|----------|-------------|
+| `FFMPEG_PATH` | Path to FFmpeg binary |
+| `EXPORT_KEEP_TEMP` | Keep temporary export files |
+| `WORKER_POLL_INTERVAL_MS` | Worker polling interval |
+| `DRAMAFLOW_START_INLINE` | Start services inline (no background) |
+| `DRAMAFLOW_START_TIMEOUT_MS` | Startup readiness timeout |
 
 ## Docker Compose
 
@@ -271,17 +485,15 @@ The repository includes a demo-oriented `docker-compose.yml` that starts:
 - Worker
 - MinIO
 
-Run:
-
 ```bash
 docker compose up --build
 ```
 
-Important caveats:
+Notes:
 
-- Compose uses `npm run dev:*`, so it is aimed at development and demos, not hardened production deployment.
-- The checked-in Compose file still sets `STORAGE_DRIVER=local` for API and worker, so MinIO is not the active storage backend by default.
-- The checked-in Compose file passes only part of the provider configuration through by default. If you want live provider execution instead of mock fallback, pass the relevant provider variables to the API container as well.
+- Compose uses `npm run dev:*`, aimed at development and demos, not hardened production deployment.
+- The Compose file sets `STORAGE_DRIVER=local`, so MinIO is not the active storage backend by default.
+- Only partial provider configuration is passed through by default. For live provider execution, pass the relevant provider variables to the API container.
 
 ## Common Commands
 
@@ -308,8 +520,8 @@ npm test
 
 Notes:
 
-- `npm run lint` currently fans out to workspace `tsc --noEmit` scripts; it is not an ESLint pass.
-- `npm test` currently runs only packages that define a `test` script, which means API and shared, not web or worker.
+- `npm run lint` fans out to workspace `tsc --noEmit` scripts; it is not an ESLint pass.
+- `npm test` only runs packages that define a `test` script, which means API and shared, not web or worker.
 
 ## Development Notes
 
@@ -323,10 +535,8 @@ Notes:
 
 ## Suggested Reading Order
 
-If you are onboarding to the codebase, start here:
-
-1. `README.md`
-2. `README_ZH.md`
+1. `README.md` / `README_ZH.md`
+2. `AGENTS.md`
 3. `package.json`
 4. `tsconfig.base.json`
 5. `packages/shared/src/domain.ts`
@@ -337,8 +547,6 @@ If you are onboarding to the codebase, start here:
 10. `apps/web/lib/api.ts`
 
 ## Official References
-
-These were the most useful upstream references for verifying framework terminology and current provider guidance while updating the project documentation:
 
 - Next.js App Router: <https://nextjs.org/docs/app>
 - React 19: <https://react.dev/blog/2024/12/05/react-19>
