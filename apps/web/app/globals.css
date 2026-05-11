@@ -12864,6 +12864,12 @@ textarea.input {
   align-items: center;
 }
 
+.sm-config-source-select {
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  max-width: 120px;
+}
+
 /* Job status (compact) */
 .sm-jobs {
   display: flex;

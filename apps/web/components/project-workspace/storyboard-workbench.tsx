@@ -143,6 +143,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filter, setFilter] = useState<ShotFilter>("all");
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
+  const [ttsConfigSource, setTtsConfigSource] = useState<ImageConfigSource>("team");
   const [ttsDrafts, setTtsDrafts] = useState<Record<string, { text: string; characterId: string }>>({});
   const { feedback, setFeedback } = useFeedback();
   const gridRef = useRef<HTMLDivElement>(null);
@@ -473,7 +474,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const generateVideo = useMutation({
     mutationFn: async ({ shotId, prompt, referenceImageAssetId }: { shotId: string; prompt?: string; referenceImageAssetId?: string }) => apiFetch(`/shots/${shotId}/video-jobs`, {
       method: "POST",
-      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, prompt: prompt || undefined, referenceImageAssetId, providerId: selectedVideoProvider },
+      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, prompt: prompt || undefined, referenceImageAssetId, configSource: imageConfigSource, providerId: selectedVideoProvider },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "Video", jobId: "queued" }), error: null });
@@ -485,7 +486,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const generateTts = useMutation({
     mutationFn: async ({ shotId, characterId, text }: { shotId: string; characterId: string; text: string }) => apiFetch(`/shots/${shotId}/tts-jobs`, {
       method: "POST",
-      body: { projectId: requireProjectId(), characterId, text },
+      body: { projectId: requireProjectId(), characterId, text, configSource: ttsConfigSource },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "TTS", jobId: "queued" }), error: null });
@@ -733,6 +734,10 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           selectedVideoProvider={selectedVideoProvider}
           onSelectedImageProviderChange={setSelectedImageProvider}
           onSelectedVideoProviderChange={setSelectedVideoProvider}
+          imageConfigSource={imageConfigSource}
+          ttsConfigSource={ttsConfigSource}
+          onImageConfigSourceChange={setImageConfigSource}
+          onTtsConfigSourceChange={setTtsConfigSource}
         />
       )}
     </div>

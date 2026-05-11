@@ -12,6 +12,7 @@
 import { useEffect, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
+  ImageConfigSource,
   ProjectWorkspacePayload,
   ProviderEntry,
   StoryboardShot,
@@ -110,6 +111,10 @@ interface Props {
   selectedVideoProvider?: string;
   onSelectedImageProviderChange?: (id: string | undefined) => void;
   onSelectedVideoProviderChange?: (id: string | undefined) => void;
+  imageConfigSource?: ImageConfigSource;
+  ttsConfigSource?: ImageConfigSource;
+  onImageConfigSourceChange?: (source: ImageConfigSource) => void;
+  onTtsConfigSourceChange?: (source: ImageConfigSource) => void;
 }
 
 function CloseIcon() {
@@ -278,6 +283,10 @@ export function ShotDetailModal({
   selectedVideoProvider,
   onSelectedImageProviderChange,
   onSelectedVideoProviderChange,
+  imageConfigSource = "team",
+  ttsConfigSource = "team",
+  onImageConfigSourceChange,
+  onTtsConfigSourceChange,
 }: Props) {
   const { t, locale } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
@@ -618,6 +627,14 @@ export function ShotDetailModal({
                     <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
                       {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
                     </button>
+                    <select
+                      className="input sm-config-source-select"
+                      value={imageConfigSource}
+                      onChange={(e) => onImageConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                    >
+                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
+                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
+                    </select>
                     <ProviderSelector
                       type="image"
                       providers={imageProviders ?? []}
@@ -631,6 +648,14 @@ export function ShotDetailModal({
                     <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
                       {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
                     </button>
+                    <select
+                      className="input sm-config-source-select"
+                      value={imageConfigSource}
+                      onChange={(e) => onImageConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                    >
+                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
+                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
+                    </select>
                     <ProviderSelector
                       type="video"
                       providers={videoProviders ?? []}
@@ -767,14 +792,24 @@ export function ShotDetailModal({
                   />
                 </label>
                 {canUseProject && (
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    type="button"
-                    disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
-                    onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
-                  >
-                    {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
-                  </button>
+                  <div className="sm-generate-row">
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      type="button"
+                      disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
+                      onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
+                    >
+                      {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
+                    </button>
+                    <select
+                      className="input sm-config-source-select"
+                      value={ttsConfigSource}
+                      onChange={(e) => onTtsConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                    >
+                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
+                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
+                    </select>
+                  </div>
                 )}
 
                 {/* TTS audio player */}

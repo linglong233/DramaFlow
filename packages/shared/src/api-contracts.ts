@@ -571,6 +571,7 @@ export interface TTSGenerateRequest {
   shotId: string;
   characterId: string;
   text: string;
+  configSource?: ImageConfigSource;
 }
 
 /** 批量 TTS 生成请求 */

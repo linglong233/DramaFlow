@@ -23,6 +23,7 @@ import type {
   CreateScriptJobPayload,
   CreateStoryboardJobPayload,
   CreateSynopsisJobPayload,
+  ImageConfigSource,
   JobStatus,
   JobType,
   WorldBibleReferenceImageGenerateRequest,
@@ -124,7 +125,7 @@ export class JobsController {
   createVideoJob(
     @CurrentUser() user: { id: string },
     @Param("id") shotId: string,
-    @Body() body: { projectId: string; style: string; aspectRatio: string; prompt?: string; durationSeconds?: number; referenceImageAssetId?: string },
+    @Body() body: { projectId: string; style: string; aspectRatio: string; prompt?: string; durationSeconds?: number; referenceImageAssetId?: string; configSource?: ImageConfigSource; providerId?: string },
   ) {
     return this.jobsService.createVideoJob(user.id, shotId, body);
   }
@@ -319,7 +320,7 @@ export class JobsController {
   createTTSJob(
     @CurrentUser() user: { id: string },
     @Param("id") shotId: string,
-    @Body() body: { projectId: string; characterId: string; text: string },
+    @Body() body: { projectId: string; characterId: string; text: string; configSource?: ImageConfigSource },
   ) {
     return this.jobsService.createTTSJob(user.id, shotId, body);
   }

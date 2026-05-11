@@ -1672,7 +1672,7 @@ export class JobsService {
   async createTTSJob(
     userId: string,
     shotId: string,
-    input: { projectId: string; characterId: string; text: string },
+    input: { projectId: string; characterId: string; text: string; configSource?: ImageConfigSource },
   ) {
     await this.assertProjectReadable(userId, input.projectId);
     return this.enqueueJob(userId, {
@@ -1684,6 +1684,7 @@ export class JobsService {
         characterId: input.characterId,
         text: input.text,
         projectId: input.projectId,
+        configSource: input.configSource,
       },
     });
   }
@@ -1767,7 +1768,7 @@ export class JobsService {
   private async processTTSJob(job: JobRecord<GenerateTTSInput>) {
     await this.markJobRunning(job.id, { progress: 10 });
 
-    const llmConfig = await this.resolveLlmConfig(job.createdBy, job.projectId);
+    const llmConfig = await this.resolveLlmConfig(job.createdBy, job.projectId, job.input.configSource);
     const voiceConfig = await this.resolveTTSVoice(job.projectId, job.input.characterId, llmConfig);
     const result = await this.ttsProvider.synthesize(
       {

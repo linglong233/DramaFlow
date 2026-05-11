@@ -1013,6 +1013,7 @@ export interface GenerateTTSInput {
   /** 要合成的文本 */
   text: string;
   projectId: string;
+  configSource?: ImageConfigSource;
 }
 
 /** 时间线导出输入参数 */
