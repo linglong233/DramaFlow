@@ -25,6 +25,8 @@ import { getJobStatusLabel, useI18n } from "../../lib/i18n";
 import { useDebouncedField } from "../../lib/hooks";
 import { apiFetch } from "../../lib/api";
 import { ProviderSelector } from "./provider-selector";
+import { CandidateThumbnailGrid } from "./candidate-thumbnail-grid";
+import { CandidateLightbox } from "./candidate-lightbox";
 
 interface MediaVersionContent {
   assetId?: string;
@@ -260,8 +262,8 @@ export function ShotDetailModal({
   const [mounted, setMounted] = useState(visible);
   const [closing, setClosing] = useState(false);
   const [promptsExpanded, setPromptsExpanded] = useState(false);
-  const [candidatesExpanded, setCandidatesExpanded] = useState(false);
   const [mediaTab, setMediaTab] = useState<"image" | "video">("image");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
   const [videoPromptPreview, setVideoPromptPreview] = useState<string | null>(null);
 
@@ -370,58 +372,15 @@ export function ShotDetailModal({
     );
   }
 
-  function renderCandidates(
-    title: string,
-    candidates: ProjectWorkspacePayload["versions"],
-    currentVersionId: string | undefined,
-    documentId: string | undefined,
-    mediaType?: "image" | "video" | "audio",
-  ) {
-    if (!candidates.length) return null;
-    return (
-      <div className="sm-section">
-        <h4 className="sm-section__title">{title}</h4>
-        <div className="sm-candidates">
-          {candidates.map((candidate) => {
-            const content = (candidate.content ?? {}) as MediaVersionContent;
-            const adopted = candidate.id === currentVersionId;
-            const canSelect = canMutateProject && onSelectMediaVersion && mediaType && !adopted;
-            return (
-              <div key={candidate.id} className="sm-candidate">
-                <div className="sm-candidate__info">
-                  <strong>{candidate.title}</strong>
-                  <span>V{candidate.versionNumber}{content.model ? ` · ${content.model}` : ""}</span>
-                </div>
-                <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                  {canSelect && (
-                    <button
-                      className="btn btn-primary btn-sm"
-                      type="button"
-                      onClick={() => onSelectMediaVersion!(shot.id, mediaType!, candidate.id)}
-                    >
-                      {t("shotDetailDrawer.select")}
-                    </button>
-                  )}
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    type="button"
-                    disabled={!canMutateProject || isAdoptPending || adopted}
-                    onClick={() => documentId && onAdoptVersion(documentId, candidate.id)}
-                  >
-                    {adopted ? t("shotDetailDrawer.adopted") : t("shotDetailDrawer.adopt")}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
   if (!mounted) return null;
 
-  const totalCandidates = (state?.imageCandidates?.length ?? 0) + (state?.videoCandidates?.length ?? 0);
+  const imageCandidateCount = state?.imageCandidates?.length ?? 0;
+  const videoCandidateCount = state?.videoCandidates?.length ?? 0;
+
+  const currentCandidates = mediaTab === "image" ? (state?.imageCandidates ?? []) : (state?.videoCandidates ?? []);
+  const currentDocumentId = mediaTab === "image" ? state?.imageDocument?.id : state?.videoDocument?.id;
+  const currentVersionId = mediaTab === "image" ? state?.imageDocument?.currentVersionId : state?.videoDocument?.currentVersionId;
+  const currentJob = mediaTab === "image" ? state?.jobs.image : state?.jobs.video;
 
   return createPortal(
     <div className={`sm-overlay${closing ? " sm-overlay--closing" : ""}`} onClick={closing ? undefined : onClose}>
@@ -452,116 +411,124 @@ export function ShotDetailModal({
 
         {/* Body: two columns */}
         <div className="sm-body">
-          {/* Left column: Media Production Zone */}
+          {/* Left column: Unified Media Workspace */}
           <div className="sm-col sm-col--left">
-            {/* ① Media Preview Card */}
-            <div className="sm-card">
-              <div className="sm-media-tabs">
-                <button
-                  type="button"
-                  className={`sm-media-tab${mediaTab === "image" ? " sm-media-tab--active" : ""}`}
-                  onClick={() => setMediaTab("image")}
-                >
-                  {t("shotDetailDrawer.imageJob")}
-                  {currentImageUrl && <span className="sm-media-tab__dot" />}
-                </button>
-                <button
-                  type="button"
-                  className={`sm-media-tab${mediaTab === "video" ? " sm-media-tab--active" : ""}`}
-                  onClick={() => setMediaTab("video")}
-                >
-                  {t("shotDetailDrawer.videoJob")}
-                  {currentVideoUrl && <span className="sm-media-tab__dot" />}
-                </button>
-              </div>
-              <div className="sm-preview">
-                {mediaTab === "image" ? (
-                  currentImageUrl ? (
-                    <img className="sm-preview__media" src={currentImageUrl} alt={shot.shotLabel} />
-                  ) : (
-                    <div className="sm-preview__empty">{t("shotDetailDrawer.noImageYet")}</div>
-                  )
+            {/* Tab bar with count badges */}
+            <div className="sm-media-tabs">
+              <button
+                type="button"
+                className={`sm-media-tab${mediaTab === "image" ? " sm-media-tab--active" : ""}`}
+                onClick={() => setMediaTab("image")}
+              >
+                {t("shotDetailDrawer.imageJob")}
+                {currentImageUrl && <span className="sm-media-tab__dot" />}
+                {imageCandidateCount > 0 && <span className="sm-media-tab__count">{imageCandidateCount}</span>}
+              </button>
+              <button
+                type="button"
+                className={`sm-media-tab${mediaTab === "video" ? " sm-media-tab--active" : ""}`}
+                onClick={() => setMediaTab("video")}
+              >
+                {t("shotDetailDrawer.videoJob")}
+                {currentVideoUrl && <span className="sm-media-tab__dot" />}
+                {videoCandidateCount > 0 && <span className="sm-media-tab__count">{videoCandidateCount}</span>}
+              </button>
+            </div>
+
+            {/* Preview driven by tab */}
+            <div className="sm-preview">
+              {mediaTab === "image" ? (
+                currentImageUrl ? (
+                  <img className="sm-preview__media" src={currentImageUrl} alt={shot.shotLabel} />
                 ) : (
-                  currentVideoUrl ? (
-                    <video key={currentVideoUrl} controls playsInline className="sm-preview__media">
-                      <source src={currentVideoUrl} type={currentVideoMime} />
-                    </video>
-                  ) : (
-                    <div className="sm-preview__empty">{t("shotDetailDrawer.noVideoYet")}</div>
-                  )
-                )}
-              </div>
-              {currentAudioUrl && <audio controls src={currentAudioUrl} className="sm-audio-player" />}
-              {editable && onSubtitleChange && (
-                <label className="sm-field">
-                  <span className="sm-field__label">{t("shotDetailDrawer.subtitleLabel")}</span>
-                  <textarea
-                    className="input"
-                    rows={2}
-                    value={currentSubtitle ?? ""}
-                    onChange={(e) => onSubtitleChange(shot.id, e.target.value)}
-                    placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
-                  />
-                </label>
+                  <div className="sm-preview__empty">{t("shotDetailDrawer.noImageYet")}</div>
+                )
+              ) : (
+                currentVideoUrl ? (
+                  <video key={currentVideoUrl} controls playsInline className="sm-preview__media">
+                    <source src={currentVideoUrl} type={currentVideoMime} />
+                  </video>
+                ) : (
+                  <div className="sm-preview__empty">{t("shotDetailDrawer.noVideoYet")}</div>
+                )
               )}
             </div>
 
-            {/* ② Generate Controls Card */}
+            {/* Audio + Subtitle (always visible) */}
+            {currentAudioUrl && <audio controls src={currentAudioUrl} className="sm-audio-player" />}
+            {editable && onSubtitleChange && (
+              <label className="sm-field">
+                <span className="sm-field__label">{t("shotDetailDrawer.subtitleLabel")}</span>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={currentSubtitle ?? ""}
+                  onChange={(e) => onSubtitleChange(shot.id, e.target.value)}
+                  placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
+                />
+              </label>
+            )}
+
+            {/* Generate row driven by tab */}
             {canUseProject && (
-              <div className="sm-card">
-                <div className="sm-generate-row">
-                  <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
-                    {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
-                  </button>
-                  <ProviderSelector
-                    type="image"
-                    providers={imageProviders ?? []}
-                    defaultProviderId={defaultImageProvider}
-                    value={selectedImageProvider}
-                    onChange={(id) => onSelectedImageProviderChange?.(id)}
-                  />
-                </div>
-                <div className="sm-generate-row">
-                  <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
-                    {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
-                  </button>
-                  <ProviderSelector
-                    type="video"
-                    providers={videoProviders ?? []}
-                    defaultProviderId={defaultVideoProvider}
-                    value={selectedVideoProvider}
-                    onChange={(id) => onSelectedVideoProviderChange?.(id)}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* ③ Job Status Card */}
-            {canUseProject && (state?.jobs.image || state?.jobs.video) && (
-              <div className="sm-card sm-jobs">
-                {renderJobRow("Img", state?.jobs.image)}
-                {renderJobRow("Vid", state?.jobs.video)}
-              </div>
-            )}
-
-            {/* ④ Candidates Card (collapsible) */}
-            {canUseProject && totalCandidates > 0 && (
-              <div className="sm-card">
-                <button
-                  className="sm-collapsible-toggle"
-                  type="button"
-                  onClick={() => setCandidatesExpanded(!candidatesExpanded)}
-                >
-                  <span>{t("shotDetailDrawer.imageCandidates")} ({totalCandidates})</span>
-                  <span className="sm-collapsible-arrow">{candidatesExpanded ? "▲" : "▼"}</span>
-                </button>
-                {candidatesExpanded && (
+              <div className="sm-generate-row">
+                {mediaTab === "image" ? (
                   <>
-                    {renderCandidates(t("shotDetailDrawer.imageCandidates"), state?.imageCandidates ?? [], state?.imageDocument?.currentVersionId, state?.imageDocument?.id, "image")}
-                    {renderCandidates(t("shotDetailDrawer.videoCandidates"), state?.videoCandidates ?? [], state?.videoDocument?.currentVersionId, state?.videoDocument?.id, "video")}
+                    <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
+                      {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
+                    </button>
+                    <ProviderSelector
+                      type="image"
+                      providers={imageProviders ?? []}
+                      defaultProviderId={defaultImageProvider}
+                      value={selectedImageProvider}
+                      onChange={(id) => onSelectedImageProviderChange?.(id)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
+                      {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
+                    </button>
+                    <ProviderSelector
+                      type="video"
+                      providers={videoProviders ?? []}
+                      defaultProviderId={defaultVideoProvider}
+                      value={selectedVideoProvider}
+                      onChange={(id) => onSelectedVideoProviderChange?.(id)}
+                    />
                   </>
                 )}
               </div>
+            )}
+
+            {/* Job status driven by tab */}
+            {canUseProject && currentJob && (
+              <div className="sm-job-inline">
+                {renderJobRow(mediaTab === "image" ? "Img" : "Vid", currentJob)}
+              </div>
+            )}
+
+            {/* Candidates grid driven by tab */}
+            {currentCandidates.length > 0 && (
+              <CandidateThumbnailGrid
+                candidates={currentCandidates}
+                currentVersionId={currentVersionId}
+                mediaType={mediaTab}
+                canMutateProject={canMutateProject}
+                isAdoptPending={isAdoptPending}
+                canSelect={Boolean(canMutateProject && onSelectMediaVersion)}
+                onThumbnailClick={(candidate) => {
+                  const idx = currentCandidates.findIndex((c) => c.id === candidate.id);
+                  if (idx >= 0) setLightboxIndex(idx);
+                }}
+                onAdopt={(candidate) => {
+                  if (currentDocumentId) onAdoptVersion(currentDocumentId, candidate.id);
+                }}
+                onSelect={onSelectMediaVersion ? (candidate) => {
+                  onSelectMediaVersion(shot.id, mediaTab, candidate.id);
+                } : undefined}
+              />
             )}
           </div>
 
@@ -731,6 +698,26 @@ export function ShotDetailModal({
           </div>
         </div>
       </div>
+
+      {/* Candidate Lightbox */}
+      {lightboxIndex != null && currentCandidates[lightboxIndex] && (
+        <CandidateLightbox
+          candidate={currentCandidates[lightboxIndex]}
+          allCandidates={currentCandidates}
+          currentIndex={lightboxIndex}
+          canMutateProject={canMutateProject}
+          isAdoptPending={isAdoptPending}
+          mediaType={mediaTab}
+          documentId={currentDocumentId}
+          currentVersionId={currentVersionId}
+          onAdopt={(docId, versionId) => onAdoptVersion(docId, versionId)}
+          onSelect={onSelectMediaVersion ? (versionId) => {
+            onSelectMediaVersion(shot.id, mediaTab, versionId);
+          } : undefined}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={(idx) => setLightboxIndex(idx)}
+        />
+      )}
     </div>,
     document.body,
   );
