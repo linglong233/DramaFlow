@@ -261,6 +261,7 @@ export function ShotDetailModal({
   const [closing, setClosing] = useState(false);
   const [promptsExpanded, setPromptsExpanded] = useState(false);
   const [candidatesExpanded, setCandidatesExpanded] = useState(false);
+  const [mediaTab, setMediaTab] = useState<"image" | "video">("image");
   const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
   const [videoPromptPreview, setVideoPromptPreview] = useState<string | null>(null);
 
@@ -299,7 +300,24 @@ export function ShotDetailModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  useEffect(() => { setConfirmDelete(false); }, [shot.id]);
+  const voiceConfigsByCharacterId = new Map(voiceConfigs.map((v) => [v.characterId, v]));
+  const selectedCharacters = shot.characterIds?.length ? shot.characterIds : characters.map((c) => c.id);
+  const selectedVoice = ttsDraft?.characterId ? voiceConfigsByCharacterId.get(ttsDraft.characterId) : undefined;
+
+  const sceneHeading = sceneHeadingMap.get(shot.sceneId) || t("storyboardToolbar.untitledScene");
+  const framingLabel = getStoryboardFramingLabel(shot.framing, lang);
+  const cameraLabel = getStoryboardCameraMoveLabel(shot.cameraMove, lang);
+
+  const currentImageUrl = (state?.currentImage?.content as MediaVersionContent | undefined)?.assetUrl;
+  const currentVideoUrl = (state?.currentVideo?.content as MediaVersionContent | undefined)?.assetUrl;
+  const currentVideoMime = (state?.currentVideo?.content as MediaVersionContent | undefined)?.mimeType ?? "video/mp4";
+  const currentAudioUrl = (state?.currentAudio?.content as MediaVersionContent | undefined)?.assetUrl;
+  const currentVoiceName = (state?.currentAudio?.content as MediaVersionContent | undefined)?.voiceName ?? selectedVoice?.voiceName;
+
+  useEffect(() => {
+    setConfirmDelete(false);
+    setMediaTab(currentImageUrl ? "image" : "video");
+  }, [shot.id, currentImageUrl]);
 
   useEffect(() => {
     if (!promptsExpanded || !projectId) return;
@@ -317,20 +335,6 @@ export function ShotDetailModal({
       .then((data) => setVideoPromptPreview(data.positivePrompt ?? ""))
       .catch(() => setVideoPromptPreview(""));
   }, [promptsExpanded, shot.id, projectId]);
-
-  const voiceConfigsByCharacterId = new Map(voiceConfigs.map((v) => [v.characterId, v]));
-  const selectedCharacters = shot.characterIds?.length ? shot.characterIds : characters.map((c) => c.id);
-  const selectedVoice = ttsDraft?.characterId ? voiceConfigsByCharacterId.get(ttsDraft.characterId) : undefined;
-
-  const sceneHeading = sceneHeadingMap.get(shot.sceneId) || t("storyboardToolbar.untitledScene");
-  const framingLabel = getStoryboardFramingLabel(shot.framing, lang);
-  const cameraLabel = getStoryboardCameraMoveLabel(shot.cameraMove, lang);
-
-  const currentImageUrl = (state?.currentImage?.content as MediaVersionContent | undefined)?.assetUrl;
-  const currentVideoUrl = (state?.currentVideo?.content as MediaVersionContent | undefined)?.assetUrl;
-  const currentVideoMime = (state?.currentVideo?.content as MediaVersionContent | undefined)?.mimeType ?? "video/mp4";
-  const currentAudioUrl = (state?.currentAudio?.content as MediaVersionContent | undefined)?.assetUrl;
-  const currentVoiceName = (state?.currentAudio?.content as MediaVersionContent | undefined)?.voiceName ?? selectedVoice?.voiceName;
 
   function renderField(label: string, value: string, field: keyof StoryboardShot, rows = 3) {
     return (
@@ -452,15 +456,39 @@ export function ShotDetailModal({
           <div className="sm-col sm-col--left">
             {/* ① Media Preview Card */}
             <div className="sm-card">
+              <div className="sm-media-tabs">
+                <button
+                  type="button"
+                  className={`sm-media-tab${mediaTab === "image" ? " sm-media-tab--active" : ""}`}
+                  onClick={() => setMediaTab("image")}
+                >
+                  {t("shotDetailDrawer.imageJob")}
+                  {currentImageUrl && <span className="sm-media-tab__dot" />}
+                </button>
+                <button
+                  type="button"
+                  className={`sm-media-tab${mediaTab === "video" ? " sm-media-tab--active" : ""}`}
+                  onClick={() => setMediaTab("video")}
+                >
+                  {t("shotDetailDrawer.videoJob")}
+                  {currentVideoUrl && <span className="sm-media-tab__dot" />}
+                </button>
+              </div>
               <div className="sm-preview">
-                {currentVideoUrl ? (
-                  <video controls playsInline className="sm-preview__media">
-                    <source src={currentVideoUrl} type={currentVideoMime} />
-                  </video>
-                ) : currentImageUrl ? (
-                  <img className="sm-preview__media" src={currentImageUrl} alt={shot.shotLabel} />
+                {mediaTab === "image" ? (
+                  currentImageUrl ? (
+                    <img className="sm-preview__media" src={currentImageUrl} alt={shot.shotLabel} />
+                  ) : (
+                    <div className="sm-preview__empty">{t("shotDetailDrawer.noImageYet")}</div>
+                  )
                 ) : (
-                  <div className="sm-preview__empty">{t("shotDetailDrawer.noMediaYet")}</div>
+                  currentVideoUrl ? (
+                    <video key={currentVideoUrl} controls playsInline className="sm-preview__media">
+                      <source src={currentVideoUrl} type={currentVideoMime} />
+                    </video>
+                  ) : (
+                    <div className="sm-preview__empty">{t("shotDetailDrawer.noVideoYet")}</div>
+                  )
                 )}
               </div>
               {currentAudioUrl && <audio controls src={currentAudioUrl} className="sm-audio-player" />}
