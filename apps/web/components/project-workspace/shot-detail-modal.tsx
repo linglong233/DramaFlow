@@ -492,6 +492,8 @@ export function ShotDetailModal({
                     value={selectedImageProvider}
                     onChange={(id) => onSelectedImageProviderChange?.(id)}
                   />
+                </div>
+                <div className="sm-generate-row">
                   <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
                     {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
                   </button>
@@ -507,61 +509,14 @@ export function ShotDetailModal({
             )}
 
             {/* ③ Job Status Card */}
-            {canUseProject && (state?.jobs.image || state?.jobs.video || state?.jobs.tts) && (
+            {canUseProject && (state?.jobs.image || state?.jobs.video) && (
               <div className="sm-card sm-jobs">
                 {renderJobRow("Img", state?.jobs.image)}
                 {renderJobRow("Vid", state?.jobs.video)}
-                {renderJobRow("TTS", state?.jobs.tts)}
               </div>
             )}
 
-            {/* ④ TTS Card */}
-            <div className="sm-card sm-tts">
-              <h4 className="sm-section__title">TTS</h4>
-              <div style={{ display: "flex", gap: "var(--space-3)" }}>
-                <label className="sm-field" style={{ flex: 1 }}>
-                  <span className="sm-field__label">{t("shotDetailDrawer.characterLabel")}</span>
-                  <select
-                    className="input"
-                    value={ttsDraft?.characterId ?? ""}
-                    onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
-                    disabled={!editable}
-                  >
-                    {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
-                    {selectedCharacters.map((cid) => (
-                      <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="sm-field" style={{ flex: 1 }}>
-                  <span className="sm-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
-                  <div className="sm-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
-                </label>
-              </div>
-              <label className="sm-field">
-                <span className="sm-field__label">{t("shotDetailDrawer.ttsTextLabel")}</span>
-                <textarea
-                  className="input"
-                  rows={3}
-                  value={ttsDraft?.text ?? ""}
-                  onChange={(e) => onTtsDraftChange("text", e.target.value)}
-                  disabled={!editable}
-                  placeholder={t("storyboardEditor.dialoguePlaceholder")}
-                />
-              </label>
-              {canUseProject && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  type="button"
-                  disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
-                  onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
-                >
-                  {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
-                </button>
-              )}
-            </div>
-
-            {/* ⑤ Candidates Card (collapsible) */}
+            {/* ④ Candidates Card (collapsible) */}
             {canUseProject && totalCandidates > 0 && (
               <div className="sm-card">
                 <button
@@ -626,16 +581,16 @@ export function ShotDetailModal({
               </div>
             </div>
 
-            {/* ② Text Descriptions Card */}
-            <div className="sm-card">
+            {/* ② Shot Content Card (merged descriptions + auxiliary) */}
+            <div className="sm-card sm-shot-content">
               {renderField(t("shotReference.visualLabel"), shot.visualDescription, "visualDescription", 4)}
+              <div className="sm-field-divider" />
               {renderField(t("shotReference.actionLabel"), shot.actionDescription ?? "", "actionDescription", 3)}
+              <div className="sm-field-divider" />
               {renderField(t("storyboardEditor.dialogueLabel"), shot.dialogue ?? "", "dialogue", 3)}
-            </div>
-
-            {/* ③ Auxiliary Info Card */}
-            <div className="sm-card">
+              <div className="sm-field-divider" />
               {renderField(t("storyboardEditor.soundDesignLabel"), shot.soundDesign ?? "", "soundDesign", 2)}
+              <div className="sm-field-divider" />
               <label className="sm-field">
                 <span className="sm-field__label">{t("shotDetailDrawer.charactersLabel")}</span>
                 {editable ? (
@@ -651,7 +606,55 @@ export function ShotDetailModal({
                   </div>
                 )}
               </label>
+              <div className="sm-field-divider" />
               {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
+            </div>
+
+            {/* ③ TTS Card (moved from left column) */}
+            <div className="sm-card sm-tts">
+              <h4 className="sm-section__title">TTS</h4>
+              {canUseProject && state?.jobs.tts && renderJobRow("TTS", state?.jobs.tts)}
+              <div style={{ display: "flex", gap: "var(--space-3)" }}>
+                <label className="sm-field" style={{ flex: 1 }}>
+                  <span className="sm-field__label">{t("shotDetailDrawer.characterLabel")}</span>
+                  <select
+                    className="input"
+                    value={ttsDraft?.characterId ?? ""}
+                    onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
+                    disabled={!editable}
+                  >
+                    {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
+                    {selectedCharacters.map((cid) => (
+                      <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="sm-field" style={{ flex: 1 }}>
+                  <span className="sm-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
+                  <div className="sm-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
+                </label>
+              </div>
+              <label className="sm-field">
+                <span className="sm-field__label">{t("shotDetailDrawer.ttsTextLabel")}</span>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={ttsDraft?.text ?? ""}
+                  onChange={(e) => onTtsDraftChange("text", e.target.value)}
+                  disabled={!editable}
+                  placeholder={t("storyboardEditor.dialoguePlaceholder")}
+                />
+              </label>
+              {canUseProject && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
+                  onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
+                >
+                  {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
+                </button>
+              )}
             </div>
 
             {/* ④ Prompts Card (collapsible) */}

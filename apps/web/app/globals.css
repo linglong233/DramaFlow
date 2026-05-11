@@ -12703,13 +12703,13 @@ textarea.input {
 }
 
 .sm-col--left {
-  flex: 55;
+  flex: 58;
   border-right: 1px solid var(--border-subtle);
   min-width: 0;
 }
 
 .sm-col--right {
-  flex: 45;
+  flex: 42;
   min-width: 0;
 }
 
@@ -12800,7 +12800,6 @@ textarea.input {
 .sm-generate-row {
   display: flex;
   gap: var(--space-2);
-  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -12855,6 +12854,23 @@ textarea.input {
 /* TTS section */
 .sm-tts {
   /* inherits .sm-card styles */
+}
+
+/* Shot content card (merged descriptions + auxiliary) */
+.sm-shot-content .sm-field {
+  padding: var(--space-3) 0;
+}
+
+.sm-shot-content .sm-field:first-child {
+  padding-top: 0;
+}
+
+.sm-shot-content .sm-field:last-child {
+  padding-bottom: 0;
+}
+
+.sm-field-divider {
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* Collapsible */
