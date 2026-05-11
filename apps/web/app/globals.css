@@ -12583,7 +12583,7 @@ textarea.input {
   color: var(--accent, #38bdf8);
 }
 
-/* Shot Detail Modal */
+/* Shot Detail Modal — Three-Column Layout */
 @keyframes sm-scale-in {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
@@ -12611,7 +12611,7 @@ textarea.input {
 }
 
 .sm-dialog {
-  width: min(1300px, 92vw);
+  width: min(1400px, 92vw);
   max-height: 85vh;
   background: var(--bg-elevated);
   backdrop-filter: blur(20px);
@@ -12627,12 +12627,12 @@ textarea.input {
   animation: sm-scale-out 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Header */
+/* Header — simplified */
 .sm-header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
@@ -12644,21 +12644,14 @@ textarea.input {
 }
 
 .sm-header__shot-label {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  min-width: 32px;
-  text-align: center;
 }
 
-.sm-header__meta {
+.sm-header__scene {
   font-size: 12px;
-  color: var(--text-secondary);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-tertiary);
 }
 
 .sm-header__position {
@@ -12679,6 +12672,7 @@ textarea.input {
   color: var(--text-secondary);
   cursor: pointer;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .sm-header__close:hover {
@@ -12686,7 +12680,7 @@ textarea.input {
   color: var(--text-primary);
 }
 
-/* Body: two columns */
+/* Body: three columns */
 .sm-body {
   flex: 1;
   display: flex;
@@ -12698,19 +12692,42 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: var(--space-3);
   overflow-y: auto;
 }
 
+/* Left column: editable metadata */
 .sm-col--left {
-  flex: 58;
+  width: 200px;
+  flex-shrink: 0;
   border-right: 1px solid var(--border-subtle);
-  min-width: 0;
 }
 
+/* Center column: media workspace */
+.sm-col--center {
+  flex: 38;
+  min-width: 0;
+  border-right: 1px solid var(--border-subtle);
+}
+
+/* Right column: fixed prompt + scrollable content */
 .sm-col--right {
   flex: 42;
   min-width: 0;
+  overflow: hidden;
+}
+
+.sm-col--right > .sm-card--prompt {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.sm-right-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 /* Card container for visual grouping */
@@ -12915,31 +12932,6 @@ textarea.input {
 
 .sm-field-divider {
   border-bottom: 1px solid var(--border-subtle);
-}
-
-/* Collapsible */
-.sm-collapsible-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: var(--space-2) 0;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.sm-collapsible-toggle:hover {
-  color: var(--text-primary);
-}
-
-.sm-collapsible-arrow {
-  font-size: 10px;
 }
 
 /* Candidates */
@@ -13322,27 +13314,128 @@ textarea.input {
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* Footer */
-.sm-footer {
+/* Shot navigation pills */
+.sm-shot-nav {
   display: flex;
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
+  gap: 3px;
+  flex-wrap: wrap;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border-subtle);
-  flex-shrink: 0;
 }
 
-/* Responsive: single column below 1300px */
+.sm-shot-nav__pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sm-shot-nav__pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.sm-shot-nav__pill--active {
+  background: var(--accent, #38bdf8);
+  color: var(--bg-elevated, #1e1e2e);
+  font-weight: 700;
+}
+
+/* Left column actions */
+.sm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Card accent variants */
+.sm-card--content {
+  border-left: 3px solid #89b4fa;
+}
+
+.sm-card--tts {
+  border-left: 3px solid #a6e3a1;
+}
+
+.sm-card--prompt {
+  border-left: 3px solid #89b4fa;
+}
+
+.sm-card--prompt--video {
+  border-left-color: #cba6f7;
+}
+
+.sm-card__accent-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sm-card__accent-title--content {
+  color: #89b4fa;
+}
+
+.sm-card__accent-title--tts {
+  color: #a6e3a1;
+}
+
+.sm-card__accent-title--prompt {
+  color: #89b4fa;
+}
+
+.sm-card__accent-title--prompt-video {
+  color: #cba6f7;
+}
+
+/* Responsive: three breakpoints */
 @media (max-width: 1299px) {
   .sm-dialog {
-    width: min(720px, 95vw);
-    max-height: 90vh;
+    width: min(1000px, 95vw);
+  }
+
+  .sm-col--left {
+    display: none;
+  }
+
+  .sm-col--center {
+    border-right: 1px solid var(--border-subtle);
+    flex: 45;
+  }
+
+  .sm-col--right {
+    flex: 55;
+  }
+
+  .sm-meta-strip {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 899px) {
+  .sm-dialog {
+    width: min(600px, 98vw);
+    max-height: 95vh;
   }
 
   .sm-body {
     flex-direction: column;
   }
 
-  .sm-col--left {
+  .sm-col--center {
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
     flex: none;
@@ -13359,6 +13452,35 @@ textarea.input {
     max-height: 100vh;
     border-radius: 0;
   }
+}
+
+/* Metadata strip for medium breakpoint */
+.sm-meta-strip {
+  display: none;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.sm-meta-strip__field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.sm-meta-strip__label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sm-meta-strip__value {
+  font-size: 12px;
+  color: var(--text-primary);
 }
 
 /* ═══ TipTap Rich Script Editor ═══ */

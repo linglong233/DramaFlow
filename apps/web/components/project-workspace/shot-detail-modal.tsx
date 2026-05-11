@@ -1,8 +1,10 @@
 /**
- * @fileoverview 镜头详情弹窗
+ * @fileoverview 镜头详情弹窗 — 三栏布局
  * @module web/components/project-workspace
  *
- * 居中双栏弹窗，左侧媒体生产区，右侧文字信息区。
+ * 左栏：可编辑元数据 + 镜头导航 + 操作按钮
+ * 中栏：媒体工作区（图片/视频预览、候选、生成）
+ * 右栏：镜头内容 + TTS（含音频+字幕）+ 提示词（联动媒体 Tab）
  */
 
 "use client";
@@ -77,6 +79,8 @@ interface Props {
   sceneHeadingMap: Map<string, string>;
   shotPositionInScene?: number;
   sceneShotCount?: number;
+  sceneShots: Array<{ id: string; shotLabel: string }>;
+  onNavigateToShot: (shotId: string) => void;
   onShotUpdate: (shotId: string, patch: Partial<StoryboardShot>) => void;
   onGenerateImage: (shotId: string, prompt?: string) => void;
   onGenerateVideo: (shotId: string, prompt?: string, referenceImageAssetId?: string) => void;
@@ -110,45 +114,57 @@ interface Props {
 
 function CloseIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 1l12 12M13 1L1 13" />
     </svg>
   );
 }
 
 function ChevronLeftIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M7.5 2.5L4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M9 2L4 7l5 5" />
     </svg>
   );
 }
 
 function ChevronRightIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M5 2l5 5-5 5" />
     </svg>
   );
 }
 
 function StatusDot({ status }: { status: string }) {
-  const color = status === "completed" ? "var(--success-bg, #34d399)"
-    : status === "running" ? "var(--warning-bg, #38bdf8)"
-    : status === "failed" ? "var(--danger-bg, #f87171)"
-    : "var(--text-tertiary)";
+  const color =
+    status === "completed" ? "#22c55e" :
+    status === "failed" ? "#ef4444" :
+    "#eab308";
+  const pulse = status === "running" || status === "queued";
   return (
-    <span style={{
-      width: 6, height: 6, borderRadius: "50%", backgroundColor: color,
-      display: "inline-block", flexShrink: 0,
-      boxShadow: status === "running" ? "0 0 6px rgba(56,189,248,0.4)" : undefined,
-      animation: status === "running" ? "uw-pulse 1.5s ease-in-out infinite" : undefined,
-    }} />
+    <span
+      style={{
+        display: "inline-block",
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: color,
+        flexShrink: 0,
+        animation: pulse ? "uw-pulse 1.5s ease-in-out infinite" : undefined,
+      }}
+    />
   );
 }
 
-function DebouncedTextarea({ value, onChange, rows, disabled, placeholder }: {
-  value: string; onChange: (v: string) => void; rows: number; disabled?: boolean; placeholder?: string;
+function DebouncedTextarea({
+  value,
+  onChange,
+  rows = 3,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
 }) {
   const [draft, setDraft] = useDebouncedField(value, onChange);
   return (
@@ -157,57 +173,62 @@ function DebouncedTextarea({ value, onChange, rows, disabled, placeholder }: {
       rows={rows}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
-      disabled={disabled}
-      placeholder={placeholder}
     />
   );
 }
 
-function CharacterTagInput({ value, characters, disabled, onChange }: {
+function CharacterTagInput({
+  value,
+  characters,
+  disabled,
+  onChange,
+}: {
   value: string[];
   characters: { id: string; name: string }[];
   disabled: boolean;
   onChange: (ids: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = value.length > 0 ? value : [];
-  const available = characters.filter((c) => !selected.includes(c.id));
+  const [showAdd, setShowAdd] = useState(false);
+  const remaining = characters.filter((c) => !value.includes(c.id));
 
   return (
     <div className="sm-char-tags">
-      {selected.map((id) => {
-        const ch = characters.find((c) => c.id === id);
+      {value.map((cid) => {
+        const ch = characters.find((c) => c.id === cid);
         return (
-          <span key={id} className="sm-char-tag">
-            {ch?.name ?? id}
+          <span key={cid} className="sm-char-tag">
+            {ch?.name ?? cid}
             {!disabled && (
-              <button type="button" className="sm-char-tag__remove" onClick={() => onChange(selected.filter((x) => x !== id))}>
+              <button type="button" className="sm-char-tag__remove" onClick={() => onChange(value.filter((id) => id !== cid))}>
                 ×
               </button>
             )}
           </span>
         );
       })}
-      {!disabled && available.length > 0 && (
-        <div className="sm-char-add">
-          <button type="button" className="sm-char-add__btn" onClick={() => setOpen(!open)}>
-            + {open ? "▲" : "▼"}
+      {!disabled && remaining.length > 0 && (
+        <span className="sm-char-add">
+          <button type="button" className="sm-char-add__btn" onClick={() => setShowAdd(!showAdd)}>
+            + {showAdd ? "▲" : ""}
           </button>
-          {open && (
+          {showAdd && (
             <div className="sm-char-add__dropdown">
-              {available.map((ch) => (
+              {remaining.map((ch) => (
                 <button
                   key={ch.id}
                   type="button"
                   className="sm-char-add__option"
-                  onClick={() => { onChange([...selected, ch.id]); setOpen(false); }}
+                  onClick={() => {
+                    onChange([...value, ch.id]);
+                    setShowAdd(false);
+                  }}
                 >
                   {ch.name}
                 </button>
               ))}
             </div>
           )}
-        </div>
+        </span>
       )}
     </div>
   );
@@ -226,6 +247,8 @@ export function ShotDetailModal({
   sceneHeadingMap,
   shotPositionInScene,
   sceneShotCount,
+  sceneShots,
+  onNavigateToShot,
   onShotUpdate,
   onGenerateImage,
   onGenerateVideo,
@@ -256,12 +279,11 @@ export function ShotDetailModal({
   onSelectedImageProviderChange,
   onSelectedVideoProviderChange,
 }: Props) {
-  const { t, locale, formatDate } = useI18n();
+  const { t, locale } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [mounted, setMounted] = useState(visible);
   const [closing, setClosing] = useState(false);
-  const [promptsExpanded, setPromptsExpanded] = useState(false);
   const [mediaTab, setMediaTab] = useState<"image" | "video">("image");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
@@ -321,8 +343,9 @@ export function ShotDetailModal({
     setMediaTab(currentImageUrl ? "image" : "video");
   }, [shot.id, currentImageUrl]);
 
+  // Fetch prompt previews on mount and shot change
   useEffect(() => {
-    if (!promptsExpanded || !projectId) return;
+    if (!projectId) return;
     apiFetch<{ positivePrompt?: string }>(`/shots/${shot.id}/preview-prompt`, {
       method: "POST",
       body: { projectId },
@@ -336,7 +359,7 @@ export function ShotDetailModal({
     })
       .then((data) => setVideoPromptPreview(data.positivePrompt ?? ""))
       .catch(() => setVideoPromptPreview(""));
-  }, [promptsExpanded, shot.id, projectId]);
+  }, [shot.id, projectId]);
 
   function renderField(label: string, value: string, field: keyof StoryboardShot, rows = 3) {
     return (
@@ -382,10 +405,15 @@ export function ShotDetailModal({
   const currentVersionId = mediaTab === "image" ? state?.imageDocument?.currentVersionId : state?.videoDocument?.currentVersionId;
   const currentJob = mediaTab === "image" ? state?.jobs.image : state?.jobs.video;
 
+  const promptValue = mediaTab === "image"
+    ? (shot.imagePrompt ?? imagePromptPreview ?? "")
+    : (shot.videoPrompt ?? videoPromptPreview ?? "");
+  const promptField = mediaTab === "image" ? "imagePrompt" : "videoPrompt";
+
   return createPortal(
     <div className={`sm-overlay${closing ? " sm-overlay--closing" : ""}`} onClick={closing ? undefined : onClose}>
       <div className={`sm-dialog${closing ? " sm-dialog--closing" : ""}`} onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
+        {/* Header — simplified */}
         <div className="sm-header">
           <div className="sm-header__nav">
             <button className="btn btn-ghost btn-sm" type="button" disabled={!hasPrev} onClick={onPrev}>
@@ -396,12 +424,10 @@ export function ShotDetailModal({
               <ChevronRightIcon />
             </button>
           </div>
-          <span className="sm-header__meta">
-            {framingLabel} · {cameraLabel} · {sceneHeading}
+          <span className="sm-header__scene">
+            {sceneHeading}
             {shotPositionInScene != null && sceneShotCount != null && (
-              <span className="sm-header__position">
-                {" "}({shotPositionInScene}/{sceneShotCount})
-              </span>
+              <span className="sm-header__position"> ({shotPositionInScene}/{sceneShotCount})</span>
             )}
           </span>
           <button className="sm-header__close" type="button" onClick={onClose}>
@@ -409,11 +435,141 @@ export function ShotDetailModal({
           </button>
         </div>
 
-        {/* Body: two columns */}
+        {/* Meta strip — visible only on medium breakpoint (900-1299px) */}
+        <div className="sm-meta-strip">
+          <div className="sm-meta-strip__field">
+            <span className="sm-meta-strip__label">{t("storyboardEditor.shotLabelField")}</span>
+            {editable ? (
+              <input className="input" style={{ width: 60, fontSize: 12 }} value={shot.shotLabel} onChange={(e) => onShotUpdate(shot.id, { shotLabel: e.target.value })} />
+            ) : (
+              <span className="sm-meta-strip__value">{shot.shotLabel}</span>
+            )}
+          </div>
+          <div className="sm-meta-strip__field">
+            <span className="sm-meta-strip__label">{t("storyboardEditor.framingLabel")}</span>
+            {editable ? (
+              <select className="input" style={{ fontSize: 12 }} value={shot.framing} onChange={(e) => onShotUpdate(shot.id, { framing: e.target.value })}>
+                {STORYBOARD_FRAMING_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardFramingLabel(o, lang)}</option>)}
+              </select>
+            ) : (
+              <span className="sm-meta-strip__value">{framingLabel}</span>
+            )}
+          </div>
+          <div className="sm-meta-strip__field">
+            <span className="sm-meta-strip__label">{t("storyboardEditor.cameraMoveLabel")}</span>
+            {editable ? (
+              <select className="input" style={{ fontSize: 12 }} value={shot.cameraMove} onChange={(e) => onShotUpdate(shot.id, { cameraMove: e.target.value })}>
+                {STORYBOARD_CAMERA_MOVE_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardCameraMoveLabel(o, lang)}</option>)}
+              </select>
+            ) : (
+              <span className="sm-meta-strip__value">{cameraLabel}</span>
+            )}
+          </div>
+          <div className="sm-meta-strip__field">
+            <span className="sm-meta-strip__label">{t("storyboardEditor.durationLabel")}</span>
+            {editable ? (
+              <input className="input" type="number" min={1} step={1} style={{ width: 50, fontSize: 12 }} value={shot.durationSeconds} onChange={(e) => onShotUpdate(shot.id, { durationSeconds: Number(e.target.value) || 1 })} />
+            ) : (
+              <span className="sm-meta-strip__value">{shot.durationSeconds}s</span>
+            )}
+          </div>
+        </div>
+
+        {/* Body: three columns */}
         <div className="sm-body">
-          {/* Left column: Unified Media Workspace */}
+
+          {/* ═══ Left column: Metadata + Nav + Actions ═══ */}
           <div className="sm-col sm-col--left">
-            {/* Tab bar with count badges */}
+            <h4 className="sm-section__title">镜头属性</h4>
+
+            <label className="sm-field">
+              <span className="sm-field__label">{t("storyboardEditor.shotLabelField")}</span>
+              {editable ? (
+                <input className="input" value={shot.shotLabel} onChange={(e) => onShotUpdate(shot.id, { shotLabel: e.target.value })} />
+              ) : (
+                <div className="sm-field__static">{shot.shotLabel}</div>
+              )}
+            </label>
+
+            <label className="sm-field">
+              <span className="sm-field__label">{t("storyboardEditor.framingLabel")}</span>
+              {editable ? (
+                <select className="input" value={shot.framing} onChange={(e) => onShotUpdate(shot.id, { framing: e.target.value })}>
+                  {STORYBOARD_FRAMING_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardFramingLabel(o, lang)}</option>)}
+                </select>
+              ) : (
+                <div className="sm-field__static">{framingLabel}</div>
+              )}
+            </label>
+
+            <label className="sm-field">
+              <span className="sm-field__label">{t("storyboardEditor.cameraMoveLabel")}</span>
+              {editable ? (
+                <select className="input" value={shot.cameraMove} onChange={(e) => onShotUpdate(shot.id, { cameraMove: e.target.value })}>
+                  {STORYBOARD_CAMERA_MOVE_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardCameraMoveLabel(o, lang)}</option>)}
+                </select>
+              ) : (
+                <div className="sm-field__static">{cameraLabel}</div>
+              )}
+            </label>
+
+            <label className="sm-field">
+              <span className="sm-field__label">{t("storyboardEditor.durationLabel")}</span>
+              {editable ? (
+                <input className="input" type="number" min={1} step={1} value={shot.durationSeconds} onChange={(e) => onShotUpdate(shot.id, { durationSeconds: Number(e.target.value) || 1 })} />
+              ) : (
+                <div className="sm-field__static">{shot.durationSeconds}s</div>
+              )}
+            </label>
+
+            <label className="sm-field">
+              <span className="sm-field__label">场景</span>
+              <div className="sm-field__static">{sceneHeading}</div>
+            </label>
+
+            {/* Shot navigation pills */}
+            {sceneShots.length > 1 && (
+              <div className="sm-shot-nav">
+                {sceneShots.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`sm-shot-nav__pill${s.id === shot.id ? " sm-shot-nav__pill--active" : ""}`}
+                    onClick={() => onNavigateToShot(s.id)}
+                  >
+                    {s.shotLabel}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            {editable && (
+              <div className="sm-actions">
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, -1)}>
+                  {t("shotDetailDrawer.up")}
+                </button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, 1)}>
+                  {t("shotDetailDrawer.down")}
+                </button>
+                <button
+                  className="btn btn-danger btn-sm"
+                  type="button"
+                  onClick={() => {
+                    if (!confirmDelete) { setConfirmDelete(true); return; }
+                    onRemoveShot(shot.id);
+                  }}
+                  style={confirmDelete ? { animation: "uw-pulse 1s ease-in-out infinite" } : undefined}
+                >
+                  {confirmDelete ? t("shotDetailDrawer.confirmDelete") : t("shotDetailDrawer.delete")}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ═══ Center column: Media Workspace ═══ */}
+          <div className="sm-col sm-col--center">
+            {/* Media tabs */}
             <div className="sm-media-tabs">
               <button
                 type="button"
@@ -435,7 +591,7 @@ export function ShotDetailModal({
               </button>
             </div>
 
-            {/* Preview driven by tab */}
+            {/* Preview */}
             <div className="sm-preview">
               {mediaTab === "image" ? (
                 currentImageUrl ? (
@@ -454,22 +610,7 @@ export function ShotDetailModal({
               )}
             </div>
 
-            {/* Audio + Subtitle (always visible) */}
-            {currentAudioUrl && <audio controls src={currentAudioUrl} className="sm-audio-player" />}
-            {editable && onSubtitleChange && (
-              <label className="sm-field">
-                <span className="sm-field__label">{t("shotDetailDrawer.subtitleLabel")}</span>
-                <textarea
-                  className="input"
-                  rows={2}
-                  value={currentSubtitle ?? ""}
-                  onChange={(e) => onSubtitleChange(shot.id, e.target.value)}
-                  placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
-                />
-              </label>
-            )}
-
-            {/* Generate row driven by tab */}
+            {/* Generate row */}
             {canUseProject && (
               <div className="sm-generate-row">
                 {mediaTab === "image" ? (
@@ -502,14 +643,14 @@ export function ShotDetailModal({
               </div>
             )}
 
-            {/* Job status driven by tab */}
+            {/* Job status */}
             {canUseProject && currentJob && (
               <div className="sm-job-inline">
                 {renderJobRow(mediaTab === "image" ? "Img" : "Vid", currentJob)}
               </div>
             )}
 
-            {/* Candidates grid driven by tab */}
+            {/* Candidates */}
             {currentCandidates.length > 0 && (
               <CandidateThumbnailGrid
                 candidates={currentCandidates}
@@ -532,169 +673,128 @@ export function ShotDetailModal({
             )}
           </div>
 
-          {/* Right column: Text Information Zone */}
+          {/* ═══ Right column: Prompt (fixed) + Content + TTS (scrollable) ═══ */}
           <div className="sm-col sm-col--right">
-            {/* ① Basic Info Card */}
-            <div className="sm-card">
-              <div className="sm-form-grid">
-                <label className="sm-field">
-                  <span className="sm-field__label">{t("storyboardEditor.shotLabelField")}</span>
-                  {editable ? (
-                    <input className="input" value={shot.shotLabel} onChange={(e) => onShotUpdate(shot.id, { shotLabel: e.target.value })} />
-                  ) : (
-                    <div className="sm-field__static">{shot.shotLabel}</div>
-                  )}
-                </label>
-                <label className="sm-field">
-                  <span className="sm-field__label">{t("storyboardEditor.framingLabel")}</span>
-                  {editable ? (
-                    <select className="input" value={shot.framing} onChange={(e) => onShotUpdate(shot.id, { framing: e.target.value })}>
-                      {STORYBOARD_FRAMING_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardFramingLabel(o, lang)}</option>)}
-                    </select>
-                  ) : (
-                    <div className="sm-field__static">{framingLabel}</div>
-                  )}
-                </label>
-                <label className="sm-field">
-                  <span className="sm-field__label">{t("storyboardEditor.cameraMoveLabel")}</span>
-                  {editable ? (
-                    <select className="input" value={shot.cameraMove} onChange={(e) => onShotUpdate(shot.id, { cameraMove: e.target.value })}>
-                      {STORYBOARD_CAMERA_MOVE_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardCameraMoveLabel(o, lang)}</option>)}
-                    </select>
-                  ) : (
-                    <div className="sm-field__static">{cameraLabel}</div>
-                  )}
-                </label>
-                <label className="sm-field">
-                  <span className="sm-field__label">{t("storyboardEditor.durationLabel")}</span>
-                  {editable ? (
-                    <input className="input" type="number" min={1} step={1} value={shot.durationSeconds} onChange={(e) => onShotUpdate(shot.id, { durationSeconds: Number(e.target.value) || 1 })} />
-                  ) : (
-                    <div className="sm-field__static">{shot.durationSeconds}s</div>
-                  )}
-                </label>
-              </div>
-            </div>
 
-            {/* ② Shot Content Card (merged descriptions + auxiliary) */}
-            <div className="sm-card sm-shot-content">
-              {renderField(t("shotReference.visualLabel"), shot.visualDescription, "visualDescription", 4)}
-              <div className="sm-field-divider" />
-              {renderField(t("shotReference.actionLabel"), shot.actionDescription ?? "", "actionDescription", 3)}
-              <div className="sm-field-divider" />
-              {renderField(t("storyboardEditor.dialogueLabel"), shot.dialogue ?? "", "dialogue", 3)}
-              <div className="sm-field-divider" />
-              {renderField(t("storyboardEditor.soundDesignLabel"), shot.soundDesign ?? "", "soundDesign", 2)}
-              <div className="sm-field-divider" />
+            {/* Fixed prompt card at top — does not scroll */}
+            <div className={`sm-card sm-card--prompt${mediaTab === "video" ? " sm-card--prompt--video" : ""}`}>
+              <h4 className={`sm-card__accent-title${mediaTab === "video" ? " sm-card__accent-title--prompt-video" : " sm-card__accent-title--prompt"}`}>
+                {mediaTab === "image" ? "图片提示词" : "视频提示词"}
+              </h4>
               <label className="sm-field">
-                <span className="sm-field__label">{t("shotDetailDrawer.charactersLabel")}</span>
                 {editable ? (
-                  <CharacterTagInput
-                    value={shot.characterIds ?? []}
-                    characters={characters}
-                    disabled={false}
-                    onChange={(ids) => onShotUpdate(shot.id, { characterIds: ids })}
+                  <DebouncedTextarea
+                    value={promptValue}
+                    onChange={(v) => onShotUpdate(shot.id, { [promptField]: v })}
+                    rows={3}
                   />
                 ) : (
-                  <div className="sm-field__static">
-                    {(shot.characterIds ?? []).map((cid) => characters.find((c) => c.id === cid)?.name ?? cid).join(", ") || "—"}
-                  </div>
+                  <div className="sm-field__static" style={{ maxHeight: "80px", overflowY: "auto" }}>{promptValue || "—"}</div>
                 )}
               </label>
-              <div className="sm-field-divider" />
-              {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
             </div>
 
-            {/* ③ TTS Card (moved from left column) */}
-            <div className="sm-card sm-tts">
-              <h4 className="sm-section__title">TTS</h4>
-              {canUseProject && state?.jobs.tts && renderJobRow("TTS", state?.jobs.tts)}
-              <div style={{ display: "flex", gap: "var(--space-3)" }}>
-                <label className="sm-field" style={{ flex: 1 }}>
-                  <span className="sm-field__label">{t("shotDetailDrawer.characterLabel")}</span>
-                  <select
-                    className="input"
-                    value={ttsDraft?.characterId ?? ""}
-                    onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
-                    disabled={!editable}
-                  >
-                    {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
-                    {selectedCharacters.map((cid) => (
-                      <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
-                    ))}
-                  </select>
+            {/* Scrollable content area */}
+            <div className="sm-right-scroll">
+
+              {/* Card 1: 镜头内容 */}
+              <div className="sm-card sm-card--content">
+                <h4 className="sm-card__accent-title sm-card__accent-title--content">
+                  镜头内容
+                </h4>
+                {renderField(t("shotReference.visualLabel"), shot.visualDescription, "visualDescription", 4)}
+                <div className="sm-field-divider" />
+                {renderField(t("shotReference.actionLabel"), shot.actionDescription ?? "", "actionDescription", 3)}
+                <div className="sm-field-divider" />
+                {renderField(t("storyboardEditor.dialogueLabel"), shot.dialogue ?? "", "dialogue", 3)}
+                <div className="sm-field-divider" />
+                {renderField(t("storyboardEditor.soundDesignLabel"), shot.soundDesign ?? "", "soundDesign", 2)}
+                <div className="sm-field-divider" />
+                <label className="sm-field">
+                  <span className="sm-field__label">{t("shotDetailDrawer.charactersLabel")}</span>
+                  {editable ? (
+                    <CharacterTagInput
+                      value={shot.characterIds ?? []}
+                      characters={characters}
+                      disabled={false}
+                      onChange={(ids) => onShotUpdate(shot.id, { characterIds: ids })}
+                    />
+                  ) : (
+                    <div className="sm-field__static">
+                      {(shot.characterIds ?? []).map((cid) => characters.find((c) => c.id === cid)?.name ?? cid).join(", ") || "—"}
+                    </div>
+                  )}
                 </label>
-                <label className="sm-field" style={{ flex: 1 }}>
-                  <span className="sm-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
-                  <div className="sm-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
-                </label>
+                <div className="sm-field-divider" />
+                {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
               </div>
-              <label className="sm-field">
-                <span className="sm-field__label">{t("shotDetailDrawer.ttsTextLabel")}</span>
-                <textarea
-                  className="input"
-                  rows={3}
-                  value={ttsDraft?.text ?? ""}
-                  onChange={(e) => onTtsDraftChange("text", e.target.value)}
-                  disabled={!editable}
-                  placeholder={t("storyboardEditor.dialoguePlaceholder")}
-                />
-              </label>
-              {canUseProject && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  type="button"
-                  disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
-                  onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
-                >
-                  {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
-                </button>
-              )}
-            </div>
 
-            {/* ④ Prompts Card (collapsible) */}
-            <div className="sm-card">
-              <button
-                className="sm-collapsible-toggle"
-                type="button"
-                onClick={() => setPromptsExpanded(!promptsExpanded)}
-              >
-                <span>{t("shotDetailDrawer.tabPrompts")}</span>
-                <span className="sm-collapsible-arrow">{promptsExpanded ? "▲" : "▼"}</span>
-              </button>
-              {promptsExpanded && (
-                <>
-                  {renderField(t("shotDetailDrawer.imagePrompt"), shot.imagePrompt ?? imagePromptPreview ?? "", "imagePrompt", 5)}
-                  {renderField(t("shotDetailDrawer.videoPrompt"), shot.videoPrompt ?? videoPromptPreview ?? "", "videoPrompt", 5)}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+              {/* Card 2: 语音合成 */}
+              <div className="sm-card sm-card--tts">
+                <h4 className="sm-card__accent-title sm-card__accent-title--tts">
+                  语音合成
+                </h4>
+                {canUseProject && state?.jobs.tts && renderJobRow("TTS", state?.jobs.tts)}
+                <div style={{ display: "flex", gap: "var(--space-3)" }}>
+                  <label className="sm-field" style={{ flex: 1 }}>
+                    <span className="sm-field__label">{t("shotDetailDrawer.characterLabel")}</span>
+                    <select
+                      className="input"
+                      value={ttsDraft?.characterId ?? ""}
+                      onChange={(e) => onTtsDraftChange("characterId", e.target.value)}
+                      disabled={!editable}
+                    >
+                      {selectedCharacters.length === 0 && <option value="">{t("versionView.noCharacter")}</option>}
+                      {selectedCharacters.map((cid) => (
+                        <option key={cid} value={cid}>{characters.find((c) => c.id === cid)?.name ?? cid}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="sm-field" style={{ flex: 1 }}>
+                    <span className="sm-field__label">{t("shotDetailDrawer.voiceLabel")}</span>
+                    <div className="sm-field__static">{currentVoiceName || t("versionView.noCharacter")}</div>
+                  </label>
+                </div>
+                <label className="sm-field">
+                  <span className="sm-field__label">{t("shotDetailDrawer.ttsTextLabel")}</span>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={ttsDraft?.text ?? ""}
+                    onChange={(e) => onTtsDraftChange("text", e.target.value)}
+                    disabled={!editable}
+                    placeholder={t("storyboardEditor.dialoguePlaceholder")}
+                  />
+                </label>
+                {canUseProject && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    type="button"
+                    disabled={!canMutateProject || !ttsDraft?.characterId || !ttsDraft.text.trim() || isTtsPending}
+                    onClick={() => ttsDraft && onGenerateTts(shot.id, ttsDraft.characterId, ttsDraft.text.trim())}
+                  >
+                    {isTtsPending ? t("common.submitting") : t("shotDetailDrawer.generateTts")}
+                  </button>
+                )}
 
-        {/* Footer */}
-        <div className="sm-footer">
-          {editable && (
-            <div style={{ display: "flex", gap: "var(--space-1)" }}>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, -1)}>{t("shotDetailDrawer.up")}</button>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onMoveShot(shot.id, 1)}>{t("shotDetailDrawer.down")}</button>
-              <button className="btn btn-danger btn-sm" type="button" onClick={() => {
-                if (!confirmDelete) { setConfirmDelete(true); return; }
-                onRemoveShot(shot.id);
-              }}
-              style={confirmDelete ? { animation: "uw-pulse 1s ease-in-out infinite" } : undefined}
-              >
-                {confirmDelete ? t("shotDetailDrawer.confirmDelete") : t("shotDetailDrawer.delete")}
-              </button>
+                {/* TTS audio player */}
+                {currentAudioUrl && <audio controls src={currentAudioUrl} className="sm-audio-player" />}
+
+                {/* Subtitle */}
+                {editable && onSubtitleChange && (
+                  <label className="sm-field">
+                    <span className="sm-field__label">{t("shotDetailDrawer.subtitleLabel")}</span>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={currentSubtitle ?? ""}
+                      onChange={(e) => onSubtitleChange(shot.id, e.target.value)}
+                      placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
+                    />
+                  </label>
+                )}
+              </div>
             </div>
-          )}
-          <div style={{ display: "flex", gap: "var(--space-2)", marginLeft: "auto" }}>
-            <button className="btn btn-ghost btn-sm" type="button" disabled={!hasPrev} onClick={onPrev}>
-              <ChevronLeftIcon /> {t("shotDetailDrawer.prev")}
-            </button>
-            <button className="btn btn-ghost btn-sm" type="button" disabled={!hasNext} onClick={onNext}>
-              {t("shotDetailDrawer.next")} <ChevronRightIcon />
-            </button>
           </div>
         </div>
       </div>

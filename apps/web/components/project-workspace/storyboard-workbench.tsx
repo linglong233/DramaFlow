@@ -692,6 +692,12 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           sceneShotCount={(() => {
             return safeContent.shots.filter((s) => s.sceneId === selectedShot?.sceneId).length || undefined;
           })()}
+          sceneShots={(() => {
+            return safeContent.shots
+              .filter((s) => s.sceneId === selectedShot?.sceneId)
+              .map((s) => ({ id: s.id, shotLabel: s.shotLabel }));
+          })()}
+          onNavigateToShot={(shotId) => setSelectedShotId(shotId)}
           onShotUpdate={updateShot}
           onGenerateImage={(shotId, prompt) => generateImage.mutate({ shotId, prompt })}
           onGenerateVideo={(shotId, prompt, ref) => generateVideo.mutate({ shotId, prompt, referenceImageAssetId: ref })}
