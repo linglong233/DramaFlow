@@ -199,7 +199,8 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
               <div
                 key={i}
                 className={`se-char-row${editingIdx === i ? " se-char-row--editing" : ""}`}
-                onBlur={() => {
+                onBlur={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node)) return;
                   setTimeout(() => {
                     if (editingIdx === i) commitEdit();
                   }, 0);
@@ -230,21 +231,20 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
                     />
                   </>
                 ) : (
-                  <>
-                    <strong
-                      onClick={() => startEdit(i)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      {c.name}
-                    </strong>
-                    <span
-                      className="muted"
-                      onClick={() => startEdit(i)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      {c.profile}
-                    </span>
-                  </>
+                  <div
+                    className="se-char-row__content"
+                    onClick={() => startEdit(i)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") startEdit(i); }}
+                  >
+                    <strong>{c.name}</strong>
+                    <span className="muted">{c.profile}</span>
+                    <svg className="se-char-row__edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </div>
                 )}
                 <button
                   className="se-remove-btn"

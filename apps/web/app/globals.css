@@ -2609,6 +2609,43 @@ textarea.input {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.se-char-row__content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.se-char-row__content strong {
+  flex-shrink: 0;
+}
+
+.se-char-row__content .muted {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-char-row__edit-icon {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  color: var(--text-tertiary);
+}
+
+.se-char-row:hover .se-char-row__edit-icon {
+  opacity: 0.6;
+}
+
+.se-char-row--editing {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .se-add-row {
   display: flex;
   gap: var(--space-2);

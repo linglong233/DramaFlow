@@ -50,6 +50,8 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving }: Pro
     new Set(content.scenes.map((s) => s.id)),
   );
   const [charInput, setCharInput] = useState({ name: "", profile: "" });
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState({ name: "", profile: "" });
 
   function updateContent(patch: Partial<ScriptContent>) {
     setContent((prev) => ({ ...prev, ...patch }));
@@ -125,6 +127,27 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving }: Pro
 
   function removeCharacter(idx: number) {
     updateContent({ characters: content.characters.filter((_, i) => i !== idx) });
+    if (editingIdx === idx) setEditingIdx(null);
+  }
+
+  function startEdit(idx: number) {
+    const c = content.characters[idx];
+    setEditDraft({ name: c.name, profile: c.profile });
+    setEditingIdx(idx);
+  }
+
+  function commitEdit() {
+    if (editingIdx === null) return;
+    updateContent({
+      characters: content.characters.map((c, i) =>
+        i === editingIdx ? { ...c, name: editDraft.name.trim(), profile: editDraft.profile.trim() } : c,
+      ),
+    });
+    setEditingIdx(null);
+  }
+
+  function cancelEdit() {
+    setEditingIdx(null);
   }
 
   function handleUploadJson(e: React.ChangeEvent<HTMLInputElement>) {
@@ -210,9 +233,57 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving }: Pro
         {content.characters.length > 0 && (
           <div className="se-char-list">
             {content.characters.map((c, i) => (
-              <div key={i} className="se-char-row">
-                <strong>{c.name}</strong>
-                <span className="muted">{c.profile}</span>
+              <div
+                key={i}
+                className={`se-char-row${editingIdx === i ? " se-char-row--editing" : ""}`}
+                onBlur={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                  setTimeout(() => {
+                    if (editingIdx === i) commitEdit();
+                  }, 0);
+                }}
+              >
+                {editingIdx === i ? (
+                  <>
+                    <input
+                      className="input se-input-sm"
+                      value={editDraft.name}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      style={{ flex: 1 }}
+                      autoFocus
+                    />
+                    <input
+                      className="input se-input-sm"
+                      value={editDraft.profile}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, profile: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      style={{ flex: 2 }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <strong
+                      onClick={() => startEdit(i)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {c.name}
+                    </strong>
+                    <span
+                      className="muted"
+                      onClick={() => startEdit(i)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {c.profile}
+                    </span>
+                  </>
+                )}
                 <button className="se-remove-btn" type="button" onClick={() => removeCharacter(i)} aria-label={t("scriptEditor.deleteLabel")}>x</button>
               </div>
             ))}
