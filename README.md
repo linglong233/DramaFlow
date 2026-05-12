@@ -41,6 +41,11 @@ The Next.js frontend includes:
 - Document version browsing, diffing, restore, and manual editing for script and storyboard content
 - Review actions, threaded comments, audit support, and AI rewrite tools
 - SSE-based synopsis, script, storyboard, and rewrite generation
+- Conversational AI generation mode: QA dialogue with dimension tracking (core conflict, protagonist, supporting characters, tone, pacing, constraints), real-time editable brief panel, world bible context injection, two-step synopsis → script flow
+- Synopsis document manual editing
+- Inline character editing in script editors (hover-to-edit character name and profile)
+- Paired draft sync between script and world bible characters with WebSocket-based real-time bidirectional synchronization
+- Auto-refresh expired access tokens on 401 responses
 - Per-shot and batch image/video creation, media candidates with thumbnail grid, lightbox preview, and explicit candidate adoption
 - Shot detail modal with three-column layout:
   - Left: editable metadata, shot navigation, action buttons
@@ -61,7 +66,7 @@ The NestJS API includes:
 - **Auth flows**: register, login (with IP-based rate limiting), refresh, logout, forgot password, reset password, profile updates (including LLM config, multi-provider config, default provider), per-user model listing
 - **Team flows**: team CRUD, team members (add/remove/role change), team invite links (create/list/revoke/query/accept), team LLM model listing, team settings (LLM, image generation config)
 - **Project flows**: project CRUD, project members (invite/add), project invite acceptance, pending invites, project review policy, workspace summary
-- **Document & version flows**: version listing (with pagination), version creation, draft editing, deletion, submission, advance-to-review, approval, rejection, restoration, adoption, media binding updates
+- **Document & version flows**: version listing (with pagination), version creation, draft editing, deletion, submission, advance-to-review, approval, rejection, restoration, adoption, media binding updates, paired draft sync between script and world bible characters
 - **Comment flows**: version-scoped comments with threaded replies (`parentId`)
 - **World-bible flows**: full CRUD for characters (with costumes), locations, style guide, character voice config, AI reference image generation
 - **Audit flows**: per-content-type audit config (review required, auto-approve roles), audit record listing (with type filtering and pagination)
@@ -70,6 +75,8 @@ The NestJS API includes:
   - Synopsis generation (sync + SSE stream)
   - Storyboard generation (sync + SSE stream)
   - Rewrite (sync + SSE stream)
+  - Conversational QA dialogue with dimension tracking and brief extraction (SSE stream)
+  - Conversational synopsis/script generation from dialogue context (SSE stream)
   - Image generation (per-shot, batch)
   - Video generation (per-shot, batch)
   - TTS generation (per-shot, per-scene batch)
@@ -96,8 +103,8 @@ The worker is intentionally lightweight:
 
 The shared package is the contract layer across the stack:
 
-- Domain types and enums (roles, document types, job types, version statuses, etc.)
-- API contract types (generation inputs, timeline records, export records, etc.)
+- Domain types and enums (roles, document types, job types, version statuses, conversation session/brief/dimension types, etc.)
+- API contract types (generation inputs, conversation payloads, timeline records, export records, etc.)
 - Provider interfaces (LLM, image generation, video generation, TTS)
 - Review, permission, job-management, timeline, and export business rules
 
@@ -222,6 +229,15 @@ The shared package is the contract layer across the stack:
 | POST | `/shots/:id/preview-prompt` | Preview image prompt |
 | POST | `/shots/:id/preview-video-prompt` | Preview video prompt |
 
+### Conversational Generation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/projects/:id/conversation-jobs/message` | Send message, SSE stream AI reply with brief updates |
+| POST | `/projects/:id/conversation-jobs/generate` | Generate synopsis/script from conversation, SSE stream |
+| GET | `/projects/:id/conversation-jobs/:sessionId` | Get conversation session state |
+| POST | `/projects/:id/conversation-jobs/:sessionId/delete` | Delete conversation session |
+
 ### World Bible Reference Image Generation
 
 | Method | Endpoint | Description |
@@ -287,6 +303,7 @@ The shared package is the contract layer across the stack:
 - `job.updated`
 - `review.updated`
 - `notification.created`
+- `draft.character.synced`
 
 ### Internal (Worker)
 
