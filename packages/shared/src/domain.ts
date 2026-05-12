@@ -1003,6 +1003,51 @@ export interface ExportRecord {
 }
 
 // =============================================
+// 对话式生成
+// =============================================
+
+/** 对话式生成的 QA 维度 */
+export type ConversationDimension =
+  | "coreConflict"
+  | "protagonist"
+  | "supportingChars"
+  | "tone"
+  | "pacing"
+  | "constraints";
+
+/** 维度状态 */
+export type ConversationDimensionStatus = "pending" | "discussing" | "confirmed";
+
+/** 对话消息 */
+export interface ConversationMessage {
+  role: "ai" | "user";
+  content: string;
+}
+
+/** 对话简报（AI 从对话中提炼的结构化摘要） */
+export interface ConversationBrief {
+  coreConflict?: string;
+  protagonist?: string;
+  supportingChars?: string;
+  tone?: string;
+  pacing?: string;
+  constraints?: string;
+}
+
+/** 对话会话 */
+export interface ConversationSession {
+  id: string;
+  projectId: string;
+  messages: ConversationMessage[];
+  brief: ConversationBrief;
+  dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+  targetDocType: "synopsis" | "script";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// =============================================
 // TTS 与导出任务输入
 // =============================================
 

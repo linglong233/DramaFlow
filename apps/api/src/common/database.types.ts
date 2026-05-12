@@ -11,6 +11,7 @@ import type {
   AuditRecordEntry,
   BatchJobGroupRecord,
   CommentRecord,
+  ConversationSession,
   DocumentRecord,
   ExportRecord,
   JobRecord,
@@ -59,6 +60,7 @@ export interface DevDatabase {
   batchJobs: BatchJobGroupRecord[];
   timelines: TimelineRecord[];
   exports: ExportRecord[];
+  conversationSessions: ConversationSession[];
   updatedAt: string;
 }
 
@@ -84,6 +86,7 @@ export function createEmptyDatabase(): DevDatabase {
     batchJobs: [],
     timelines: [],
     exports: [],
+    conversationSessions: [],
     updatedAt: new Date().toISOString(),
   };
 }

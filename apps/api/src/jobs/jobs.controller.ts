@@ -23,9 +23,12 @@ import type {
   CreateScriptJobPayload,
   CreateStoryboardJobPayload,
   CreateSynopsisJobPayload,
+  ConversationGeneratePayload,
+  ConversationMessagePayload,
   ImageConfigSource,
   JobStatus,
   JobType,
+  LlmConfigSource,
   WorldBibleReferenceImageGenerateRequest,
 } from "@dramaflow/shared";
 
@@ -34,6 +37,8 @@ import { CurrentUser } from "../common/current-user.decorator";
 import { JobsService } from "./jobs.service";
 import { PromptBuilderService } from "./prompt-builder.service";
 import { ExportService } from "./export.service";
+import { ConversationService } from "./conversation.service";
+import { WorkspaceService } from "../workspace/workspace.service";
 
 /** AI 任务控制器，处理生成任务、流式响应、批量操作等 */
 @Controller()
@@ -43,6 +48,8 @@ export class JobsController {
     @Inject(JobsService) private readonly jobsService: JobsService,
     @Inject(PromptBuilderService) private readonly promptBuilder: PromptBuilderService,
     @Inject(ExportService) private readonly exportService: ExportService,
+    @Inject(ConversationService) private readonly conversationService: ConversationService,
+    @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
   ) {}
 
   @Post("projects/:id/script-jobs")
@@ -349,5 +356,197 @@ export class JobsController {
     @Body() body: { resolution: string; fps: number; bitrate?: string; format: import("@dramaflow/shared").ExportFormat; allowMockFallback?: boolean },
   ) {
     return this.jobsService.createExportJob(user.id, projectId, body);
+  }
+
+  // ===== 对话式生成 =====
+
+  @Post("projects/:id/conversation-jobs/message")
+  async streamConversationMessage(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: ConversationMessagePayload,
+    @Res() res: Response,
+  ) {
+    const { llmConfigSource, ...rest } = body;
+
+    const session = await this.conversationService.getOrCreateSession(
+      user.id, projectId, body.sessionId, body.targetDocType,
+    );
+
+    // First message — send AI greeting
+    if (session.messages.length === 0 && !body.content.trim()) {
+      const greeting = this.conversationService.buildInitialMessage();
+      await this.conversationService.appendMessage(session.id, greeting);
+      this.initSseResponse(res);
+      this.writeSseEvent(res, {
+        sessionId: session.id,
+        message: greeting,
+        brief: session.brief,
+        dimensionStatus: session.dimensionStatus,
+      });
+      this.endSseResponse(res);
+      return;
+    }
+
+    // Append user message
+    const userMessage = { role: "user" as const, content: body.content };
+    await this.conversationService.appendMessage(session.id, userMessage);
+
+    // Resolve LLM config
+    const config = await this.conversationService.resolveTextLlmConfig(
+      user.id, projectId, llmConfigSource as LlmConfigSource | undefined,
+    );
+
+    // Get world bible
+    const worldBible = await this.getWorldBible(user.id, projectId);
+
+    this.initSseResponse(res);
+
+    let accumulated = "";
+    for await (const chunk of this.conversationService.streamQaResponse(session, config, worldBible)) {
+      if (chunk.type === "chunk" && chunk.content) {
+        accumulated += chunk.content;
+      }
+      this.writeSseEvent(res, chunk);
+    }
+
+    // Parse AI response to extract brief updates
+    const parsed = this.parseQaResponse(accumulated);
+    if (parsed) {
+      const newStatus = { ...session.dimensionStatus };
+
+      // Update brief
+      if (Object.keys(parsed.briefUpdates).length > 0) {
+        await this.conversationService.updateSessionBrief(session.id, parsed.briefUpdates);
+        for (const key of Object.keys(parsed.briefUpdates) as Array<keyof typeof parsed.briefUpdates>) {
+          if (parsed.briefUpdates[key]?.trim() && newStatus[key as keyof typeof newStatus] === "pending") {
+            newStatus[key as keyof typeof newStatus] = "confirmed";
+          }
+        }
+        await this.conversationService.updateDimensionStatus(session.id, newStatus);
+      }
+
+      // Append AI message
+      await this.conversationService.appendMessage(session.id, {
+        role: "ai",
+        content: parsed.reply || accumulated,
+      });
+
+      // Send final state update
+      this.writeSseEvent(res, {
+        sessionId: session.id,
+        brief: { ...session.brief, ...parsed.briefUpdates },
+        dimensionStatus: newStatus,
+      });
+    }
+
+    this.endSseResponse(res);
+  }
+
+  @Post("projects/:id/conversation-jobs/generate")
+  async streamConversationGenerate(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: ConversationGeneratePayload,
+    @Res() res: Response,
+  ) {
+    const session = await this.conversationService.getSession(user.id, body.sessionId);
+    const config = await this.conversationService.resolveTextLlmConfig(
+      user.id, projectId, body.llmConfigSource as LlmConfigSource | undefined,
+    );
+    const worldBible = await this.getWorldBible(user.id, projectId);
+
+    this.initSseResponse(res);
+
+    let accumulated = "";
+    for await (const chunk of this.conversationService.streamGeneration(session, config, worldBible)) {
+      if (chunk.type === "chunk" && chunk.content) {
+        accumulated += chunk.content;
+      }
+      this.writeSseEvent(res, chunk);
+    }
+
+    // Save generated content as document version
+    const { normalizeScriptContent, normalizeStoryboardContent } = await import("@dramaflow/shared");
+    let content: unknown = accumulated;
+    if (session.targetDocType === "script") {
+      try {
+        content = normalizeScriptContent(JSON.parse(accumulated));
+      } catch { /* keep raw */ }
+    }
+
+    const docType = session.targetDocType === "script" ? "script" : "synopsis";
+    const document = await this.workspaceService.ensureDocumentForProject({
+      projectId,
+      type: docType,
+      title: `${session.brief.coreConflict ?? "未命名"} ${docType === "script" ? "剧本" : "大纲"}`,
+      createdBy: user.id,
+    });
+    const version = await this.workspaceService.createVersionForDocument({
+      documentId: document.id,
+      title: `${session.brief.coreConflict ?? "未命名"} - 对话式${docType === "script" ? "剧本" : "大纲"}`,
+      content,
+      metadata: { source: "conversational", conversationSessionId: session.id },
+      createdBy: user.id,
+      status: "approved",
+    });
+
+    this.writeSseEvent(res, {
+      type: "done",
+      result: {
+        documentId: document.id,
+        versionId: version.id,
+        content,
+      },
+    });
+
+    this.endSseResponse(res);
+  }
+
+  @Get("projects/:id/conversation-jobs/:sessionId")
+  async getConversationSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Param("sessionId") sessionId: string,
+  ) {
+    return this.conversationService.getSession(user.id, sessionId);
+  }
+
+  @Post("projects/:id/conversation-jobs/:sessionId/delete")
+  async deleteConversationSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Param("sessionId") sessionId: string,
+  ) {
+    await this.conversationService.deleteSession(sessionId);
+    return { ok: true };
+  }
+
+  private parseQaResponse(raw: string): { reply: string; briefUpdates: Record<string, string> } | null {
+    try {
+      const cleaned = raw.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+      const parsed = JSON.parse(cleaned);
+      if (typeof parsed === "object" && parsed !== null) {
+        return {
+          reply: typeof parsed.reply === "string" ? parsed.reply : raw,
+          briefUpdates: typeof parsed.briefUpdates === "object" && parsed.briefUpdates !== null
+            ? Object.fromEntries(
+                Object.entries(parsed.briefUpdates as Record<string, unknown>)
+                  .filter(([, v]) => typeof v === "string" && v.trim())
+                  .map(([k, v]) => [k, v as string]),
+              )
+            : {},
+        };
+      }
+    } catch { /* not JSON, return null */ }
+    return null;
+  }
+
+  private async getWorldBible(userId: string, projectId: string): Promise<import("@dramaflow/shared").WorldBibleContent | null> {
+    try {
+      return await this.workspaceService.getWorldBible(userId, projectId);
+    } catch {
+      return null;
+    }
   }
 }

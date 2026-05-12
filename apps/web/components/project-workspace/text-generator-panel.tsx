@@ -25,6 +25,7 @@ import { useFeedback } from "../../lib/hooks";
 import { queryKeys } from "../../lib/query-keys";
 import { useI18n, getShotDensityLabel } from "../../lib/i18n";
 import { ScriptView, StoryboardPreview } from "./version-view";
+import { ConversationGeneratorPanel } from "./conversation-generator-panel";
 
 interface Props {
   projectId: string;
@@ -99,6 +100,7 @@ export function TextGeneratorPanel({ projectId, project, selectedVersion: extern
   const [synopsisEditable, setSynopsisEditable] = useState(false);
   const [generationStep, setGenerationStep] = useState<GenerationStep>("synopsis");
   const [llmConfigSource, setLlmConfigSource] = useState<LlmConfigSource>("team");
+  const [genMode, setGenMode] = useState<"quick" | "conversational">("quick");
 
   // Streaming state
   const [streamingText, setStreamingText] = useState("");
@@ -458,6 +460,34 @@ export function TextGeneratorPanel({ projectId, project, selectedVersion: extern
 
   return (
     <div className="gen-root">
+      {/* Mode toggle + LLM config source */}
+      <div className="gen-mode-bar">
+        <div className="gen-toggle-group">
+          <button className={`gen-toggle${genMode === "quick" ? " gen-toggle--on" : ""}`} type="button" onClick={() => setGenMode("quick")}>
+            {t("projectWorkspace.generate.quickMode")}
+          </button>
+          <button className={`gen-toggle${genMode === "conversational" ? " gen-toggle--on" : ""}`} type="button" onClick={() => setGenMode("conversational")}>
+            {t("projectWorkspace.generate.conversationalMode")}
+          </button>
+        </div>
+        <div className="gen-toggle-group">
+          <button className={`gen-toggle${llmConfigSource === "team" ? " gen-toggle--on" : ""}`} type="button" onClick={() => setLlmConfigSource("team")}>
+            {t("projectWorkspace.generate.llmConfigSourceTeam")}
+          </button>
+          <button className={`gen-toggle${llmConfigSource === "personal" ? " gen-toggle--on" : ""}`} type="button" onClick={() => setLlmConfigSource("personal")}>
+            {t("projectWorkspace.generate.llmConfigSourcePersonal")}
+          </button>
+        </div>
+      </div>
+
+      {genMode === "conversational" ? (
+        <ConversationGeneratorPanel
+          projectId={projectId}
+          project={project}
+          llmConfigSource={llmConfigSource}
+        />
+      ) : (
+      <>
       {/* ═══ Section 1: Configuration ═══ */}
       <section className={`gen-config${formCollapsed ? " gen-config--collapsed" : ""}${isStreaming ? " gen-config--busy" : ""}`}>
         <button
@@ -719,6 +749,8 @@ export function TextGeneratorPanel({ projectId, project, selectedVersion: extern
           {renderOutput()}
         </div>
       </section>
+      </>
+      )}
     </div>
   );
 }

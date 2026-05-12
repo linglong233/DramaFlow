@@ -48,6 +48,59 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
   private readonly model = process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini";
   private readonly mockFallbackEnabled = (process.env.OPENAI_COMPAT_MOCK_FALLBACK ?? "false") !== "false";
 
+  getBaseUrl() { return this.baseUrl; }
+  getApiKey() { return this.apiKey; }
+  getModel() { return this.model; }
+
+  async *streamChat(
+    systemPrompt: string,
+    messages: Array<{ role: string; content: string }>,
+    config?: import("@dramaflow/shared").LlmProviderConfig,
+  ): AsyncGenerator<StreamChunk> {
+    const effectiveApiKey = config?.apiKey || this.apiKey;
+    const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
+    const effectiveModel = config?.model || this.model;
+
+    if (!effectiveApiKey || effectiveApiKey === "replace-me") {
+      const mockReply = JSON.stringify({
+        reply: "好的，我了解了。能再告诉我更多关于你想讲的故事吗？",
+        briefUpdates: {},
+      });
+      yield { type: "chunk", content: mockReply };
+      yield { type: "done", result: mockReply };
+      return;
+    }
+
+    let accumulated = "";
+    try {
+      for await (const chunk of this.fetchSseChunks({
+        prompt: messages[messages.length - 1]?.content ?? "",
+        systemPrompt,
+        temperature: 0.7,
+        baseUrl: effectiveBaseUrl,
+        apiKey: effectiveApiKey,
+        model: effectiveModel,
+        extraMessages: messages.slice(0, -1),
+      })) {
+        accumulated += chunk;
+        yield { type: "chunk", content: chunk };
+      }
+      yield { type: "done", result: accumulated };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      if (this.mockFallbackEnabled) {
+        const mockReply = JSON.stringify({
+          reply: "抱歉，我暂时无法处理。请再试一次。",
+          briefUpdates: {},
+        });
+        yield { type: "chunk", content: mockReply };
+        yield { type: "done", result: mockReply };
+      } else {
+        yield { type: "error", error: `Chat failed: ${message}` };
+      }
+    }
+  }
+
   async generateScript(input: GenerateScriptInput, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<ScriptContent> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
@@ -560,7 +613,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
     });
   }
 
-  private async *streamStructuredPayload<T>(options: {
+  async *streamStructuredPayload<T>(options: {
     operation: string;
     prompt: string;
     systemPrompt: string;
@@ -605,7 +658,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
     }
   }
 
-  private async *streamPlainText(options: {
+  async *streamPlainText(options: {
     operation: string;
     prompt: string;
     systemPrompt: string;
@@ -644,6 +697,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
     apiKey: string;
     model: string;
     responseFormat?: { type: string };
+    extraMessages?: Array<{ role: string; content: string }>;
   }): AsyncGenerator<string> {
     const body: Record<string, unknown> = {
       model: options.model,
@@ -651,6 +705,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
       stream: true,
       messages: [
         { role: "system", content: options.systemPrompt },
+        ...(options.extraMessages ?? []),
         { role: "user", content: options.prompt },
       ],
     };

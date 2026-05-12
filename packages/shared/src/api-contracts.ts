@@ -19,6 +19,11 @@ import type {
   BatchJobGroupRecord,
   CharacterVoiceConfig,
   CommentRecord,
+  ConversationBrief,
+  ConversationDimension,
+  ConversationDimensionStatus,
+  ConversationMessage,
+  ConversationSession,
   DocumentRecord,
   DocumentType,
   ExportFormat,
@@ -665,3 +670,33 @@ export interface ExportResponse extends ExportRecord {}
 export interface ExportListResponse {
   exports: ExportRecord[];
 }
+
+// ===== 对话式生成契约 =====
+
+/** 发送对话消息请求体 */
+export interface ConversationMessagePayload {
+  sessionId?: string;
+  content: string;
+  targetDocType: "synopsis" | "script";
+  /** 聚焦的维度（用户点击维度标签时传入） */
+  focusDimension?: ConversationDimension;
+  llmConfigSource?: LlmConfigSource;
+}
+
+/** AI 回复响应（SSE 流式） */
+export interface ConversationAiResponse {
+  sessionId: string;
+  message: ConversationMessage;
+  brief: ConversationBrief;
+  dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+}
+
+/** 基于对话生成请求体 */
+export interface ConversationGeneratePayload {
+  sessionId: string;
+  targetDocType: "synopsis" | "script";
+  llmConfigSource?: LlmConfigSource;
+}
+
+/** 对话会话响应 */
+export interface ConversationSessionResponse extends ConversationSession {}
