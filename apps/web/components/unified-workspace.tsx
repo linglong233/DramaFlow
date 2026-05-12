@@ -44,6 +44,7 @@ import { RightContextPanel } from "./project-workspace/right-context-panel";
 import { ReviewPolicySwitcher } from "./review-policy-switcher";
 import { ProjectInfoPanel } from "./project-workspace/project-info-panel";
 import { WorldBibleEditor } from "./project-workspace/world-bible-editor";
+import { SynopsisEditor } from "./project-workspace/synopsis-editor";
 import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { useRealtime } from "./realtime-provider";
@@ -211,6 +212,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const [editorInitialContent, setEditorInitialContent] = useState<ScriptContent | null>(null);
   const [storyboardEditorInitialContent, setStoryboardEditorInitialContent] = useState<StoryboardContent | null>(null);
   const [worldBibleEditorInitialContent, setWorldBibleEditorInitialContent] = useState<WorldBibleContent | null>(null);
+  const [synopsisEditorInitialContent, setSynopsisEditorInitialContent] = useState<string | null>(null);
   const [editorSessionKey, setEditorSessionKey] = useState(0);
   const [showDiff, setShowDiff] = useState(false);
 
@@ -368,6 +370,26 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     );
   }
 
+  function handleSynopsisEditorSave(title: string, content: string) {
+    setFeedback({ message: null, error: null });
+    const targetDocId = selectedDoc?.id;
+    if (!targetDocId || targetDocId === VIRTUAL_SYNOPSIS_DOC_ID || targetDocId === VIRTUAL_VIDEO_DOC_ID) {
+      setFeedback({ message: null, error: t("projectWorkspace.manualVersion.noDocumentError") });
+      return;
+    }
+    versionMutations.create.mutate(
+      { documentId: targetDocId, title, content, metadata: { source: "unified-workspace" } },
+      {
+        onSuccess: (version) => {
+          setFeedback({ message: t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber }), error: null });
+          setIsEditing(false);
+          setSelectedVersionId(version.id);
+        },
+        onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
+      },
+    );
+  }
+
   function handleInlineStoryboardChange(content: StoryboardContent) {
     setFeedback({ message: null, error: null });
     // If the current version is already a draft, update it in-place
@@ -396,6 +418,11 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   function openEditor(fromVersion?: typeof selectedVersion) {
     if (isSynopsisDoc) {
+      setSynopsisEditorInitialContent(
+        fromVersion ? String(fromVersion.content ?? "") : null,
+      );
+      setEditorSessionKey((k) => k + 1);
+      setIsEditing(true);
       return;
     }
 
@@ -456,7 +483,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }
 
   function handleSubTabChange(sub: DocSubTab) {
-    const nextSub = sub === "edit" && isSynopsisDoc ? "generate" : sub;
+    const nextSub = sub;
     setDocSubTab(nextSub);
     if (nextSub === "edit") {
       openEditor(selectedVersion);
@@ -490,12 +517,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       }
     }
   }, [mode, searchParams]);
-
-  useEffect(() => {
-    if (mode === "document" && docSubTab === "edit" && isSynopsisDoc) {
-      handleSubTabChange("generate");
-    }
-  }, [docSubTab, isSynopsisDoc, mode]);
 
   const modeConfig = [
     { key: "info" as const, label: t("projectWorkspace.workspace.modeInfo"), icon: InfoIcon },
@@ -697,7 +718,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   const doc = documents.find((d) => d.id === id);
                   setSelectedDocId(id);
                   if (docSubTab === "edit") {
-                    setDocSubTab(doc?.type === "synopsis" ? "generate" : "view");
+                    setDocSubTab("view");
                   }
                   setSelectedVersionId(doc?.versions[0]?.id ?? "");
                 }}
@@ -735,7 +756,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       aria-selected={docSubTab === "edit"}
                       onClick={() => handleSubTabChange("edit")}
                       type="button"
-                      disabled={isSynopsisDoc}
                     >
                       <EditIcon />
                       {t("projectWorkspace.workspace.modeEdit")}
@@ -851,6 +871,14 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                         key={`script-${selectedVersionId || "new"}-${editorSessionKey}`}
                         initialContent={editorInitialContent}
                         onSave={handleEditorSave}
+                        onCancel={() => handleSubTabChange("view")}
+                        isSaving={versionMutations.create.isPending}
+                      />
+                    ) : isSynopsisDoc ? (
+                      <SynopsisEditor
+                        key={`synopsis-${selectedVersionId || "new"}-${editorSessionKey}`}
+                        initialContent={synopsisEditorInitialContent}
+                        onSave={handleSynopsisEditorSave}
                         onCancel={() => handleSubTabChange("view")}
                         isSaving={versionMutations.create.isPending}
                       />

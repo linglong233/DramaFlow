@@ -1079,6 +1079,12 @@ export const zhCNMessages = {
     stepScript: "步骤 2：剧本",
     backToSynopsis: "返回大纲"
   },
+  synopsisEditor: {
+    defaultTitle: "手动编辑大纲",
+    titlePlaceholder: "版本标题",
+    contentPlaceholder: "在此编辑大纲内容...",
+    save: "保存大纲"
+  },
   versionRestore: {
     action: "恢复此版本",
     confirm: "确认恢复",
@@ -2502,6 +2508,12 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     stepSynopsis: "Step 1: Synopsis",
     stepScript: "Step 2: Script",
     backToSynopsis: "Back to synopsis"
+  },
+  synopsisEditor: {
+    defaultTitle: "Manual edit",
+    titlePlaceholder: "Version title",
+    contentPlaceholder: "Edit synopsis content here...",
+    save: "Save synopsis"
   },
   versionRestore: {
     action: "Restore this version",
