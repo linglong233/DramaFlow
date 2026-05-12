@@ -112,6 +112,45 @@ function redirectToLogin() {
   }
 }
 
+let refreshPromise: Promise<SessionPayload | null> | null = null;
+
+async function refreshSession(): Promise<SessionPayload | null> {
+  const session = readSession();
+  if (!session?.refreshToken) {
+    clearSession();
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+
+    if (!response.ok) {
+      clearSession();
+      return null;
+    }
+
+    const payload = (await response.json()) as SessionPayload;
+    saveSession(payload);
+    return payload;
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
+function startRefresh(): Promise<SessionPayload | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshSession().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 function extractMessage(status: number, payload: string) {
   if (!payload) {
     return status === 401
@@ -185,8 +224,29 @@ export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promis
     const extracted = extractMessage(response.status, details);
 
     if (response.status === 401 && !path.startsWith("/auth/")) {
-      clearSession();
-      redirectToLogin();
+      const refreshed = await startRefresh();
+      if (refreshed) {
+        headers.set("authorization", `Bearer ${refreshed.accessToken}`);
+        const retryResponse = await fetch(`${getApiBaseUrl()}${path}`, {
+          ...init,
+          headers,
+          body: isSerializableBody(init.body) ? JSON.stringify(init.body) : init.body,
+        });
+
+        if (retryResponse.ok) {
+          if (retryResponse.status === 204) {
+            return undefined as T;
+          }
+          const ct = retryResponse.headers.get("content-type") ?? "";
+          return (ct.includes("application/json") ? retryResponse.json() : retryResponse.text()) as Promise<T>;
+        }
+
+        clearSession();
+        redirectToLogin();
+      } else {
+        clearSession();
+        redirectToLogin();
+      }
     }
 
     throw new ApiError(
@@ -281,12 +341,38 @@ export async function* apiStreamFetch(
     const extracted = extractMessage(response.status, details);
 
     if (response.status === 401 && !path.startsWith("/auth/")) {
-      clearSession();
-      redirectToLogin();
-    }
+      const refreshed = await startRefresh();
+      if (refreshed) {
+        headers.set("authorization", `Bearer ${refreshed.accessToken}`);
+        try {
+          response = await fetch(`${getApiBaseUrl()}${path}`, {
+            ...init,
+            headers,
+            body: isSerializableBody(init.body) ? JSON.stringify(init.body) : init.body,
+          });
+        } catch (error) {
+          yield { type: "error", error: error instanceof Error ? error.message : "Network error" };
+          return;
+        }
 
-    yield { type: "error", error: extracted.message || `HTTP ${response.status}` };
-    return;
+        if (response.ok) {
+          // Fall through to streaming logic below
+        } else {
+          clearSession();
+          redirectToLogin();
+          yield { type: "error", error: extracted.message || `HTTP ${response.status}` };
+          return;
+        }
+      } else {
+        clearSession();
+        redirectToLogin();
+        yield { type: "error", error: extracted.message || `HTTP ${response.status}` };
+        return;
+      }
+    } else {
+      yield { type: "error", error: extracted.message || `HTTP ${response.status}` };
+      return;
+    }
   }
 
   const reader = response.body?.getReader();
