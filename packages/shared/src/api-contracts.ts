@@ -624,6 +624,17 @@ export interface RealtimeNotificationCreatedEvent {
   unreadCount: number;
 }
 
+/** 实时角色同步事件（配对草稿间双向同步） */
+export interface RealtimeCharacterSyncedEvent {
+  projectId: string;
+  sourceDocumentId: string;
+  targetDocumentId: string;
+  sourceVersionId: string;
+  targetVersionId: string;
+  addedCharacters: Array<{ name: string; id?: string }>;
+  updatedCharacters: Array<{ name: string }>;
+}
+
 // ===== 时间线契约 =====
 
 /** 时间线响应 */

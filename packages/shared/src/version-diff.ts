@@ -169,6 +169,7 @@ export function diffWorldBibleContents(base: WorldBibleContent, compare: WorldBi
     const details: string[] = [];
     if (baseChar.appearance !== compareChar.appearance) details.push("Appearance changed");
     if ((baseChar.personality ?? "") !== (compareChar.personality ?? "")) details.push("Personality changed");
+    if ((baseChar.summary ?? "") !== (compareChar.summary ?? "")) details.push("Summary changed");
     if (details.length) {
       entries.push({ type: "modified", label: `Character: ${baseChar.name}`, details });
     }

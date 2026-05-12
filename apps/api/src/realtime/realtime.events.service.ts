@@ -6,7 +6,7 @@
  */
 
 import { Inject, Injectable } from "@nestjs/common";
-import type { JobRecord, NotificationRecord, RealtimeReviewUpdatedEvent } from "@dramaflow/shared";
+import type { JobRecord, NotificationRecord, RealtimeCharacterSyncedEvent, RealtimeReviewUpdatedEvent } from "@dramaflow/shared";
 
 import { RealtimeGateway } from "./realtime.gateway";
 
@@ -34,6 +34,10 @@ export class RealtimeEventsService {
 
   emitReviewUpdated(event: RealtimeReviewUpdatedEvent): void {
     this.gateway.emitReviewUpdated(event);
+  }
+
+  emitCharacterSynced(event: RealtimeCharacterSyncedEvent): void {
+    this.gateway.emitCharacterSynced(event);
   }
 
   emitNotificationCreated(notification: NotificationRecord, unreadCount: number): void {

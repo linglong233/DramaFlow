@@ -635,6 +635,17 @@ function CharacterForm({
         rows={2}
       />
 
+      <label className="wb-form__label">
+        {t("worldBible.summaryLabel")}
+      </label>
+      <textarea
+        className="input wb-form__textarea"
+        value={char.summary || ""}
+        onChange={(e) => onUpdate(char.id, { summary: e.target.value })}
+        placeholder={t("worldBible.summaryPlaceholder")}
+        rows={2}
+      />
+
       <label className="wb-form__label">{t("worldBible.tagsLabel")}</label>
       <TagInput
         tags={char.tags}

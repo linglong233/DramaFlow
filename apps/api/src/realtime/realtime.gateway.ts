@@ -16,6 +16,7 @@ import {
   WebSocketServer,
 } from "@nestjs/websockets";
 import type {
+  RealtimeCharacterSyncedEvent,
   RealtimeJobUpdatedEvent,
   RealtimeNotificationCreatedEvent,
   RealtimeProjectSubscriptionPayload,
@@ -108,6 +109,10 @@ export class RealtimeGateway implements OnGatewayConnection {
 
   emitNotificationCreated(userId: string, event: RealtimeNotificationCreatedEvent): void {
     this.server.to(this.getUserRoom(userId)).emit("notification.created", event);
+  }
+
+  emitCharacterSynced(event: RealtimeCharacterSyncedEvent): void {
+    this.server.to(this.getProjectRoom(event.projectId)).emit("draft.character.synced", event);
   }
 
   private extractToken(client: Socket): string | null {

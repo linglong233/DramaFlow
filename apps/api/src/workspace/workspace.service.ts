@@ -47,6 +47,7 @@ import {
   type ProjectRole,
   type ProjectStatus,
   type ProjectWorkspaceSummaryPayload,
+  type RealtimeCharacterSyncedEvent,
   type ReviewQueueVersionSummary,
   type ScriptContent,
   type StyleGuideProfile,
@@ -992,7 +993,7 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to update this version");
     }
 
-    return this.database.mutate((db) => {
+    const result = await this.database.mutate((db) => {
       const liveVersion = this.mustFindVersion(db, versionId);
       if (liveVersion.status !== "draft") {
         throw new BadRequestException("Only draft versions can be updated");
@@ -1013,8 +1014,16 @@ export class WorkspaceService {
         }
       }
       liveDocument.updatedAt = new Date().toISOString();
-      return liveVersion;
+
+      const syncEvent = this.syncCharactersToPairedDraft(db, liveVersion, liveDocument, userId);
+      return { version: liveVersion, syncEvent };
     });
+
+    if (result.syncEvent) {
+      this.realtimeEvents.emitCharacterSynced(result.syncEvent);
+    }
+
+    return result.version;
   }
 
   async deleteVersion(userId: string, versionId: string) {
@@ -1656,7 +1665,7 @@ export class WorkspaceService {
     createdBy: string;
     status?: VersionStatus;
   }): Promise<VersionRecord> {
-    return this.database.mutate((db) => {
+    const result = await this.database.mutate((db) => {
       const document = this.mustFindDocument(db, options.documentId);
       const siblingVersions = db.versions.filter((version) => version.documentId === document.id);
       const latestVersion = siblingVersions.reduce<VersionRecord | undefined>((current, candidate) => {
@@ -1687,6 +1696,10 @@ export class WorkspaceService {
       document.updatedAt = now;
       db.versions.push(version);
 
+      this.ensurePairedDraft(db, document.projectId, document.type, version.id, document.id, options.createdBy);
+
+      const syncEvent = this.syncCharactersToPairedDraft(db, version, document, options.createdBy);
+
       if (
         document.type === "script" &&
         options.metadata?.source !== "world-bible-sync" &&
@@ -1705,8 +1718,14 @@ export class WorkspaceService {
         }
       }
 
-      return version;
+      return { version, syncEvent };
     });
+
+    if (result.syncEvent) {
+      this.realtimeEvents.emitCharacterSynced(result.syncEvent);
+    }
+
+    return result.version;
   }
 
   private async reviewVersion(userId: string, versionId: string, nextStatus: "approved" | "rejected", comment?: string) {
@@ -1723,6 +1742,16 @@ export class WorkspaceService {
         throw new BadRequestException(`Cannot move version from ${liveVersion.status} to ${nextStatus}`);
       }
       liveVersion.status = nextStatus;
+
+      const pairedId = liveVersion.metadata?.pairedVersionId as string | undefined;
+      if (pairedId) {
+        const pairedVersion = db.versions.find((v) => v.id === pairedId);
+        if (pairedVersion) {
+          pairedVersion.metadata = { ...pairedVersion.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+        }
+        liveVersion.metadata = { ...liveVersion.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+      }
+
       return liveVersion;
     });
 
@@ -2069,6 +2098,187 @@ export class WorkspaceService {
     return user;
   }
 
+  private ensurePairedDraft(
+    db: DevDatabase,
+    projectId: string,
+    documentType: string,
+    createdVersionId: string,
+    createdDocumentId: string,
+    userId: string,
+  ): void {
+    if (documentType !== "script" && documentType !== "world_bible") return;
+
+    const peerType = documentType === "script" ? "world_bible" : "script";
+    let peerDoc = db.documents.find(
+      (doc) => doc.projectId === projectId && doc.type === peerType,
+    );
+
+    const now = new Date().toISOString();
+
+    if (!peerDoc) {
+      const peerTitle = peerType === "world_bible" ? "世界观设定" : "剧本";
+      peerDoc = {
+        id: createId("doc"),
+        projectId,
+        type: peerType,
+        title: peerTitle,
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.documents.push(peerDoc);
+    }
+
+    const existingDraft = db.versions
+      .filter((v) => v.documentId === peerDoc.id)
+      .sort((a, b) => b.versionNumber - a.versionNumber)
+      .find((v) => v.status === "draft" || v.status === "submitted");
+
+    let pairedVersionId: string;
+
+    if (existingDraft) {
+      pairedVersionId = existingDraft.id;
+      existingDraft.metadata = {
+        ...existingDraft.metadata,
+        pairedVersionId: createdVersionId,
+        pairedDocumentId: createdDocumentId,
+      };
+    } else {
+      const siblingVersions = db.versions.filter((v) => v.documentId === peerDoc.id);
+      const latestVersion = siblingVersions.reduce<VersionRecord | undefined>(
+        (current, candidate) =>
+          !current || candidate.versionNumber > current.versionNumber ? candidate : current,
+        undefined,
+      );
+
+      const emptyContent = peerType === "world_bible"
+        ? { characters: [], locations: [] }
+        : { logline: "", premise: "", characters: [], scenes: [] };
+
+      const newVersion: VersionRecord = {
+        id: createId("version"),
+        documentId: peerDoc.id,
+        versionNumber: getNextVersionNumber(siblingVersions),
+        status: "draft",
+        title: "配对草稿",
+        content: latestVersion?.content ?? emptyContent,
+        metadata: {
+          source: "character-sync",
+          pairedVersionId: createdVersionId,
+          pairedDocumentId: createdDocumentId,
+        },
+        parentVersionId: latestVersion?.id,
+        createdBy: userId,
+        createdAt: now,
+      };
+      db.versions.push(newVersion);
+      peerDoc.draftVersionId = newVersion.id;
+      peerDoc.updatedAt = now;
+      pairedVersionId = newVersion.id;
+    }
+
+    const createdVersion = db.versions.find((v) => v.id === createdVersionId);
+    if (createdVersion) {
+      createdVersion.metadata = {
+        ...createdVersion.metadata,
+        pairedVersionId,
+        pairedDocumentId: peerDoc.id,
+      };
+    }
+  }
+
+  private syncCharactersToPairedDraft(
+    db: DevDatabase,
+    version: VersionRecord,
+    document: DocumentRecord,
+    userId: string,
+  ): RealtimeCharacterSyncedEvent | null {
+    const metadata = version.metadata ?? {};
+    const pairedVersionId = metadata.pairedVersionId as string | undefined;
+    const pairedDocumentId = metadata.pairedDocumentId as string | undefined;
+    if (!pairedVersionId || !pairedDocumentId) return null;
+    if (metadata.source === "character-sync") return null;
+
+    const pairedVersion = db.versions.find((v) => v.id === pairedVersionId);
+    if (!pairedVersion || pairedVersion.status !== "draft") {
+      version.metadata = { ...version.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+      return null;
+    }
+
+    const addedCharacters: Array<{ name: string; id?: string }> = [];
+    const updatedCharacters: Array<{ name: string }> = [];
+
+    if (document.type === "script" && version.content && typeof version.content === "object") {
+      const scriptContent = version.content as ScriptContent;
+      const wbContent = ((pairedVersion.content as WorldBibleContent) ?? { characters: [], locations: [] });
+      const wbCharacters = [...(wbContent.characters ?? [])];
+
+      for (const scriptChar of scriptContent.characters ?? []) {
+        if (scriptChar.worldBibleCharId) {
+          const wbChar = wbCharacters.find((c) => c.id === scriptChar.worldBibleCharId);
+          if (wbChar && wbChar.summary !== scriptChar.profile) {
+            wbChar.summary = scriptChar.profile || undefined;
+            updatedCharacters.push({ name: scriptChar.name });
+          }
+        } else {
+          const newId = createId("char");
+          wbCharacters.push({
+            id: newId,
+            name: scriptChar.name,
+            appearance: "",
+            summary: scriptChar.profile || undefined,
+            tags: [],
+            referenceImages: [],
+            sortOrder: wbCharacters.length,
+          });
+          scriptChar.worldBibleCharId = newId;
+          addedCharacters.push({ name: scriptChar.name, id: newId });
+        }
+      }
+
+      if (addedCharacters.length || updatedCharacters.length) {
+        pairedVersion.content = { ...wbContent, characters: wbCharacters };
+      }
+    } else if (document.type === "world_bible" && version.content && typeof version.content === "object") {
+      const wbContent = version.content as WorldBibleContent;
+      const scriptContent = ((pairedVersion.content as ScriptContent) ?? { characters: [], scenes: [] });
+      const scriptCharacters = [...(scriptContent.characters ?? [])];
+
+      for (const wbChar of wbContent.characters ?? []) {
+        const existingScriptChar = scriptCharacters.find((c) => c.worldBibleCharId === wbChar.id);
+        if (existingScriptChar) {
+          if (existingScriptChar.profile !== (wbChar.summary ?? "")) {
+            existingScriptChar.profile = wbChar.summary ?? "";
+            updatedCharacters.push({ name: wbChar.name });
+          }
+        } else {
+          scriptCharacters.push({
+            name: wbChar.name,
+            profile: wbChar.summary ?? "",
+            worldBibleCharId: wbChar.id,
+          });
+          addedCharacters.push({ name: wbChar.name, id: wbChar.id });
+        }
+      }
+
+      if (addedCharacters.length || updatedCharacters.length) {
+        pairedVersion.content = { ...scriptContent, characters: scriptCharacters };
+      }
+    }
+
+    if (!addedCharacters.length && !updatedCharacters.length) return null;
+
+    return {
+      projectId: document.projectId,
+      sourceDocumentId: document.id,
+      targetDocumentId: pairedDocumentId,
+      sourceVersionId: version.id,
+      targetVersionId: pairedVersionId,
+      addedCharacters,
+      updatedCharacters,
+    };
+  }
+
   private syncCharacterNameToScripts(
     db: DevDatabase,
     projectId: string,
@@ -2322,6 +2532,7 @@ export class WorkspaceService {
       ? siblingVersions.reduce((latest, v) => v.versionNumber > latest.versionNumber ? v : latest, siblingVersions[0])
       : undefined;
 
+    const prevMetadata = (latestVersion?.metadata ?? {}) as Record<string, unknown>;
     const version: VersionRecord = {
       id: createId("version"),
       documentId: wbDoc.id,
@@ -2329,7 +2540,11 @@ export class WorkspaceService {
       status: "draft",
       title: "\u4e16\u754c\u89c2\u8bbe\u5b9a\u66f4\u65b0",
       content,
-      metadata: { source: "world-bible-editor" },
+      metadata: {
+        source: "world-bible-editor",
+        pairedVersionId: prevMetadata.pairedVersionId,
+        pairedDocumentId: prevMetadata.pairedDocumentId,
+      },
       parentVersionId: latestVersion?.id,
       createdBy: userId,
       createdAt: now,
@@ -2338,6 +2553,11 @@ export class WorkspaceService {
     db.versions.push(version);
     wbDoc.draftVersionId = version.id;
     wbDoc.updatedAt = now;
+
+    const syncEvent = this.syncCharactersToPairedDraft(db, version, wbDoc, userId);
+    if (syncEvent) {
+      this.realtimeEvents.emitCharacterSynced(syncEvent);
+    }
   }
 
   // ===== Timeline Methods =====

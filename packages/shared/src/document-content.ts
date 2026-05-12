@@ -218,6 +218,7 @@ function normalizeCharacterProfile(value: unknown, index = 0): CharacterProfile 
     tags: sanitizeStringArray(rawCharacter.tags),
     referenceImages: sanitizeStringArray(rawCharacter.referenceImages),
     costumes: sanitizeStringRecord(rawCharacter.costumes),
+    summary: sanitizeOptionalString(rawCharacter.summary),
     sortOrder: sanitizeNumber(rawCharacter.sortOrder, index),
   };
 }

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { RealtimeJobUpdatedEvent, RealtimeReviewUpdatedEvent, TaskListResponse } from "@dramaflow/shared";
+import type { RealtimeCharacterSyncedEvent, RealtimeJobUpdatedEvent, RealtimeReviewUpdatedEvent, TaskListResponse } from "@dramaflow/shared";
 import { queryKeys } from "../query-keys";
 import { useRealtime } from "../../components/realtime-provider";
 
@@ -61,12 +61,21 @@ export function useWorkspaceRealtime(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.versionComments(event.versionId) });
     }
 
+    function handleCharacterSynced(event: RealtimeCharacterSyncedEvent) {
+      if (event.projectId !== projectId) return;
+
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) });
+    }
+
     socket.on("job.updated", handleJobUpdated);
     socket.on("review.updated", handleReviewUpdated);
+    socket.on("draft.character.synced", handleCharacterSynced);
 
     return () => {
       socket.off("job.updated", handleJobUpdated);
       socket.off("review.updated", handleReviewUpdated);
+      socket.off("draft.character.synced", handleCharacterSynced);
     };
   }, [projectId, queryClient, socket]);
 }

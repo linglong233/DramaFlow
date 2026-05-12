@@ -735,6 +735,8 @@ export interface CharacterProfile {
   referenceImages: string[];
   /** 服装信息（键为服装名称，值为描述） */
   costumes?: Record<string, string>;
+  /** 角色简介，与剧本角色的 profile 双向同步 */
+  summary?: string;
   /** 排序序号 */
   sortOrder: number;
 }
