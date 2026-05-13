@@ -37,6 +37,7 @@ import type {
   RewriteSegmentInput,
   ScriptContent,
   StoryboardContent,
+  VersionRecord,
   WorldBibleReferenceImageGenerateResponse,
   WorldBibleContent,
 } from "@dramaflow/shared";
@@ -1950,7 +1951,21 @@ export class JobsService {
       const resolvedModel = this.resolveTextModel(config);
       let finalResult: ScriptContent | undefined;
 
-      for await (const chunk of this.textProvider.generateScriptStream(input, config)) {
+      // Inject synopsis context if a source version was provided
+      const enrichedInput = { ...input };
+      if (input.sourceSynopsisVersionId) {
+        const synopsisVersion = await this.database.query((db) =>
+          db.versions.find((v: VersionRecord) => v.id === input.sourceSynopsisVersionId),
+        );
+        if (synopsisVersion) {
+          const synopsisContent = typeof synopsisVersion.content === "string"
+            ? synopsisVersion.content
+            : JSON.stringify(synopsisVersion.content, null, 2);
+          enrichedInput.premise = `${input.premise}\n\n---\nSynopsis reference:\n${synopsisContent}`;
+        }
+      }
+
+      for await (const chunk of this.textProvider.generateScriptStream(enrichedInput, config)) {
         yield chunk;
         if (chunk.type === "done" && chunk.result) {
           finalResult = chunk.result as ScriptContent;

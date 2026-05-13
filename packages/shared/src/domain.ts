@@ -640,6 +640,8 @@ export interface GenerateScriptInput {
   tone: string;
   /** 目标受众 */
   audience: string;
+  /** 关联的大纲版本 ID（可选，用于注入大纲上下文） */
+  sourceSynopsisVersionId?: string;
 }
 
 /** 大纲生成输入参数 */

@@ -1,3 +1,11 @@
+/**
+ * @fileoverview 对话模式生成器
+ * @module web/components/project-workspace/generation
+ *
+ * 通用对话式 AI 生成界面，从现有 ConversationGeneratorPanel 重构而来。
+ * 根据 generatorId 确定目标文档类型（synopsis / script）。
+ */
+
 "use client";
 
 import { useCallback, useRef, useState } from "react";
@@ -10,13 +18,16 @@ import type {
   ProjectWorkspacePayload,
 } from "@dramaflow/shared";
 import { useMutation } from "@tanstack/react-query";
-import { apiStreamFetch, formatApiError } from "../../lib/api";
-import { useFeedback } from "../../lib/hooks";
-import { useI18n } from "../../lib/i18n";
-import { ConversationChat } from "./conversation-chat";
-import { ConversationBrief } from "./conversation-brief";
+
+import { apiStreamFetch, formatApiError } from "../../../lib/api";
+import { useFeedback } from "../../../lib/hooks";
+import { useI18n } from "../../../lib/i18n";
+import { ConversationChat } from "../conversation-chat";
+import { ConversationBrief as ConversationBriefPanel } from "../conversation-brief";
+import type { GeneratorConfig } from "./generator-registry";
 
 interface Props {
+  config: GeneratorConfig;
   projectId: string;
   project: ProjectWorkspacePayload;
   llmConfigSource: LlmConfigSource;
@@ -35,7 +46,7 @@ function countConfirmed(status: Record<ConversationDimension, ConversationDimens
   return Object.values(status).filter((s) => s === "confirmed").length;
 }
 
-export function ConversationGeneratorPanel({ projectId, project, llmConfigSource }: Props) {
+export function ConversationalGenerator({ config, projectId, project, llmConfigSource }: Props) {
   const { t } = useI18n();
   const { feedback, setFeedback } = useFeedback();
 
@@ -43,11 +54,12 @@ export function ConversationGeneratorPanel({ projectId, project, llmConfigSource
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [brief, setBrief] = useState<ConversationBrief>({});
   const [dimensionStatus, setDimensionStatus] = useState(DEFAULT_DIMENSION_STATUS);
-  const [targetDocType, setTargetDocType] = useState<"synopsis" | "script">("synopsis");
   const [streamingText, setStreamingText] = useState("");
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Derive target doc type from generator config
+  const targetDocType = config.id === "script" ? "script" : "synopsis";
   const canGenerate = countConfirmed(dimensionStatus) >= 3;
 
   // Send message mutation
@@ -104,7 +116,6 @@ export function ConversationGeneratorPanel({ projectId, project, llmConfigSource
       abortRef.current = null;
       setStreamingText("");
 
-      // Try to parse QA response for brief updates
       try {
         const parsed = JSON.parse(accumulated);
         if (parsed.briefUpdates && typeof parsed.briefUpdates === "object") {
@@ -187,7 +198,6 @@ export function ConversationGeneratorPanel({ projectId, project, llmConfigSource
 
   const isStreaming = messageMutation.isPending || generateMutation.isPending;
 
-  // Initialize with AI greeting on first interaction
   const hasInitialized = useRef(false);
   const handleSendMessage = useCallback((content: string) => {
     if (!hasInitialized.current && messages.length === 0) {
@@ -211,11 +221,6 @@ export function ConversationGeneratorPanel({ projectId, project, llmConfigSource
     generateMutation.mutate();
   }, [generateMutation]);
 
-  const handleContinueConversation = useCallback(() => {
-    setTargetDocType("script");
-    setGeneratedContent(null);
-  }, []);
-
   return (
     <div className="conv-root">
       {feedback.message && <div className="gen-notice gen-notice--ok" role="status">{feedback.message}</div>}
@@ -226,22 +231,24 @@ export function ConversationGeneratorPanel({ projectId, project, llmConfigSource
           <ConversationChat
             messages={messages}
             streamingText={streamingText}
-            isStreaming={messageMutation.isPending || generateMutation.isPending}
+            isStreaming={isStreaming}
             onSendMessage={handleSendMessage}
           />
         </div>
         <div className="conv-layout__brief">
-          <ConversationBrief
+          <ConversationBriefPanel
             brief={brief}
             dimensionStatus={dimensionStatus}
             canGenerate={canGenerate}
-            isStreaming={messageMutation.isPending || generateMutation.isPending}
+            isStreaming={isStreaming}
             onBriefFieldChange={handleBriefFieldChange}
             onDimensionClick={handleDimensionClick}
             onGenerate={handleGenerate}
             targetDocType={targetDocType}
             generatedContent={generatedContent}
-            onContinueConversation={handleContinueConversation}
+            onContinueConversation={() => {
+              setGeneratedContent(null);
+            }}
           />
         </div>
       </div>

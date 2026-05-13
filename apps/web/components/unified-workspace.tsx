@@ -38,7 +38,7 @@ import { VersionDiffView } from "./project-workspace/version-diff-view";
 import { VersionManagementPanel } from "./project-workspace/version-management-panel";
 import { RichScriptEditor } from "./project-workspace/rich-script-editor";
 import { StoryboardEditor } from "./project-workspace/storyboard-editor";
-import { TextGeneratorPanel } from "./project-workspace/text-generator-panel";
+import { GeneratorHost } from "./project-workspace/generation/generator-host";
 import { JobStatusBar } from "./project-workspace/job-status-bar";
 import { RightContextPanel } from "./project-workspace/right-context-panel";
 import { ReviewPolicySwitcher } from "./review-policy-switcher";
@@ -886,9 +886,33 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   )}
                 </div>
 
-                {/* Generate sub-tab (always mounted to preserve streaming state) */}
+                {/* Generate sub-tab */}
                 <div style={{ display: mode === "document" && docSubTab === "generate" ? undefined : "none" }}>
-                  <TextGeneratorPanel projectId={projectId} project={payload} selectedVersion={selectedVersion} onEditResult={handleEditResult} />
+                  {mode === "document" && docSubTab === "generate" && (() => {
+                    if (isWorldBibleDoc) {
+                      return (
+                        <div className="gen-empty">
+                          <div className="gen-empty__icon">
+                            <svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+                              <path d="M28 6l5.25 12.25L46 23.5l-12.75 5.25L28 41l-5.25-12.25L10 23.5l12.75-5.25L28 6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" opacity="0.5" />
+                            </svg>
+                          </div>
+                          <div className="gen-empty__title">{t("projectWorkspace.generate.outputEmpty")}</div>
+                          <div className="gen-empty__hint">{t("projectWorkspace.generate.noWorldBibleGeneration")}</div>
+                        </div>
+                      );
+                    }
+                    const generatorId = isSynopsisDoc ? "synopsis"
+                      : isStoryboardDoc ? "storyboard"
+                      : "script";
+                    return (
+                      <GeneratorHost
+                        generatorId={generatorId}
+                        projectId={projectId}
+                        project={payload}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Versions management sub-tab */}
