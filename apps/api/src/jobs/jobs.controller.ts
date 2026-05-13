@@ -332,6 +332,15 @@ export class JobsController {
     return this.jobsService.createTTSJob(user.id, shotId, body);
   }
 
+  @Post("shots/:id/regenerate-jobs")
+  createShotRegenerateJob(
+    @CurrentUser() user: { id: string },
+    @Param("id") shotId: string,
+    @Body() body: { projectId: string; fields: string[]; llmConfigSource?: LlmConfigSource },
+  ) {
+    return this.jobsService.createShotRegenerateJob(user.id, shotId, body);
+  }
+
   @Post("scenes/:id/batch-tts-jobs")
   createSceneBatchTTSJobs(
     @CurrentUser() user: { id: string },

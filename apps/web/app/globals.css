@@ -12971,6 +12971,7 @@ textarea.input {
 .sm-dialog {
   width: min(1400px, 92vw);
   max-height: 85vh;
+  position: relative;
   background: var(--bg-elevated);
   backdrop-filter: blur(20px);
   border-radius: var(--radius-lg, 12px);
@@ -13120,6 +13121,14 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.sm-field__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
 }
 
 .sm-field__label {
@@ -13454,6 +13463,189 @@ textarea.input {
   font-size: 11px;
 }
 
+/* ═══ Regenerate Overlay ═══ */
+.regen-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg, 12px);
+  display: flex;
+  flex-direction: column;
+  animation: fade-in 0.15s ease;
+}
+
+.regen-overlay__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.regen-overlay__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.regen-overlay__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.regen-overlay__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.regen-overlay__streaming {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.regen-overlay__spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: uw-pulse 1s linear infinite;
+}
+
+.regen-overlay__stream-text {
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.regen-overlay__compare {
+  margin-bottom: var(--space-4);
+}
+
+.regen-overlay__compare-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+  display: block;
+}
+
+.regen-overlay__compare-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.regen-overlay__compare-cell {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+.regen-overlay__compare-cell p {
+  margin: var(--space-1) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.regen-overlay__compare-cell--new {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.regen-overlay__compare-tag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.regen-overlay__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.regen-overlay__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 120px;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.regen-overlay__error-detail {
+  max-width: 100%;
+  max-height: 80px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+}
+
+/* ═══ Regenerate field button ═══ */
+.regen-field-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.regen-field-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.regen-field-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 /* ═══ Candidate Lightbox ═══ */
 .sm-lightbox {
   position: fixed;
@@ -13747,6 +13939,10 @@ textarea.input {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
 }
 
 .sm-card__accent-title--content {

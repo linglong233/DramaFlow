@@ -1448,7 +1448,19 @@ export const zhCNMessages = {
     subtitlePlaceholder: "输入该镜头的字幕文本...",
     mediaSelected: "已选择媒体。",
     confirmDelete: "确认删除？再次点击确认",
-    positionInScene: "{current}/{total} 在当前场景"
+    positionInScene: "{current}/{total} 在当前场景",
+    regenerateField: "重新生成此字段",
+    regenerateAll: "全部重新生成",
+    regenGenerating: "正在重新生成…",
+    regenOld: "当前内容",
+    regenNew: "新内容",
+    regenKeep: "保留原内容",
+    regenAdopt: "采用新内容",
+    regenCancel: "取消",
+    regenKeepAll: "全部保留原内容",
+    regenAdoptAll: "全部采用新内容",
+    regenFailed: "重新生成失败，请重试。",
+    regenRetry: "重试"
   },
   shotCard: {
     statusDone: "已完成",
@@ -2917,7 +2929,19 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     subtitlePlaceholder: "Enter subtitle text for this shot...",
     mediaSelected: "Media selected.",
     confirmDelete: "Confirm delete? Click again",
-    positionInScene: "{current}/{total} in scene"
+    positionInScene: "{current}/{total} in scene",
+    regenerateField: "Regenerate this field",
+    regenerateAll: "Regenerate All",
+    regenGenerating: "Regenerating…",
+    regenOld: "Current",
+    regenNew: "New",
+    regenKeep: "Keep Current",
+    regenAdopt: "Adopt New",
+    regenCancel: "Cancel",
+    regenKeepAll: "Keep All Current",
+    regenAdoptAll: "Adopt All New",
+    regenFailed: "Regeneration failed. Please try again.",
+    regenRetry: "Retry"
   },
   shotCard: {
     statusDone: "Done",

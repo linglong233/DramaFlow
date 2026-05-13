@@ -68,7 +68,8 @@ export type JobType =
   | "video_generation"
   | "rewrite_segment"
   | "tts_generation"
-  | "export_video";
+  | "export_video"
+  | "shot_regenerate";
 
 /** 任务执行状态 */
 export type JobStatus = "queued" | "running" | "completed" | "failed";

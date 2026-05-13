@@ -30,6 +30,7 @@ import { apiFetch } from "../../lib/api";
 import { ProviderSelector } from "./provider-selector";
 import { CandidateThumbnailGrid } from "./candidate-thumbnail-grid";
 import { CandidateLightbox } from "./candidate-lightbox";
+import { RegenerateOverlay, type RegenFieldEntry } from "./regenerate-overlay";
 
 interface MediaVersionContent {
   assetId?: string;
@@ -140,6 +141,17 @@ function ChevronRightIcon() {
     </svg>
   );
 }
+
+function RegenIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 7a5.5 5.5 0 019.37-3.9M12.5 7a5.5 5.5 0 01-9.37 3.9" />
+      <path d="M10.5 1.5v2.5h-2.5M3.5 12.5v-2.5h2.5" />
+    </svg>
+  );
+}
+
+type RegenFieldKey = "framing" | "cameraMove" | "durationSeconds" | "visualDescription" | "actionDescription" | "dialogue" | "soundDesign" | "notes" | "imagePrompt" | "videoPrompt";
 
 function StatusDot({ status }: { status: string }) {
   const color =
@@ -297,6 +309,7 @@ export function ShotDetailModal({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
   const [videoPromptPreview, setVideoPromptPreview] = useState<string | null>(null);
+  const [regenFields, setRegenFields] = useState<RegenFieldEntry[] | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -373,7 +386,20 @@ export function ShotDetailModal({
   function renderField(label: string, value: string, field: keyof StoryboardShot, rows = 3) {
     return (
       <label className="sm-field">
-        <span className="sm-field__label">{label}</span>
+        <span className="sm-field__label-row">
+          <span className="sm-field__label">{label}</span>
+          {canUseProject && editable && (
+            <button
+              className="regen-field-btn"
+              type="button"
+              title={t("shotDetailDrawer.regenerateField")}
+              disabled={Boolean(regenFields)}
+              onClick={() => openRegen(field as RegenFieldKey)}
+            >
+              <RegenIcon />
+            </button>
+          )}
+        </span>
         {editable ? (
           <DebouncedTextarea
             value={value}
@@ -385,6 +411,50 @@ export function ShotDetailModal({
         )}
       </label>
     );
+  }
+
+  function getFieldLabel(field: RegenFieldKey): string {
+    const map: Record<RegenFieldKey, string> = {
+      framing: t("storyboardEditor.framingLabel"),
+      cameraMove: t("storyboardEditor.cameraMoveLabel"),
+      durationSeconds: t("storyboardEditor.durationLabel"),
+      visualDescription: t("shotReference.visualLabel"),
+      actionDescription: t("shotReference.actionLabel"),
+      dialogue: t("storyboardEditor.dialogueLabel"),
+      soundDesign: t("storyboardEditor.soundDesignLabel"),
+      notes: t("shotReference.notesLabel"),
+      imagePrompt: mediaTab === "image" ? "图片提示词" : "视频提示词",
+      videoPrompt: "视频提示词",
+    };
+    return map[field] ?? field;
+  }
+
+  function getShotFieldValue(field: RegenFieldKey): string {
+    return String(shot[field as keyof StoryboardShot] ?? "");
+  }
+
+  function openRegen(...fields: RegenFieldKey[]) {
+    setRegenFields(
+      fields.map((f) => ({
+        field: f,
+        label: getFieldLabel(f),
+        oldValue: getShotFieldValue(f),
+      })),
+    );
+  }
+
+  function openRegenAll() {
+    setRegenFields(
+      (["visualDescription", "actionDescription", "dialogue", "soundDesign", "notes"] as RegenFieldKey[]).map((f) => ({
+        field: f,
+        label: getFieldLabel(f),
+        oldValue: getShotFieldValue(f),
+      })),
+    );
+  }
+
+  function handleRegenAdopt(patch: Record<string, string>) {
+    onShotUpdate(shot.id, patch);
   }
 
   function renderJobRow(label: string, job?: ShotJobMap["image"]) {
@@ -501,7 +571,12 @@ export function ShotDetailModal({
             </label>
 
             <label className="sm-field">
-              <span className="sm-field__label">{t("storyboardEditor.framingLabel")}</span>
+              <span className="sm-field__label-row">
+                <span className="sm-field__label">{t("storyboardEditor.framingLabel")}</span>
+                {canUseProject && editable && (
+                  <button className="regen-field-btn" type="button" title={t("shotDetailDrawer.regenerateField")} disabled={Boolean(regenFields)} onClick={() => openRegen("framing")}><RegenIcon /></button>
+                )}
+              </span>
               {editable ? (
                 <select className="input" value={shot.framing} onChange={(e) => onShotUpdate(shot.id, { framing: e.target.value })}>
                   {STORYBOARD_FRAMING_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardFramingLabel(o, lang)}</option>)}
@@ -512,7 +587,12 @@ export function ShotDetailModal({
             </label>
 
             <label className="sm-field">
-              <span className="sm-field__label">{t("storyboardEditor.cameraMoveLabel")}</span>
+              <span className="sm-field__label-row">
+                <span className="sm-field__label">{t("storyboardEditor.cameraMoveLabel")}</span>
+                {canUseProject && editable && (
+                  <button className="regen-field-btn" type="button" title={t("shotDetailDrawer.regenerateField")} disabled={Boolean(regenFields)} onClick={() => openRegen("cameraMove")}><RegenIcon /></button>
+                )}
+              </span>
               {editable ? (
                 <select className="input" value={shot.cameraMove} onChange={(e) => onShotUpdate(shot.id, { cameraMove: e.target.value })}>
                   {STORYBOARD_CAMERA_MOVE_OPTIONS.map((o) => <option key={o} value={o}>{getStoryboardCameraMoveLabel(o, lang)}</option>)}
@@ -523,7 +603,12 @@ export function ShotDetailModal({
             </label>
 
             <label className="sm-field">
-              <span className="sm-field__label">{t("storyboardEditor.durationLabel")}</span>
+              <span className="sm-field__label-row">
+                <span className="sm-field__label">{t("storyboardEditor.durationLabel")}</span>
+                {canUseProject && editable && (
+                  <button className="regen-field-btn" type="button" title={t("shotDetailDrawer.regenerateField")} disabled={Boolean(regenFields)} onClick={() => openRegen("durationSeconds")}><RegenIcon /></button>
+                )}
+              </span>
               {editable ? (
                 <input className="input" type="number" min={1} step={1} value={shot.durationSeconds} onChange={(e) => onShotUpdate(shot.id, { durationSeconds: Number(e.target.value) || 1 })} />
               ) : (
@@ -704,7 +789,10 @@ export function ShotDetailModal({
             {/* Fixed prompt card at top — does not scroll */}
             <div className={`sm-card sm-card--prompt${mediaTab === "video" ? " sm-card--prompt--video" : ""}`}>
               <h4 className={`sm-card__accent-title${mediaTab === "video" ? " sm-card__accent-title--prompt-video" : " sm-card__accent-title--prompt"}`}>
-                {mediaTab === "image" ? "图片提示词" : "视频提示词"}
+                <span>{mediaTab === "image" ? "图片提示词" : "视频提示词"}</span>
+                {canUseProject && editable && (
+                  <button className="regen-field-btn" type="button" title={t("shotDetailDrawer.regenerateField")} disabled={Boolean(regenFields)} onClick={() => openRegen(mediaTab === "image" ? "imagePrompt" : "videoPrompt")}><RegenIcon /></button>
+                )}
               </h4>
               <label className="sm-field">
                 {editable ? (
@@ -752,6 +840,18 @@ export function ShotDetailModal({
                 </label>
                 <div className="sm-field-divider" />
                 {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
+                {canUseProject && editable && (
+                  <div style={{ marginTop: "var(--space-2)", textAlign: "right" }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      disabled={Boolean(regenFields)}
+                      onClick={openRegenAll}
+                    >
+                      <RegenIcon /> {t("shotDetailDrawer.regenerateAll")}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Card 2: 语音合成 */}
@@ -832,6 +932,18 @@ export function ShotDetailModal({
             </div>
           </div>
         </div>
+
+        {/* Regenerate Overlay */}
+        {regenFields && (
+          <RegenerateOverlay
+            shotId={shot.id}
+            projectId={projectId}
+            fields={regenFields}
+            defaultLlmConfigSource={imageConfigSource}
+            onAdopt={handleRegenAdopt}
+            onClose={() => setRegenFields(null)}
+          />
+        )}
       </div>
 
       {/* Candidate Lightbox */}

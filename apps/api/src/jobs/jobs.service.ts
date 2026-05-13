@@ -202,6 +202,20 @@ export class JobsService {
     });
   }
 
+  async createShotRegenerateJob(
+    userId: string,
+    shotId: string,
+    input: { projectId: string; fields: string[]; llmConfigSource?: LlmConfigSource },
+  ) {
+    await this.assertProjectReadable(userId, input.projectId);
+    return this.enqueueJob(userId, {
+      type: "shot_regenerate",
+      projectId: input.projectId,
+      shotId,
+      input,
+    });
+  }
+
   async getJob(userId: string, jobId: string) {
     const job = await this.database.query((db) => db.jobs.find((item) => item.id === jobId));
     if (!job) {
@@ -496,6 +510,8 @@ export class JobsService {
           return await this.processVideoJob(job as unknown as JobRecord<MediaJobInput>);
         case "rewrite_segment":
           return await this.processRewriteJob(job as unknown as JobRecord<RewriteJobInput>);
+        case "shot_regenerate":
+          return await this.processShotRegenerateJob(job as unknown as JobRecord<{ projectId: string; fields: string[]; llmConfigSource?: LlmConfigSource }>);
         case "tts_generation":
           return await this.processTTSJob(job as unknown as JobRecord<GenerateTTSInput>);
         case "export_video":
@@ -599,6 +615,112 @@ export class JobsService {
       rewrittenText: rewritten,
       originalText: job.input.originalText,
       instruction: job.input.instruction,
+      model: resolvedModel,
+      ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
+    });
+  }
+
+  private async processShotRegenerateJob(job: JobRecord<{ projectId: string; fields: string[]; llmConfigSource?: LlmConfigSource }>) {
+    const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
+    const resolvedModel = this.resolveTextModel(config);
+
+    // Gather full context: script + storyboard + world bible
+    const { script, storyboard, worldBible, targetShot, prevShot, nextShot } = await this.database.query((db) => {
+      const scriptDoc = db.documents.find((d) => d.projectId === job.projectId && d.type === "script");
+      const scriptVer = scriptDoc ? db.versions.find((v) => v.id === scriptDoc.currentVersionId) : undefined;
+      const script = scriptVer?.content as ScriptContent | undefined;
+
+      const sbDoc = db.documents.find((d) => d.projectId === job.projectId && d.type === "storyboard");
+      const sbVer = sbDoc ? db.versions.find((v) => v.id === sbDoc.currentVersionId) : undefined;
+      const storyboard = sbVer?.content as StoryboardContent | undefined;
+
+      const wbDoc = db.documents.find((d) => d.projectId === job.projectId && d.type === "world_bible");
+      const wbVer = wbDoc ? db.versions.find((v) => v.id === wbDoc.currentVersionId) : undefined;
+      const worldBible = wbVer?.content as WorldBibleContent | undefined;
+
+      const shots = storyboard?.shots ?? [];
+      const targetIndex = shots.findIndex((s) => s.id === job.shotId);
+      const targetShot = shots[targetIndex] ?? null;
+      const prevShot = targetIndex > 0 ? shots[targetIndex - 1] : null;
+      const nextShot = targetIndex < shots.length - 1 ? shots[targetIndex + 1] : null;
+
+      return { script, storyboard, worldBible, targetShot, prevShot, nextShot };
+    });
+
+    if (!targetShot) {
+      throw new NotFoundException(`Shot ${job.shotId} not found in storyboard`);
+    }
+
+    const fields = job.input.fields;
+    const effectiveBaseUrl = (config?.baseUrl || this.textProvider.getBaseUrl()).replace(/\/$/, "");
+    const effectiveApiKey = config?.apiKey || this.textProvider.getApiKey();
+
+    // Mock fallback when no API key
+    if (!effectiveApiKey || effectiveApiKey === "replace-me") {
+      const mockResult: Record<string, string> = {};
+      for (const f of fields) {
+        mockResult[f] = `(regenerated) ${(targetShot as unknown as Record<string, unknown>)[f] ?? ""}`;
+      }
+      return this.completeJob(job.id, {
+        ...mockResult,
+        shotId: job.shotId,
+        model: "mock",
+      });
+    }
+
+    const systemPrompt = `You are a professional storyboard screenwriter. Regenerate specific fields of a storyboard shot. Return ONLY a valid JSON object with these fields: ${fields.join(", ")}. No markdown fences, no explanation.`;
+
+    const prompt = [
+      `Regenerate these fields for a storyboard shot: ${fields.join(", ")}`,
+      "",
+      "=== SCRIPT ===",
+      script ? JSON.stringify(script, null, 2).slice(0, 4000) : "(no script)",
+      worldBible ? `\n=== WORLD BIBLE ===\n${JSON.stringify(worldBible, null, 2).slice(0, 2000)}` : "",
+      "",
+      "=== TARGET SHOT ===",
+      JSON.stringify(targetShot, null, 2),
+      "",
+      prevShot ? `=== PREVIOUS SHOT ===\n${JSON.stringify(prevShot, null, 2)}` : "(first shot in sequence)",
+      nextShot ? `\n=== NEXT SHOT ===\n${JSON.stringify(nextShot, null, 2)}` : "(last shot in sequence)",
+      "",
+      `Return ONLY a JSON object with fields: ${fields.join(", ")}`,
+    ].join("\n");
+
+    const response = await fetch(`${effectiveBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${effectiveApiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: resolvedModel,
+        temperature: 0.8,
+        stream: false,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`LLM request failed: HTTP ${response.status}`);
+    }
+
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content ?? "";
+    let parsed: Record<string, string>;
+    try {
+      const cleaned = raw.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+      parsed = JSON.parse(cleaned);
+    } catch {
+      throw new Error(`Failed to parse regeneration result: ${raw.slice(0, 200)}`);
+    }
+
+    return this.completeJob(job.id, {
+      ...parsed,
+      shotId: job.shotId,
       model: resolvedModel,
       ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
     });
