@@ -322,7 +322,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
     const selectableDocs = contentDocs.filter((d) => d.id !== VIRTUAL_SYNOPSIS_DOC_ID || d.versions.length > 0);
     const defaultDoc = selectableDocs.find((d) => d.versions.length > 0) ?? selectableDocs[0] ?? contentDocs[0];
-    const activeDoc = selectedDocId ? documents.find((d) => d.id === selectedDocId) ?? defaultDoc : defaultDoc;
+    const urlDoc = searchParams.get("doc") ? documents.find((d) => d.id === searchParams.get("doc") && d.id !== VIRTUAL_VIDEO_DOC_ID) : undefined;
+    const activeDoc = selectedDocId
+      ? documents.find((d) => d.id === selectedDocId) ?? urlDoc ?? defaultDoc
+      : urlDoc ?? defaultDoc;
     if (!activeDoc || activeDoc.id === VIRTUAL_VIDEO_DOC_ID) return;
     if (!selectedDocId || activeDoc.id !== selectedDocId) setSelectedDocId(activeDoc.id);
     if (selectedVersionId && !activeDoc.versions.some((version) => version.id === selectedVersionId)) {
@@ -331,6 +334,14 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     }
     if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.versions[0].id);
   }, [documents, selectedDocId, selectedVersionId]);
+
+  useEffect(() => {
+    if (!selectedDocId || selectedDocId.startsWith("__")) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get("doc") === selectedDocId) return;
+    params.set("doc", selectedDocId);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [selectedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedDoc = useMemo(
     () => documents.find((d) => d.id === selectedDocId) ?? documents.find((d) => d.id !== VIRTUAL_VIDEO_DOC_ID) ?? null,
@@ -479,6 +490,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("mode", mapped);
     params.delete("sub");
+    params.delete("doc");
     router.replace(`?${params.toString()}`, { scroll: false });
   }
 
