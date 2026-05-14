@@ -322,7 +322,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
     const selectableDocs = contentDocs.filter((d) => d.id !== VIRTUAL_SYNOPSIS_DOC_ID || d.versions.length > 0);
     const defaultDoc = selectableDocs.find((d) => d.versions.length > 0) ?? selectableDocs[0] ?? contentDocs[0];
-    const urlDoc = searchParams.get("doc") ? documents.find((d) => d.id === searchParams.get("doc") && d.id !== VIRTUAL_VIDEO_DOC_ID) : undefined;
+    const docParam = searchParams.get("doc");
+    const urlDoc = docParam ? documents.find((d) => d.id === docParam && d.id !== VIRTUAL_VIDEO_DOC_ID) : undefined;
     const activeDoc = selectedDocId
       ? documents.find((d) => d.id === selectedDocId) ?? urlDoc ?? defaultDoc
       : urlDoc ?? defaultDoc;
@@ -333,7 +334,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       return;
     }
     if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.versions[0].id);
-  }, [documents, selectedDocId, selectedVersionId]);
+  }, [documents, selectedDocId, selectedVersionId, searchParams]);
 
   useEffect(() => {
     if (!selectedDocId || selectedDocId.startsWith("__")) return;
@@ -341,7 +342,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     if (params.get("doc") === selectedDocId) return;
     params.set("doc", selectedDocId);
     router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDocId]); // eslint-disable-line react-hooks/exhaustive-deps -- searchParams read guarded by idempotency check
 
   const selectedDoc = useMemo(
     () => documents.find((d) => d.id === selectedDocId) ?? documents.find((d) => d.id !== VIRTUAL_VIDEO_DOC_ID) ?? null,
