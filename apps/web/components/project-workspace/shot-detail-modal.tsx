@@ -716,6 +716,14 @@ export function ShotDetailModal({
                     <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
                       {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
                     </button>
+                    <select
+                      className="input sm-config-source-select"
+                      value={imageConfigSource}
+                      onChange={(e) => onImageConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                    >
+                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
+                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
+                    </select>
                     <button
                       className="btn btn-ghost btn-sm"
                       type="button"
@@ -726,8 +734,8 @@ export function ShotDetailModal({
                     </button>
                     <select
                       className="input sm-config-source-select"
-                      value={imageConfigSource}
-                      onChange={(e) => onImageConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                      value={llmConfigSource}
+                      onChange={(e) => onLlmConfigSourceChange?.(e.target.value as ImageConfigSource)}
                     >
                       <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
                       <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
@@ -745,6 +753,14 @@ export function ShotDetailModal({
                     <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
                       {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
                     </button>
+                    <select
+                      className="input sm-config-source-select"
+                      value={imageConfigSource}
+                      onChange={(e) => onImageConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                    >
+                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
+                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
+                    </select>
                     <button
                       className="btn btn-ghost btn-sm"
                       type="button"
@@ -755,8 +771,8 @@ export function ShotDetailModal({
                     </button>
                     <select
                       className="input sm-config-source-select"
-                      value={imageConfigSource}
-                      onChange={(e) => onImageConfigSourceChange?.(e.target.value as ImageConfigSource)}
+                      value={llmConfigSource}
+                      onChange={(e) => onLlmConfigSourceChange?.(e.target.value as ImageConfigSource)}
                     >
                       <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
                       <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
@@ -860,18 +876,6 @@ export function ShotDetailModal({
                 </label>
                 <div className="sm-field-divider" />
                 {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
-                {canUseProject && (
-                  <div className="sm-llm-config-row">
-                    <select
-                      className="input sm-config-source-select"
-                      value={llmConfigSource}
-                      onChange={(e) => onLlmConfigSourceChange?.(e.target.value as ImageConfigSource)}
-                    >
-                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
-                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
-                    </select>
-                  </div>
-                )}
               </div>
 
               {/* Card 2: 语音合成 */}
