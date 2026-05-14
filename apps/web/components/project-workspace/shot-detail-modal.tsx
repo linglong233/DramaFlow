@@ -116,6 +116,8 @@ interface Props {
   ttsConfigSource?: ImageConfigSource;
   onImageConfigSourceChange?: (source: ImageConfigSource) => void;
   onTtsConfigSourceChange?: (source: ImageConfigSource) => void;
+  llmConfigSource?: ImageConfigSource;
+  onLlmConfigSourceChange?: (source: ImageConfigSource) => void;
 }
 
 function CloseIcon() {
@@ -299,6 +301,8 @@ export function ShotDetailModal({
   ttsConfigSource = "team",
   onImageConfigSourceChange,
   onTtsConfigSourceChange,
+  llmConfigSource = "team",
+  onLlmConfigSourceChange,
 }: Props) {
   const { t, locale } = useI18n();
   const lang = locale === "en" ? "en" : "zh-CN";
@@ -712,6 +716,14 @@ export function ShotDetailModal({
                     <button className="btn btn-secondary btn-sm" type="button" disabled={!canMutateProject || isImagePending} onClick={() => onGenerateImage(shot.id, shot.imagePrompt)}>
                       {isImagePending ? t("common.submitting") : t("shotDetailDrawer.generateImage")}
                     </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      disabled={!canMutateProject || !editable || Boolean(regenFields)}
+                      onClick={openRegenAll}
+                    >
+                      <RegenIcon /> {t("shotDetailDrawer.regenerateAll")}
+                    </button>
                     <select
                       className="input sm-config-source-select"
                       value={imageConfigSource}
@@ -732,6 +744,14 @@ export function ShotDetailModal({
                   <>
                     <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
                       {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      disabled={!canMutateProject || !editable || Boolean(regenFields)}
+                      onClick={openRegenAll}
+                    >
+                      <RegenIcon /> {t("shotDetailDrawer.regenerateAll")}
                     </button>
                     <select
                       className="input sm-config-source-select"
@@ -840,16 +860,16 @@ export function ShotDetailModal({
                 </label>
                 <div className="sm-field-divider" />
                 {renderField(t("shotReference.notesLabel"), shot.notes ?? "", "notes", 2)}
-                {canUseProject && editable && (
-                  <div style={{ marginTop: "var(--space-2)", textAlign: "right" }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      type="button"
-                      disabled={Boolean(regenFields)}
-                      onClick={openRegenAll}
+                {canUseProject && (
+                  <div className="sm-llm-config-row">
+                    <select
+                      className="input sm-config-source-select"
+                      value={llmConfigSource}
+                      onChange={(e) => onLlmConfigSourceChange?.(e.target.value as ImageConfigSource)}
                     >
-                      <RegenIcon /> {t("shotDetailDrawer.regenerateAll")}
-                    </button>
+                      <option value="team">{t("projectWorkspace.media.imageConfigSourceTeam")}</option>
+                      <option value="personal">{t("projectWorkspace.media.imageConfigSourcePersonal")}</option>
+                    </select>
                   </div>
                 )}
               </div>
@@ -939,7 +959,8 @@ export function ShotDetailModal({
             shotId={shot.id}
             projectId={projectId}
             fields={regenFields}
-            defaultLlmConfigSource={imageConfigSource}
+            defaultLlmConfigSource={llmConfigSource}
+            onLlmConfigSourceChange={onLlmConfigSourceChange}
             onAdopt={handleRegenAdopt}
             onClose={() => setRegenFields(null)}
           />
