@@ -24,6 +24,7 @@ interface Props {
   projectId: string | undefined;
   fields: RegenFieldEntry[];
   defaultLlmConfigSource?: LlmConfigSource;
+  onLlmConfigSourceChange?: (source: LlmConfigSource) => void;
   onAdopt: (patch: Record<string, string>) => void;
   onClose: () => void;
 }
@@ -37,6 +38,7 @@ export function RegenerateOverlay({
   projectId,
   fields,
   defaultLlmConfigSource = "team",
+  onLlmConfigSourceChange,
   onAdopt,
   onClose,
 }: Props) {
@@ -179,7 +181,11 @@ export function RegenerateOverlay({
           <select
             className="input sm-config-source-select"
             value={configSource}
-            onChange={(e) => setConfigSource(e.target.value as LlmConfigSource)}
+            onChange={(e) => {
+              const val = e.target.value as LlmConfigSource;
+              setConfigSource(val);
+              onLlmConfigSourceChange?.(val);
+            }}
             disabled={phase === "generating"}
           >
             <option value="team">{t("projectWorkspace.generate.llmConfigSourceTeam")}</option>
