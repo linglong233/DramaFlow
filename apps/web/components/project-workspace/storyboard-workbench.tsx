@@ -144,6 +144,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   const [filter, setFilter] = useState<ShotFilter>("all");
   const [imageConfigSource, setImageConfigSource] = useState<ImageConfigSource>("team");
   const [ttsConfigSource, setTtsConfigSource] = useState<ImageConfigSource>("team");
+  const [llmConfigSource, setLlmConfigSource] = useState<ImageConfigSource>("team");
   const [ttsDrafts, setTtsDrafts] = useState<Record<string, { text: string; characterId: string }>>({});
   const { feedback, setFeedback } = useFeedback();
   const gridRef = useRef<HTMLDivElement>(null);
@@ -738,6 +739,8 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           ttsConfigSource={ttsConfigSource}
           onImageConfigSourceChange={setImageConfigSource}
           onTtsConfigSourceChange={setTtsConfigSource}
+          llmConfigSource={llmConfigSource}
+          onLlmConfigSourceChange={setLlmConfigSource}
         />
       )}
     </div>
