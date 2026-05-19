@@ -55,6 +55,15 @@ function CloseIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
 const AVATAR_GRADIENTS = [
   "linear-gradient(135deg, #38bdf8, #a78bfa)",
   "linear-gradient(135deg, #34d399, #38bdf8)",
@@ -96,7 +105,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
 
   const project = payload.project;
 
-  const updateProjectMutation = useMutation({
+  const { mutate: updateProject, isPending: isUpdating } = useMutation({
     mutationFn: (body: { name?: string; description?: string }) =>
       apiFetch(`/projects/${projectId}`, {
         method: "PATCH",
@@ -123,15 +132,15 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
         setEditingField(null);
         return;
       }
-      updateProjectMutation.mutate({ name: trimmed });
+      updateProject({ name: trimmed });
     } else if (editingField === "description") {
       if (trimmed === (project?.description ?? "").trim()) {
         setEditingField(null);
         return;
       }
-      updateProjectMutation.mutate({ description: trimmed });
+      updateProject({ description: trimmed });
     }
-  }, [draftValue, editingField, project?.name, project?.description, updateProjectMutation]);
+  }, [draftValue, editingField, project?.name, project?.description]);
 
   const cancelEdit = useCallback(() => {
     setEditingField(null);
@@ -179,6 +188,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                       if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
                       if (e.key === "Escape") cancelEdit();
                     }}
+                    aria-label={t("projectWorkspace.overview.editName")}
                     autoFocus
                   />
                   <div className="pip-edit-actions">
@@ -186,9 +196,9 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                       className="btn btn-primary"
                       type="button"
                       onClick={saveEdit}
-                      disabled={updateProjectMutation.isPending || !draftValue.trim()}
+                      disabled={isUpdating || !draftValue.trim()}
                     >
-                      {updateProjectMutation.isPending ? t("common.submitting") : t("common.save")}
+                      {isUpdating ? t("common.submitting") : t("common.save")}
                     </button>
                     <button className="btn" type="button" onClick={cancelEdit}>
                       {t("common.cancel")}
@@ -204,7 +214,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                     onClick={() => startEdit("name")}
                     aria-label={t("projectWorkspace.overview.editName")}
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    <PencilIcon />
                     {t("common.edit")}
                   </button>
                 </div>
@@ -219,6 +229,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
                       if (e.key === "Escape") cancelEdit();
                     }}
+                    aria-label={t("projectWorkspace.overview.editDescription")}
                     autoFocus
                   />
                   <div className="pip-edit-actions">
@@ -226,9 +237,9 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                       className="btn btn-primary"
                       type="button"
                       onClick={saveEdit}
-                      disabled={updateProjectMutation.isPending}
+                      disabled={isUpdating}
                     >
-                      {updateProjectMutation.isPending ? t("common.submitting") : t("common.save")}
+                      {isUpdating ? t("common.submitting") : t("common.save")}
                     </button>
                     <button className="btn" type="button" onClick={cancelEdit}>
                       {t("common.cancel")}
@@ -245,7 +256,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                     onClick={() => startEdit("description")}
                     aria-label={t("projectWorkspace.overview.editDescription")}
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    <PencilIcon />
                     {t("common.edit")}
                   </button>
                 </div>
