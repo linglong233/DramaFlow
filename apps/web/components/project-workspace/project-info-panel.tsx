@@ -169,8 +169,87 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
             </div>
             <div>
               <span className="kicker">{t("projectWorkspace.overview.kicker")}</span>
-              <h2 className="pip-title">{project?.name ?? t("common.loading")}</h2>
-              <p className="pip-desc">{project?.description || t("projectWorkspace.overview.noDescription")}</p>
+              {editingField === "name" ? (
+                <div>
+                  <input
+                    className="pip-edit-input"
+                    value={draftValue}
+                    onChange={(e) => setDraftValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
+                      if (e.key === "Escape") cancelEdit();
+                    }}
+                    autoFocus
+                  />
+                  <div className="pip-edit-actions">
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={saveEdit}
+                      disabled={updateProjectMutation.isPending || !draftValue.trim()}
+                    >
+                      {updateProjectMutation.isPending ? t("common.submitting") : t("common.save")}
+                    </button>
+                    <button className="btn" type="button" onClick={cancelEdit}>
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="pip-editable-field" style={{ margin: "var(--space-2) 0 var(--space-1)" }}>
+                  <h2 className="pip-title">{project?.name ?? t("common.loading")}</h2>
+                  <button
+                    className="pip-edit-btn"
+                    type="button"
+                    onClick={() => startEdit("name")}
+                    aria-label={t("projectWorkspace.overview.editName")}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    {t("common.edit")}
+                  </button>
+                </div>
+              )}
+              {editingField === "description" ? (
+                <div>
+                  <textarea
+                    className="pip-edit-textarea"
+                    value={draftValue}
+                    onChange={(e) => setDraftValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                      if (e.key === "Escape") cancelEdit();
+                    }}
+                    autoFocus
+                  />
+                  <div className="pip-edit-actions">
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={saveEdit}
+                      disabled={updateProjectMutation.isPending}
+                    >
+                      {updateProjectMutation.isPending ? t("common.submitting") : t("common.save")}
+                    </button>
+                    <button className="btn" type="button" onClick={cancelEdit}>
+                      {t("common.cancel")}
+                    </button>
+                    <span className="pip-edit-hint">Esc {t("common.cancel")} · Shift+Enter ↵</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="pip-editable-field">
+                  <p className="pip-desc">{project?.description || t("projectWorkspace.overview.noDescription")}</p>
+                  <button
+                    className="pip-edit-btn"
+                    type="button"
+                    onClick={() => startEdit("description")}
+                    aria-label={t("projectWorkspace.overview.editDescription")}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    {t("common.edit")}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
