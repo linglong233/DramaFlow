@@ -31,6 +31,8 @@ export const zhCNMessages = {
     reviewPrefix: "审核：{value}",
     storagePrefix: "存储：{value}",
     cancel: "取消",
+    save: "保存",
+    edit: "编辑",
     comingSoon: "即将推出"
   },
   nav: {
@@ -339,7 +341,11 @@ export const zhCNMessages = {
       documentsLabel: "文档",
       projectDetailsTitle: "项目详情",
       descriptionLabel: "说明",
-      noDescription: "暂无项目说明。"
+      noDescription: "暂无项目说明。",
+      updateSuccess: "项目信息已更新",
+      updateFailed: "更新项目信息失败",
+      editName: "编辑项目名称",
+      editDescription: "编辑项目简介"
     },
     tabs: {
       draft: "草稿",
@@ -1512,6 +1518,8 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     reviewPrefix: "Review: {value}",
     storagePrefix: "Storage: {value}",
     cancel: "Cancel",
+    save: "Save",
+    edit: "Edit",
     comingSoon: "Coming soon"
   },
   nav: {
@@ -1820,7 +1828,11 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       documentsLabel: "Documents",
       projectDetailsTitle: "Project Details",
       descriptionLabel: "Description",
-      noDescription: "No description provided."
+      noDescription: "No description provided.",
+      updateSuccess: "Project info updated",
+      updateFailed: "Failed to update project info",
+      editName: "Edit project name",
+      editDescription: "Edit project description"
     },
     tabs: {
       draft: "Draft",
