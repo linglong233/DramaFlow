@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ProjectRole, ProjectWorkspacePayload } from "@dramaflow/shared";
 
@@ -91,8 +91,51 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState<ProjectRole>("viewer");
   const [showAddMember, setShowAddMember] = useState(false);
+  const [editingField, setEditingField] = useState<"name" | "description" | null>(null);
+  const [draftValue, setDraftValue] = useState("");
 
   const project = payload.project;
+
+  const updateProjectMutation = useMutation({
+    mutationFn: (body: { name?: string; description?: string }) =>
+      apiFetch(`/projects/${projectId}`, {
+        method: "PATCH",
+        body,
+      }),
+    onSuccess: async () => {
+      setEditingField(null);
+      setFeedback({ message: t("projectWorkspace.overview.updateSuccess"), error: null });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+    },
+    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.overview.updateFailed") }),
+  });
+
+  const startEdit = useCallback((field: "name" | "description") => {
+    setDraftValue(field === "name" ? (project?.name ?? "") : (project?.description ?? ""));
+    setEditingField(field);
+  }, [project?.name, project?.description]);
+
+  const saveEdit = useCallback(() => {
+    const trimmed = draftValue.trim();
+    if (editingField === "name") {
+      if (!trimmed) return;
+      if (trimmed === (project?.name ?? "").trim()) {
+        setEditingField(null);
+        return;
+      }
+      updateProjectMutation.mutate({ name: trimmed });
+    } else if (editingField === "description") {
+      if (trimmed === (project?.description ?? "").trim()) {
+        setEditingField(null);
+        return;
+      }
+      updateProjectMutation.mutate({ description: trimmed });
+    }
+  }, [draftValue, editingField, project?.name, project?.description, updateProjectMutation]);
+
+  const cancelEdit = useCallback(() => {
+    setEditingField(null);
+  }, []);
 
   const addProjectMemberMutation = useMutation({
     mutationFn: () => apiFetch(`/projects/${projectId}/members`, {
