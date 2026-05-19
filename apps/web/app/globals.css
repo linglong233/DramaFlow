@@ -8069,6 +8069,95 @@ textarea.input {
   max-width: 60ch;
 }
 
+.pip-editable-field {
+  position: relative;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.pip-editable-field:hover {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.pip-editable-field:hover .pip-edit-btn {
+  opacity: 1;
+}
+
+.pip-editable-field:hover::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1.5px dashed color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+
+.pip-edit-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.pip-edit-btn:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.pip-edit-input,
+.pip-edit-textarea {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pip-edit-input {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.pip-edit-textarea {
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 48px;
+  max-width: 60ch;
+}
+
+.pip-edit-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
+}
+
+.pip-edit-actions .pip-edit-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
 .pip-meta-strip {
   display: flex;
   flex-wrap: wrap;
