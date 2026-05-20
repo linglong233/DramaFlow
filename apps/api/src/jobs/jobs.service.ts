@@ -900,9 +900,24 @@ export class JobsService {
     prompt: string,
     configSource: ImageConfigSource,
     providerId?: string,
+    referenceImageAssetId?: string,
+    negativePrompt?: string,
   ): Promise<{ buffer: Buffer; mimeType: string; provider: string; model?: string }> {
     await this.assertProjectReadable(userId, projectId);
     const sourceLabel = configSource === "team" ? "team" : "personal";
+
+    // Resolve reference image buffer if assetId provided
+    let referenceImageBuffer: Buffer | undefined;
+    if (referenceImageAssetId) {
+      try {
+        const assetInfo = await this.storageService.getAssetBuffer(userId, referenceImageAssetId);
+        if (assetInfo) {
+          referenceImageBuffer = Buffer.isBuffer(assetInfo.body)
+            ? assetInfo.body
+            : Buffer.from(assetInfo.body);
+        }
+      } catch { /* reference image not available */ }
+    }
 
     // 优先从新 provider 列表解析
     let config: ImageGenerationConfig | undefined;
@@ -933,7 +948,15 @@ export class JobsService {
       throw new BadRequestException(`The ${sourceLabel} Grok image config is missing a base URL.`);
     }
 
-    const input = { prompt, shotId: "char-ref", style: "portrait", aspectRatio: "1:1" };
+    // For providers that don't support img2img, append reference note to prompt
+    const providersWithImg2Img = ["google-gemini", "stable-diffusion", "comfyui"];
+    let effectivePrompt = prompt;
+    if (referenceImageBuffer && !providersWithImg2Img.includes(config.provider)) {
+      effectivePrompt = `${prompt}\n\nReference: Use this image as a style and composition guide.`;
+      referenceImageBuffer = undefined; // Don't pass to unsupported providers
+    }
+
+    const input = { prompt: effectivePrompt, shotId: "char-ref", style: "portrait", aspectRatio: "1:1", referenceImageBuffer, negativePrompt };
     let generated: GeneratedMediaResult;
 
     if (config.provider === "google-gemini") {
@@ -977,6 +1000,8 @@ export class JobsService {
     prompt: string,
     configSource: ImageConfigSource = "team",
     providerId?: string,
+    referenceImageAssetId?: string,
+    negativePrompt?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
     const wb = await this.workspaceService.getWorldBible(userId, projectId);
     const character = wb.characters.find((c) => c.id === characterId);
@@ -991,6 +1016,8 @@ export class JobsService {
       prompt,
       configSource,
       providerId,
+      referenceImageAssetId,
+      negativePrompt,
     );
   }
 
@@ -1001,6 +1028,8 @@ export class JobsService {
     prompt: string,
     configSource: ImageConfigSource = "team",
     providerId?: string,
+    referenceImageAssetId?: string,
+    negativePrompt?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
     const wb = await this.workspaceService.getWorldBible(userId, projectId);
     const location = wb.locations.find((item) => item.id === locationId);
@@ -1015,6 +1044,8 @@ export class JobsService {
       prompt,
       configSource,
       providerId,
+      referenceImageAssetId,
+      negativePrompt,
     );
   }
 
@@ -1024,6 +1055,8 @@ export class JobsService {
     prompt: string,
     configSource: ImageConfigSource = "team",
     providerId?: string,
+    referenceImageAssetId?: string,
+    negativePrompt?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
     return this.generateWorldBibleReferenceImage(
       userId,
@@ -1032,6 +1065,8 @@ export class JobsService {
       prompt,
       configSource,
       providerId,
+      referenceImageAssetId,
+      negativePrompt,
     );
   }
 
@@ -1042,8 +1077,13 @@ export class JobsService {
     prompt: string,
     configSource: ImageConfigSource,
     providerId?: string,
+    referenceImageAssetId?: string,
+    negativePrompt?: string,
   ): Promise<WorldBibleReferenceImageGenerateResponse> {
-    const result = await this.generateImageFromPrompt(userId, projectId, prompt, configSource, providerId);
+    const result = await this.generateImageFromPrompt(
+      userId, projectId, prompt, configSource, providerId,
+      referenceImageAssetId, negativePrompt,
+    );
 
     const filename = `${filenamePrefix}-${Date.now()}.${result.mimeType.split("/")[1] || "png"}`;
     const stored = await this.storageService.storeGeneratedAsset(userId, {
@@ -1053,7 +1093,11 @@ export class JobsService {
       body: result.buffer,
     });
 
-    return { assetUrl: stored.url! };
+    return {
+      assetUrl: stored.url!,
+      assetId: stored.asset.id,
+      prompt,
+    };
   }
 
   private async processVideoJob(job: JobRecord<MediaJobInput>) {

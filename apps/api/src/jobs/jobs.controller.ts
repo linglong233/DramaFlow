@@ -106,6 +106,8 @@ export class JobsController {
       body.prompt,
       body.configSource ?? "team",
       body.providerId,
+      body.referenceImageAssetId,
+      body.negativePrompt,
     );
   }
 
@@ -123,6 +125,8 @@ export class JobsController {
       body.prompt,
       body.configSource ?? "team",
       body.providerId,
+      body.referenceImageAssetId,
+      body.negativePrompt,
     );
   }
 
@@ -138,6 +142,8 @@ export class JobsController {
       body.prompt,
       body.configSource ?? "team",
       body.providerId,
+      body.referenceImageAssetId,
+      body.negativePrompt,
     );
   }
 
