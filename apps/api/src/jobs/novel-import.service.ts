@@ -65,6 +65,7 @@ export class NovelImportService {
     workspaceService: any,
     resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
     streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+    shouldAbort: () => boolean = () => false,
   ): AsyncGenerator<NovelImportEvent> {
     const chunks = this.chunkText(input.text);
     if (chunks.length === 0) {
@@ -76,13 +77,19 @@ export class NovelImportService {
     try {
       const config = await resolveLlmConfig(userId, projectId, input.llmConfigSource);
 
-      // Phase 2a: World bible extraction
-      const wbChunkCount = Math.min(chunks.length, Math.max(1, Math.min(3, Math.ceil(10000 / 3000))));
-      const wbChunks = chunks.slice(0, wbChunkCount).join("\n\n");
+      // Phase 2a: World bible extraction (use first 3 chunks for extraction input)
+      const wbChunks = chunks.slice(0, Math.min(chunks.length, 3)).join("\n\n");
 
       yield { type: "progress", phase: "worldBible", message: "提取角色与场景..." };
       const worldBible = await this.extractWorldBible(wbChunks, config, streamLlm);
       yield { type: "worldBible", content: worldBible };
+
+      // Build world bible context string — used for ALL chunks
+      const wbContext = [
+        "## 项目世界观",
+        worldBible.characters.length > 0 ? `角色：${worldBible.characters.map((c) => `${c.name}（${c.appearance}）`).join("；")}` : "",
+        worldBible.locations.length > 0 ? `场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}` : "",
+      ].filter(Boolean).join("\n");
 
       // Phase 2b: Synopsis
       yield { type: "progress", phase: "worldBible", message: "生成大纲..." };
@@ -94,12 +101,12 @@ export class NovelImportService {
       let prevSummary = "";
 
       for (let i = 0; i < chunks.length; i++) {
-        yield { type: "progress", phase: "script", chunkIndex: i, totalChunks: chunks.length };
+        if (shouldAbort()) {
+          yield { type: "error", error: "导入已取消" };
+          return;
+        }
 
-        const isWbChunk = i < wbChunkCount;
-        const wbContext = isWbChunk
-          ? `## 项目世界观\n角色：${worldBible.characters.map((c) => `${c.name}（${c.appearance}）`).join("；")}\n场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}`
-          : "";
+        yield { type: "progress", phase: "script", chunkIndex: i, totalChunks: chunks.length };
 
         const result = await this.generateChunkScenes(chunks[i], wbContext, prevSummary, config, streamLlm);
         allScenes.push(...result.scenes);
