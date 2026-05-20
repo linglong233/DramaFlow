@@ -239,7 +239,7 @@ export class JobsController {
       projectId,
       input,
       this.workspaceService,
-      (uid: string, pid: string, src?: LlmConfigSource) => this.jobsService.resolveTextLlmConfig(uid, pid, src),
+      (uid: string, pid: string, src?: LlmConfigSource) => this.jobsService.resolveTextLlmConfig(uid, pid, src).then((c) => c!),
       (sys: string, msgs: Array<{ role: string; content: string }>, cfg?: any) => this.textProvider.streamChat(sys, msgs, cfg),
     )) {
       this.writeSseEvent(res, event);
