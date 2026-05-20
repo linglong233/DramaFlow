@@ -161,7 +161,7 @@ export function NovelImportGenerator({ projectId, llmConfigSource }: Props) {
         `/projects/${projectId}/novel-import/stream`,
         {
           method: "POST",
-          body: JSON.stringify({ text: state.inputText, llmConfigSource }),
+          body: { text: state.inputText, llmConfigSource },
           signal: controller.signal,
         },
       )) {
