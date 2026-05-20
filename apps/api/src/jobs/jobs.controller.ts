@@ -7,6 +7,7 @@
  */
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -284,11 +285,15 @@ export class JobsController {
     @Param("id") sessionId: string,
     @Param("index") index: string,
   ) {
+    const chunkIndex = Number(index);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      throw new BadRequestException("Chunk index must be a non-negative integer");
+    }
     const session = await this.novelImportService.getSession(user.id, sessionId);
     const job = await this.jobsService.createNovelImportJob(user.id, session.projectId, {
       action: "retryChunk",
       sessionId,
-      chunkIndex: Number(index),
+      chunkIndex,
     });
     const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id);
     return { session: updated, job };
@@ -300,11 +305,15 @@ export class JobsController {
     @Param("id") sessionId: string,
     @Param("index") index: string,
   ) {
+    const chunkIndex = Number(index);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      throw new BadRequestException("Chunk index must be a non-negative integer");
+    }
     const session = await this.novelImportService.getSession(user.id, sessionId);
     const job = await this.jobsService.createNovelImportJob(user.id, session.projectId, {
       action: "rerunFromChunk",
       sessionId,
-      chunkIndex: Number(index),
+      chunkIndex,
     });
     const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id);
     return { session: updated, job };

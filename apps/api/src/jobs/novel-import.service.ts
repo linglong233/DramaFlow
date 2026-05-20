@@ -321,6 +321,9 @@ export class NovelImportService {
     streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ): Promise<NovelImportSession> {
     const session = await this.getSession(userId, sessionId);
+    if (session.status === "written") {
+      throw new BadRequestException("Written sessions cannot be regenerated");
+    }
     if (!session.chunks[chunkIndex]) {
       throw new BadRequestException(`Chunk ${chunkIndex} does not exist`);
     }
@@ -348,6 +351,9 @@ export class NovelImportService {
     streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ): Promise<NovelImportSession> {
     const session = await this.getSession(userId, sessionId);
+    if (session.status === "written") {
+      throw new BadRequestException("Written sessions cannot be regenerated");
+    }
     if (!session.chunks[chunkIndex]) {
       throw new BadRequestException(`Chunk ${chunkIndex} does not exist`);
     }
