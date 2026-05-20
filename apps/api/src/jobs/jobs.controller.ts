@@ -230,11 +230,11 @@ export class JobsController {
   async streamNovelImport(
     @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
-    @Body() body: { text: string; llmConfigSource?: LlmConfigSource },
-    @Res() res: Response,
     @Req() req: Request,
+    @Res() res: Response,
   ) {
-    if (!body.text?.trim()) {
+    const body = req.body as { text: string; llmConfigSource?: LlmConfigSource };
+    if (!body?.text?.trim()) {
       res.status(400).json({ message: "文本不能为空" });
       return;
     }
