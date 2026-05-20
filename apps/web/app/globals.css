@@ -9696,6 +9696,99 @@ textarea.input {
   padding: var(--space-2);
 }
 
+/* ── Novel Import Wizard ── */
+
+.novel-import-wizard__steps {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-2);
+}
+
+.novel-import-wizard__step {
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.novel-import-wizard__step--on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.novel-import-wizard__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.novel-import-wizard__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.novel-import-wizard__fields label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.novel-import-wizard__chunks,
+.novel-import-wizard__chunk-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.novel-import-wizard__chunk-row,
+.novel-import-wizard__chunk-card {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+}
+
+.novel-import-wizard__chunk-card > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.novel-import-wizard__chunk-card--failed {
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.novel-import-wizard__chunk-card--stale {
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.novel-import-wizard__error {
+  color: var(--color-error);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .novel-import-wizard__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .novel-import-wizard__chunk-card {
+    flex-direction: column;
+  }
+}
+
 /* ── Step Wizard ── */
 .gen-step-bar {
   display: flex;
