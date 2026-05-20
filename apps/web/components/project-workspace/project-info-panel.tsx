@@ -176,7 +176,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
             >
               {initials(project?.name ?? "PR")}
             </div>
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <span className="kicker">{t("projectWorkspace.overview.kicker")}</span>
               {editingField === "name" ? (
                 <div>

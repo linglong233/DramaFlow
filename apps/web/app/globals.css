@@ -8071,6 +8071,8 @@ textarea.input {
 
 .pip-editable-field {
   position: relative;
+  width: 100%;
+  padding-right: 52px;
   border-radius: var(--radius-sm);
   transition: background 0.15s ease;
 }
