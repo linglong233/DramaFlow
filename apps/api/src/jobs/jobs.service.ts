@@ -542,7 +542,13 @@ export class JobsService {
   private async processScriptJob(job: JobRecord<ScriptJobInput>) {
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
     const resolvedModel = this.resolveTextModel(config);
-    const content = await this.textProvider.generateScript(job.input, config);
+    const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
+    const enrichedInput = { ...job.input };
+    if (worldBible) {
+      const wbPrompt = this.formatWorldBiblePrompt(worldBible);
+      enrichedInput.premise = `${job.input.premise}\n${wbPrompt}`;
+    }
+    const content = await this.textProvider.generateScript(enrichedInput, config);
     const enrichedContent = await this.autoMatchWorldBible(job.projectId, content);
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
@@ -576,7 +582,13 @@ export class JobsService {
   private async processSynopsisJob(job: JobRecord<SynopsisJobInput>) {
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
     const resolvedModel = this.resolveTextModel(config);
-    const synopsisText = await this.textProvider.generateSynopsis(job.input, config);
+    const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
+    const enrichedInput = { ...job.input };
+    if (worldBible) {
+      const wbPrompt = this.formatWorldBiblePrompt(worldBible);
+      enrichedInput.constraints = [job.input.constraints, wbPrompt].filter(Boolean).join("\n");
+    }
+    const synopsisText = await this.textProvider.generateSynopsis(enrichedInput, config);
 
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
@@ -738,8 +750,26 @@ export class JobsService {
     const script = scriptVersion.content as ScriptContent;
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
     const resolvedModel = this.resolveTextModel(config);
+    const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
+    const enrichedStoryboardInput = { ...job.input };
+    if (worldBible && (worldBible.characters.length > 0 || worldBible.locations.length > 0 || worldBible.styleGuide?.visualStyle)) {
+      const wbParts: string[] = [job.input.cinematicStyle, "", "## 项目世界观"];
+      if (worldBible.characters.length > 0) {
+        wbParts.push(`角色：${worldBible.characters.map((c) => `${c.name} (id: "${c.id}")`).join("；")}`);
+      }
+      if (worldBible.locations.length > 0) {
+        wbParts.push(`场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}`);
+      }
+      if (worldBible.styleGuide?.visualStyle) {
+        wbParts.push(`风格：${worldBible.styleGuide.visualStyle}`);
+      }
+      if (worldBible.characters.length > 0) {
+        wbParts.push("", `IMPORTANT: For each shot, populate characterIds with the actual character IDs listed above. Only include characters who appear in the shot.`);
+      }
+      enrichedStoryboardInput.cinematicStyle = wbParts.filter(Boolean).join("\n");
+    }
     const content = await this.textProvider.generateStoryboard({
-      ...job.input,
+      ...enrichedStoryboardInput,
       script,
     }, config);
     const document = await this.workspaceService.ensureDocumentForProject({
@@ -1548,6 +1578,24 @@ export class JobsService {
     return { ...content, characters: matchedCharacters, scenes: matchedScenes };
   }
 
+  private async getWorldBible(userId: string, projectId: string): Promise<WorldBibleContent | null> {
+    try {
+      return await this.workspaceService.getWorldBible(userId, projectId);
+    } catch { return null; }
+  }
+
+  private formatWorldBiblePrompt(worldBible: WorldBibleContent | null): string {
+    if (!worldBible) return "";
+    const parts: string[] = [];
+    if (worldBible.characters.length > 0)
+      parts.push(`角色：${worldBible.characters.map((c) => `${c.name}（${c.appearance}）`).join("；")}`);
+    if (worldBible.locations.length > 0)
+      parts.push(`场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}`);
+    if (worldBible.styleGuide?.visualStyle)
+      parts.push(`风格：${worldBible.styleGuide.visualStyle}`);
+    return parts.length > 0 ? `\n## 项目世界观\n${parts.join("\n")}` : "";
+  }
+
   private shouldPollVideoJob(job: JobRecord) {
     const state = this.toVideoJobState(job.result, undefined, undefined);
     return !this.isProviderComplete(state?.providerStatus);
@@ -2194,6 +2242,13 @@ export class JobsService {
         }
       }
 
+      // Inject world bible context
+      const worldBible = await this.getWorldBible(userId, projectId);
+      if (worldBible) {
+        const wbPrompt = this.formatWorldBiblePrompt(worldBible);
+        enrichedInput.premise = `${enrichedInput.premise}\n${wbPrompt}`;
+      }
+
       for await (const chunk of this.textProvider.generateScriptStream(enrichedInput, config)) {
         yield chunk;
         if (chunk.type === "done" && chunk.result) {
@@ -2268,9 +2323,15 @@ export class JobsService {
     try {
       const config = await this.resolveTextLlmConfig(userId, projectId, llmConfigSource);
       const resolvedModel = this.resolveTextModel(config);
+      const worldBible = await this.getWorldBible(userId, projectId);
+      const enrichedInput = { ...input };
+      if (worldBible) {
+        const wbPrompt = this.formatWorldBiblePrompt(worldBible);
+        enrichedInput.constraints = [input.constraints, wbPrompt].filter(Boolean).join("\n");
+      }
       let finalResult: string | undefined;
 
-      for await (const chunk of this.textProvider.generateSynopsisStream(input, config)) {
+      for await (const chunk of this.textProvider.generateSynopsisStream(enrichedInput, config)) {
         yield chunk;
         if (chunk.type === "done" && chunk.result) {
           finalResult = chunk.result as string;
@@ -2352,9 +2413,27 @@ export class JobsService {
       const script = scriptVersion.content as ScriptContent;
       const config = await this.resolveTextLlmConfig(userId, projectId, llmConfigSource);
       const resolvedModel = this.resolveTextModel(config);
+      const worldBible = await this.getWorldBible(userId, projectId);
+      const enrichedStoryboardInput = { ...input };
+      if (worldBible && (worldBible.characters.length > 0 || worldBible.locations.length > 0 || worldBible.styleGuide?.visualStyle)) {
+        const wbParts: string[] = [input.cinematicStyle, "", "## 项目世界观"];
+        if (worldBible.characters.length > 0) {
+          wbParts.push(`角色：${worldBible.characters.map((c) => `${c.name} (id: "${c.id}")`).join("；")}`);
+        }
+        if (worldBible.locations.length > 0) {
+          wbParts.push(`场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}`);
+        }
+        if (worldBible.styleGuide?.visualStyle) {
+          wbParts.push(`风格：${worldBible.styleGuide.visualStyle}`);
+        }
+        if (worldBible.characters.length > 0) {
+          wbParts.push("", `IMPORTANT: For each shot, populate characterIds with the actual character IDs listed above. Only include characters who appear in the shot.`);
+        }
+        enrichedStoryboardInput.cinematicStyle = wbParts.filter(Boolean).join("\n");
+      }
       let finalResult: import("@dramaflow/shared").StoryboardContent | undefined;
 
-      for await (const chunk of this.textProvider.generateStoryboardStream({ ...input, script }, config)) {
+      for await (const chunk of this.textProvider.generateStoryboardStream({ ...enrichedStoryboardInput, script }, config)) {
         yield chunk;
         if (chunk.type === "done" && chunk.result) {
           finalResult = chunk.result as import("@dramaflow/shared").StoryboardContent;

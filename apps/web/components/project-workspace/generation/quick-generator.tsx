@@ -25,6 +25,7 @@ import { ScriptView, StoryboardPreview } from "../version-view";
 import type { GeneratorConfig } from "./generator-registry";
 import { SourcePicker } from "./source-picker";
 import { useGenerationStream } from "./use-generation-stream";
+import { WorldBibleIndicator } from "./world-bible-indicator";
 
 interface Props {
   config: GeneratorConfig;
@@ -278,6 +279,9 @@ export function QuickGenerator({ config, projectId, project, llmConfigSource }: 
             {/* Feedback */}
             {feedback.message ? <div className="gen-notice gen-notice--ok" role="status">{feedback.message}</div> : null}
             {feedback.error ? <div className="gen-notice gen-notice--err" role="alert">{feedback.error}</div> : null}
+
+            {/* World bible indicator */}
+            <WorldBibleIndicator project={project} />
 
             {/* Source picker */}
             {config.sourcePicker && (

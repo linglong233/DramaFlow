@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, forwardRef } from "react";
-import type { StoryboardShot } from "@dramaflow/shared";
+import type { CharacterProfile, StoryboardShot } from "@dramaflow/shared";
 import {
   getStoryboardCameraMoveLabel,
   getStoryboardFramingLabel,
@@ -36,6 +36,7 @@ interface Props {
   isDragging?: boolean;
   style?: React.CSSProperties;
   dragHandleProps?: Record<string, unknown>;
+  charactersById?: Map<string, CharacterProfile>;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onQuickEdit?: (field: string, value: number) => void;
@@ -135,6 +136,7 @@ export const ShotCard = forwardRef<HTMLButtonElement, Props>(function ShotCard({
   isDragging,
   style,
   dragHandleProps,
+  charactersById,
   onClick,
   onDoubleClick,
   onQuickEdit,
@@ -198,6 +200,14 @@ export const ShotCard = forwardRef<HTMLButtonElement, Props>(function ShotCard({
           <img className="shot-card__thumb" src={imageUrl} alt={shot.shotLabel} loading="lazy" />
         ) : (
           <span className="shot-card__placeholder">{visualPreview || "—"}</span>
+        )}
+        {charactersById && (shot.characterIds?.length ?? 0) > 0 && (
+          <div className="shot-card__chars">
+            {shot.characterIds!.map((id) => {
+              const ch = charactersById.get(id);
+              return ch ? <span key={id} className="shot-card__char-chip">{ch.name}</span> : null;
+            })}
+          </div>
         )}
       </div>
       <div className="shot-card__footer" onDoubleClick={handleFooterDoubleClick}>

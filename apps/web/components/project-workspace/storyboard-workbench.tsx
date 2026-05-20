@@ -98,11 +98,12 @@ function createEmptyShot(sceneId: string, index: number): StoryboardShot {
   };
 }
 
-function SortableShotCard({ shot, state, isSelected, multiSelected, onClick, onDoubleClick, onQuickEdit }: {
+function SortableShotCard({ shot, state, isSelected, multiSelected, charactersById, onClick, onDoubleClick, onQuickEdit }: {
   shot: StoryboardShot;
   state: ShotProjectState | null;
   isSelected: boolean;
   multiSelected: boolean;
+  charactersById?: Map<string, import("@dramaflow/shared").CharacterProfile>;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onQuickEdit: (field: string, value: number) => void;
@@ -121,6 +122,7 @@ function SortableShotCard({ shot, state, isSelected, multiSelected, onClick, onD
       multiSelected={multiSelected}
       isDragging={isDragging}
       style={style}
+      charactersById={charactersById}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onQuickEdit={onQuickEdit}
@@ -693,6 +695,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
                           state={state}
                           isSelected={isSelected}
                           multiSelected={selectedShotIds.has(shot.id)}
+                          charactersById={charactersById}
                           onClick={(e) => handleCardClick(shot, shotIndex, e)}
                           onDoubleClick={() => {
                             setSelectedShotId(shot.id);

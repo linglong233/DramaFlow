@@ -8,7 +8,7 @@
 "use client";
 
 import { useState } from "react";
-import { normalizeScriptContent, type ScriptContent, type ScriptScene } from "@dramaflow/shared";
+import { normalizeScriptContent, type ScriptContent, type ScriptScene, type WorldBibleContent } from "@dramaflow/shared";
 import { useI18n } from "../../lib/i18n";
 
 interface Props {
@@ -16,6 +16,7 @@ interface Props {
   onSave: (title: string, content: ScriptContent) => void;
   onCancel: () => void;
   isSaving: boolean;
+  worldBible?: WorldBibleContent | null;
 }
 
 function generateId() {
@@ -42,7 +43,7 @@ function emptyContent(): ScriptContent {
   };
 }
 
-export function ScriptEditor({ initialContent, onSave, onCancel, isSaving }: Props) {
+export function ScriptEditor({ initialContent, onSave, onCancel, isSaving, worldBible }: Props) {
   const { t } = useI18n();
   const [title, setTitle] = useState(initialContent ? t("scriptEditor.titleFromExisting") : t("scriptEditor.titleManual"));
   const [content, setContent] = useState<ScriptContent>(() => initialContent ? normalizeScriptContent(initialContent) : emptyContent());
@@ -275,6 +276,9 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving }: Pro
                     >
                       {c.name}
                     </strong>
+                    {c.worldBibleCharId && worldBible?.characters && (
+                      <span className="se-char-wb-link" title="已关联世界观角色">●</span>
+                    )}
                     <span
                       className="muted"
                       onClick={() => startEdit(i)}

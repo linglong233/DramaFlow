@@ -25,6 +25,7 @@ import { useI18n } from "../../../lib/i18n";
 import { ConversationChat } from "../conversation-chat";
 import { ConversationBrief as ConversationBriefPanel } from "../conversation-brief";
 import type { GeneratorConfig } from "./generator-registry";
+import { WorldBibleIndicator } from "./world-bible-indicator";
 
 interface Props {
   config: GeneratorConfig;
@@ -225,6 +226,7 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
     <div className="conv-root">
       {feedback.message && <div className="gen-notice gen-notice--ok" role="status">{feedback.message}</div>}
       {feedback.error && <div className="gen-notice gen-notice--err" role="alert">{feedback.error}</div>}
+      <WorldBibleIndicator project={project} />
 
       <div className="conv-layout">
         <div className="conv-layout__chat">
