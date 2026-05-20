@@ -1,11 +1,18 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type {
+  CreateNovelImportSessionPayload,
   LlmConfigSource,
   LlmProviderConfig,
+  NovelImportChunkRecord,
+  NovelImportOptions,
+  NovelImportSession,
   ScriptScene,
   WorldBibleContent,
 } from "@dramaflow/shared";
+import { createId } from "../common/id";
+import { DevDatabaseService } from "../common/dev-database.service";
 import type { StreamChunk } from "./text-generation.provider";
+import { WorkspaceService } from "../workspace/workspace.service";
 
 export interface NovelImportInput {
   text: string;
@@ -22,9 +29,153 @@ export type NovelImportEvent =
   | { type: "done"; worldBibleDocId: string; synopsisDocId: string; scriptDocId: string }
   | { type: "error"; error: string };
 
+const MAX_NOVEL_IMPORT_CHARS = 500_000;
+
 @Injectable()
 export class NovelImportService {
   private readonly logger = new Logger(NovelImportService.name);
+
+  constructor(
+    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
+  ) {}
+
+  async createSession(userId: string, projectId: string, payload: CreateNovelImportSessionPayload) {
+    const text = payload.text.trim();
+    if (!text) {
+      throw new BadRequestException("Novel text cannot be empty");
+    }
+    if (text.length > MAX_NOVEL_IMPORT_CHARS) {
+      throw new BadRequestException(`Novel text cannot exceed ${MAX_NOVEL_IMPORT_CHARS} characters`);
+    }
+    const targetEpisodeCount = Number(payload.targetEpisodeCount);
+    const episodeDurationMinutes = Number(payload.episodeDurationMinutes);
+    if (!Number.isInteger(targetEpisodeCount) || targetEpisodeCount < 1 || targetEpisodeCount > 100) {
+      throw new BadRequestException("Target episode count must be between 1 and 100");
+    }
+    if (!Number.isFinite(episodeDurationMinutes) || episodeDurationMinutes <= 0 || episodeDurationMinutes > 60) {
+      throw new BadRequestException("Episode duration must be between 1 and 60 minutes");
+    }
+
+    await this.assertProjectEditable(userId, projectId);
+    const now = new Date().toISOString();
+    const options: NovelImportOptions = {
+      targetEpisodeCount,
+      episodeDurationMinutes,
+      genreStyle: payload.genreStyle.trim(),
+      adaptationFocus: payload.adaptationFocus.trim(),
+      llmConfigSource: payload.llmConfigSource,
+    };
+    const chunks = this.chunkSourceText(text);
+    if (chunks.length === 0) {
+      throw new BadRequestException("Novel text could not be split into chunks");
+    }
+
+    const session: NovelImportSession = {
+      id: createId("novel_import"),
+      projectId,
+      createdBy: userId,
+      status: "draft",
+      stage: "setup",
+      progress: 0,
+      sourceText: text,
+      options,
+      chunks,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    return this.database.mutate((db) => {
+      db.novelImportSessions.push(session);
+      return session;
+    });
+  }
+
+  async getLatestSession(userId: string, projectId: string) {
+    await this.assertProjectReadable(userId, projectId);
+    return this.database.query((db) => {
+      const sessions = db.novelImportSessions
+        .filter((session) => session.projectId === projectId && session.createdBy === userId && session.status !== "written")
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      return sessions[0] ?? null;
+    });
+  }
+
+  async getSession(userId: string, sessionId: string) {
+    const session = await this.database.query((db) => db.novelImportSessions.find((item) => item.id === sessionId));
+    if (!session) {
+      throw new NotFoundException("Novel import session not found");
+    }
+    await this.assertProjectReadable(userId, session.projectId);
+    return session;
+  }
+
+  chunkSourceText(text: string): NovelImportChunkRecord[] {
+    const normalized = text.replace(/\r\n/g, "\n").trim();
+    const chapterPattern = /^(第[零一二三四五六七八九十百千万\d]+[章回节][^\n]*|Chapter\s+\d+[^\n]*|CHAPTER\s+\d+[^\n]*)/gim;
+    const matches = [...normalized.matchAll(chapterPattern)];
+    if (matches.length >= 2) {
+      return matches.map((match, index) => {
+        const start = match.index ?? 0;
+        const end = index + 1 < matches.length ? matches[index + 1]!.index! : normalized.length;
+        const chunkText = normalized.slice(start, end).trim();
+        return {
+          index,
+          title: match[1]?.trim(),
+          text: chunkText,
+          status: "pending" as const,
+          scenes: [],
+        };
+      }).filter((chunk) => chunk.text);
+    }
+
+    const targetSize = 3000;
+    const chunks: NovelImportChunkRecord[] = [];
+    let pos = 0;
+    while (pos < normalized.length) {
+      let end = Math.min(pos + targetSize, normalized.length);
+      if (end < normalized.length) {
+        const nextBreak = normalized.indexOf("\n\n", end);
+        if (nextBreak !== -1 && nextBreak < end + 600) {
+          end = nextBreak + 2;
+        }
+      }
+      const chunkText = normalized.slice(pos, end).trim();
+      if (chunkText) {
+        chunks.push({
+          index: chunks.length,
+          text: chunkText,
+          status: "pending" as const,
+          scenes: [],
+        });
+      }
+      pos = end;
+    }
+    return chunks;
+  }
+
+  private async assertProjectReadable(userId: string, projectId: string) {
+    const allowed = await this.database.query((db) => {
+      const project = db.projects.find((item) => item.id === projectId);
+      if (!project) return false;
+      return db.projectMembers.some((member) => member.projectId === projectId && member.userId === userId);
+    });
+    if (!allowed) {
+      throw new ForbiddenException("You do not have permission to access this project");
+    }
+  }
+
+  private async assertProjectEditable(userId: string, projectId: string) {
+    const allowed = await this.database.query((db) => {
+      const project = db.projects.find((item) => item.id === projectId);
+      if (!project) return false;
+      const member = db.projectMembers.find((item) => item.projectId === projectId && item.userId === userId);
+      return Boolean(member && member.role !== "viewer");
+    });
+    if (!allowed) {
+      throw new ForbiddenException("You do not have permission to edit this project");
+    }
+  }
 
   chunkText(text: string): string[] {
     const chapterPattern = /^(?:第[零一二三四五六七八九十百千万\d]+[章回节]|Chapter\s+\d+|CHAPTER\s+\d+)/gm;

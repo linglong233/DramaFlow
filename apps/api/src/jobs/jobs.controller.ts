@@ -21,6 +21,7 @@ import {
 import type { Request, Response } from "express";
 import type {
   CreateImageJobPayload,
+  CreateNovelImportSessionPayload,
   CreateScriptJobPayload,
   CreateStoryboardJobPayload,
   CreateSynopsisJobPayload,
@@ -224,6 +225,34 @@ export class JobsController {
       this.writeSseEvent(res, chunk);
     }
     this.endSseResponse(res);
+  }
+
+  @Post("projects/:id/novel-import-sessions")
+  async createNovelImportSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: CreateNovelImportSessionPayload,
+  ) {
+    const session = await this.novelImportService.createSession(user.id, projectId, body);
+    return { session };
+  }
+
+  @Get("projects/:id/novel-import-sessions/latest")
+  async getLatestNovelImportSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+  ) {
+    const session = await this.novelImportService.getLatestSession(user.id, projectId);
+    return { session };
+  }
+
+  @Get("novel-import-sessions/:id")
+  async getNovelImportSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+  ) {
+    const session = await this.novelImportService.getSession(user.id, sessionId);
+    return { session };
   }
 
   @Post("projects/:id/novel-import/stream")

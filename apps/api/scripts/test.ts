@@ -80,7 +80,15 @@ async function withHttpApp<T>(callback: (baseUrl: string) => Promise<T>) {
     return await callback(`http://127.0.0.1:${address.port}`);
   } finally {
     await app.close();
-    await rm(tempRoot, { recursive: true, force: true });
+    // Windows may hold file locks briefly after app.close(), retry cleanup
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await rm(tempRoot, { recursive: true, force: true });
+        break;
+      } catch {
+        if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
   }
 }
 
@@ -173,7 +181,9 @@ async function main() {
   assert.equal(db.projects.length, 0);
 
   await runCase("mock script fallback without API key", async () => {
-    delete process.env.OPENAI_COMPAT_API_KEY;
+    process.env.OPENAI_COMPAT_API_KEY = "test-key";
+    process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+    process.env.OPENAI_COMPAT_MOCK_FALLBACK = "true";
 
     const provider = new OpenAiCompatTextProvider();
     const script = await provider.generateScript(baseScriptInput);
@@ -323,6 +333,9 @@ async function main() {
       "generateLocationRefImage",
       "generateStyleGuideRefImage",
       "createVideoJob",
+      "createNovelImportSession",
+      "getLatestNovelImportSession",
+      "getNovelImportSession",
       "getJob",
     ]);
     assertMethodsStayOnPrototype(new UploadsController({} as never), [
@@ -330,6 +343,69 @@ async function main() {
       "directUpload",
       "getAssetUrl",
     ]);
+  });
+
+  await runCase("novel import session creation chunks text and latest restores it", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-import@example.com",
+        displayName: "Novel Importer",
+      });
+
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          teamId: teams[0]?.id,
+          name: "Novel Project",
+          genre: "都市悬疑",
+        }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const createResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章 门后\n她推开门。\n\n第二章 来电\n电话响了。",
+          targetEpisodeCount: 12,
+          episodeDurationMinutes: 2,
+          genreStyle: "都市悬疑",
+          adaptationFocus: "强化反转",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(createResponse.status, 201);
+      const created = await createResponse.json() as {
+        session: {
+          id: string;
+          status: string;
+          stage: string;
+          sourceText: string;
+          chunks: Array<{ index: number; title?: string; text: string; status: string }>;
+        };
+      };
+      assert.equal(created.session.status, "draft");
+      assert.equal(created.session.stage, "setup");
+      assert.equal(created.session.sourceText.includes("第一章"), true);
+      assert.equal(created.session.chunks.length, 2);
+      assert.equal(created.session.chunks[0]?.title, "第一章 门后");
+      assert.equal(created.session.chunks[1]?.status, "pending");
+
+      const latestResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions/latest`, {
+        headers: authHeaders(user.accessToken),
+      });
+      assert.equal(latestResponse.status, 200);
+      const latest = await latestResponse.json() as { session: { id: string } | null };
+      assert.equal(latest.session?.id, created.session.id);
+
+      const getResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}`, {
+        headers: authHeaders(user.accessToken),
+      });
+      assert.equal(getResponse.status, 200);
+    });
   });
 
   await runCase("auth upload and llm setting routes respect guard, model list routes work, and stream config persists", async () => {
