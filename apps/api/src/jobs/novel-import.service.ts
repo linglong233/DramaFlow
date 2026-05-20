@@ -114,6 +114,9 @@ export class NovelImportService {
 
   async attachJob(userId: string, sessionId: string, jobId: string) {
     const session = await this.getSession(userId, sessionId);
+    if (session.status === "queued" || session.status === "running" || session.status === "written") {
+      throw new BadRequestException(`Cannot start a session with status "${session.status}"`);
+    }
     return this.database.mutate((db) => {
       const live = this.mustFindSession(db, session.id);
       live.status = "queued";
