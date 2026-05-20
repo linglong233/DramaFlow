@@ -464,6 +464,135 @@ async function main() {
     });
   });
 
+  await runCase("novel import worker generates preview without writing drafts", async () => {
+    process.env.OPENAI_COMPAT_API_KEY = "test-key";
+    process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+    process.env.OPENAI_TEXT_MODEL = "gpt-test";
+
+    const replies = [
+      "主要人物：林夏。核心冲突：她发现门后秘密。目标集数：8。",
+      JSON.stringify({
+        characters: [{ id: "char-1", name: "林夏", appearance: "短发，黑色风衣", personality: "冷静", tags: ["主角"], referenceImages: [], sortOrder: 0 }],
+        locations: [{ id: "loc-1", name: "旧公寓", description: "昏暗狭窄", referenceImages: [], sortOrder: 0 }],
+        styleGuide: { visualStyle: "冷峻都市悬疑" },
+      }),
+      "## 故事概览\n林夏在旧公寓发现秘密。\n\n## 分集大纲\n1. 门后秘密。",
+      JSON.stringify({
+        scenes: [{
+          id: "scene-1",
+          heading: "INT. 旧公寓 - 夜",
+          synopsis: "林夏推开门。",
+          characters: ["林夏"],
+          dialogue: [{ speaker: "林夏", line: "谁在那里？" }],
+          directorNote: "低光推进。",
+        }],
+        summary: "林夏进入旧公寓。",
+        continuityNotes: "她还不知道来电者身份。",
+      }),
+      JSON.stringify({
+        scenes: [{
+          id: "scene-2",
+          heading: "INT. 旧公寓 - 夜",
+          synopsis: "电话响起。",
+          characters: ["林夏"],
+          dialogue: [{ speaker: "来电者", line: "别回头。" }],
+          directorNote: "电话铃声压迫。",
+        }],
+        summary: "神秘来电警告林夏。",
+        continuityNotes: "下一段揭示来电者。",
+      }),
+    ];
+
+    globalThis.fetch = (async () => {
+      const content = replies.shift() ?? "{}";
+      const sseBody = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(sseBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-worker@example.com",
+        displayName: "Novel Worker",
+      });
+      const updateProfileResponse = await originalFetch(`${baseUrl}/auth/me`, {
+        method: "PATCH",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "test-key",
+            baseUrl: "https://example.test/v1",
+            model: "gpt-test",
+            stream: true,
+          },
+        }),
+      });
+      assert.equal(updateProfileResponse.status, 200);
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Worker Novel" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "都市悬疑",
+          adaptationFocus: "强化悬念",
+          llmConfigSource: "personal",
+        }),
+      });
+      const { session } = await sessionResponse.json() as { session: { id: string } };
+
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      const { job } = await startResponse.json() as { job: { id: string } };
+
+      const processResponse = await originalFetch(`${baseUrl}/internal/jobs/${job.id}/process`, {
+        method: "POST",
+        headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+      });
+      assert.equal(processResponse.status, 201);
+
+      const getResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}`, {
+        headers: authHeaders(user.accessToken),
+      });
+      const loaded = await getResponse.json() as {
+        session: {
+          status: string;
+          stage: string;
+          adaptationPlan?: string;
+          worldBible?: { characters: Array<{ name: string }> };
+          synopsis?: string;
+          scriptPreview?: { scenes: Array<{ id: string }> };
+          writeResult?: unknown;
+        };
+      };
+      assert.equal(loaded.session.status, "needs_review");
+      assert.equal(loaded.session.stage, "review");
+      assert.equal(loaded.session.adaptationPlan?.includes("林夏"), true);
+      assert.equal(loaded.session.worldBible?.characters[0]?.name, "林夏");
+      assert.equal(loaded.session.synopsis?.includes("故事概览"), true);
+      assert.equal(loaded.session.scriptPreview?.scenes.length, 2);
+      assert.equal(loaded.session.writeResult, undefined);
+    });
+  });
+
   await runCase("auth upload and llm setting routes respect guard, model list routes work, and stream config persists", async () => {
     await withHttpApp(async (baseUrl) => {
       const registerResponse = await originalFetch(`${baseUrl}/auth/register`, {

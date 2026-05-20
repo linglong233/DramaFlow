@@ -8,9 +8,12 @@ import type {
   NovelImportJobInput,
   NovelImportOptions,
   NovelImportSession,
+  NovelImportStage,
+  ScriptContent,
   ScriptScene,
   WorldBibleContent,
 } from "@dramaflow/shared";
+import { normalizeScriptContent, normalizeScriptScene, normalizeWorldBibleContent } from "@dramaflow/shared";
 import { createId } from "../common/id";
 import { DevDatabaseService } from "../common/dev-database.service";
 import type { StreamChunk } from "./text-generation.provider";
@@ -143,19 +146,19 @@ export class NovelImportService {
 
   async processJob(
     job: JobRecord<NovelImportJobInput>,
-    _resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
-    _streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+    resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ): Promise<Record<string, unknown>> {
-    const session = await this.database.mutate((db) => {
-      const live = this.mustFindSession(db, job.input.sessionId);
-      if (live.status === "cancelled") {
-        throw new Error("Novel import session was cancelled");
-      }
-      live.status = "running";
-      live.updatedAt = new Date().toISOString();
-      return live;
-    });
-    return { sessionId: session.id, action: job.input.action };
+    if (job.input.action === "runSession") {
+      const session = await this.runSession(job.createdBy, job.input.sessionId, resolveLlmConfig, streamLlm);
+      return { sessionId: session.id, status: session.status, stage: session.stage };
+    }
+    if (job.input.action === "retryChunk") {
+      const session = await this.retryChunk(job.createdBy, job.input.sessionId, job.input.chunkIndex, resolveLlmConfig, streamLlm);
+      return { sessionId: session.id, status: session.status, chunkIndex: job.input.chunkIndex };
+    }
+    const session = await this.rerunFromChunk(job.createdBy, job.input.sessionId, job.input.chunkIndex, resolveLlmConfig, streamLlm);
+    return { sessionId: session.id, status: session.status, chunkIndex: job.input.chunkIndex };
   }
 
   private mustFindSession(db: { novelImportSessions: NovelImportSession[] }, sessionId: string) {
@@ -164,6 +167,329 @@ export class NovelImportService {
       throw new NotFoundException("Novel import session not found");
     }
     return session;
+  }
+
+  // ===== Pipeline orchestration =====
+
+  private async runSession(
+    userId: string,
+    sessionId: string,
+    resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ) {
+    let session = await this.markSessionRunning(userId, sessionId, "adaptationPlan", 5);
+    const config = await resolveLlmConfig(userId, session.projectId, session.options.llmConfigSource);
+
+    if (!session.adaptationPlan) {
+      const adaptationPlan = await this.generateAdaptationPlan(session, config, streamLlm);
+      session = await this.updateSession(session.id, (live) => {
+        live.adaptationPlan = adaptationPlan;
+        live.stage = "worldBible";
+        live.progress = 20;
+      });
+    }
+
+    if (!session.worldBible) {
+      const worldBible = await this.generateWorldBible(session, config, streamLlm);
+      session = await this.updateSession(session.id, (live) => {
+        live.worldBible = worldBible;
+        live.stage = "synopsis";
+        live.progress = 35;
+      });
+    }
+
+    if (!session.synopsis) {
+      const synopsis = await this.generateSynopsisForSession(session, config, streamLlm);
+      session = await this.updateSession(session.id, (live) => {
+        live.synopsis = synopsis;
+        live.stage = "script";
+        live.progress = 45;
+      });
+    }
+
+    const startIndex = session.chunks.find((chunk) => chunk.status !== "completed" && chunk.status !== "stale")?.index ?? 0;
+    session = await this.generateChunksFrom(session.id, startIndex, config, streamLlm, true);
+    return this.updateSession(session.id, (live) => {
+      live.status = "needs_review";
+      live.stage = "review";
+      live.progress = 100;
+      live.scriptPreview = this.buildPreview(live);
+      live.error = undefined;
+    });
+  }
+
+  private async retryChunk(
+    _userId: string,
+    _sessionId: string,
+    _chunkIndex: number,
+    _resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    _streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ): Promise<NovelImportSession> {
+    throw new Error("retryChunk not yet implemented");
+  }
+
+  private async rerunFromChunk(
+    _userId: string,
+    _sessionId: string,
+    _chunkIndex: number,
+    _resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    _streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ): Promise<NovelImportSession> {
+    throw new Error("rerunFromChunk not yet implemented");
+  }
+
+  // ===== Session state helpers =====
+
+  private async markSessionRunning(userId: string, sessionId: string, stage: NovelImportStage, progress: number) {
+    const session = await this.getSession(userId, sessionId);
+    if (session.status === "written") {
+      throw new BadRequestException("Written sessions cannot be regenerated");
+    }
+    return this.updateSession(session.id, (live) => {
+      if (live.status === "cancelled") {
+        throw new Error("Novel import session was cancelled");
+      }
+      live.status = "running";
+      live.stage = stage;
+      live.progress = progress;
+      live.error = undefined;
+    });
+  }
+
+  private async updateSession(sessionId: string, mutate: (session: NovelImportSession) => void) {
+    return this.database.mutate((db) => {
+      const live = this.mustFindSession(db, sessionId);
+      mutate(live);
+      live.updatedAt = new Date().toISOString();
+      return live;
+    });
+  }
+
+  private async assertNotCancelled(sessionId: string) {
+    const status = await this.database.query((db) => this.mustFindSession(db, sessionId).status);
+    if (status === "cancelled") {
+      throw new Error("Novel import session was cancelled");
+    }
+  }
+
+  // ===== LLM helpers =====
+
+  private async collectText(
+    system: string,
+    user: string,
+    config: LlmProviderConfig,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ) {
+    let full = "";
+    for await (const chunk of streamLlm(system, [{ role: "user", content: user }], config)) {
+      if (chunk.type === "error") {
+        throw new Error(chunk.error ?? "LLM request failed");
+      }
+      if (chunk.type === "chunk" && chunk.content) {
+        full += chunk.content;
+      }
+      if (chunk.type === "done" && typeof chunk.result === "string" && !full) {
+        full = chunk.result;
+      }
+    }
+    return full.trim();
+  }
+
+  private parseStrictJson<T>(raw: string): T {
+    const cleaned = raw.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+    return JSON.parse(cleaned) as T;
+  }
+
+  // ===== Generation methods =====
+
+  private async generateAdaptationPlan(
+    session: NovelImportSession,
+    config: LlmProviderConfig,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ) {
+    return this.collectText(
+      "You are a short drama adaptation planner. Write concise Chinese planning notes.",
+      [
+        "请为小说改编短剧制定轻量改编计划。",
+        `目标集数：${session.options.targetEpisodeCount}`,
+        `单集时长：${session.options.episodeDurationMinutes} 分钟`,
+        `剧种/风格：${session.options.genreStyle}`,
+        `改编侧重点：${session.options.adaptationFocus}`,
+        "必须包含：主要人物、核心冲突、目标集数结构、类型基调、全书剧情弧线。",
+        `\n小说片段：\n${session.sourceText.slice(0, 12000)}`,
+      ].join("\n"),
+      config,
+      streamLlm,
+    );
+  }
+
+  private async generateWorldBible(
+    session: NovelImportSession,
+    config: LlmProviderConfig,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ) {
+    const raw = await this.collectText(
+      "You are a story analyst. Always return strict JSON.",
+      [
+        "从小说和改编计划中提取世界观。",
+        'Return JSON with shape: { "characters": [{ "id": "char-N", "name": "...", "appearance": "...", "personality": "...", "tags": [], "referenceImages": [], "sortOrder": N }], "locations": [{ "id": "loc-N", "name": "...", "description": "...", "referenceImages": [], "sortOrder": N }], "styleGuide": { "visualStyle": "..." } }',
+        `\n改编计划：\n${session.adaptationPlan ?? ""}`,
+        `\n小说片段：\n${session.sourceText.slice(0, 16000)}`,
+      ].join("\n"),
+      config,
+      streamLlm,
+    );
+    try {
+      return normalizeWorldBibleContent(this.parseStrictJson(raw));
+    } catch (error) {
+      await this.updateSession(session.id, (live) => {
+        live.status = "failed";
+        live.stage = "worldBible";
+        live.error = `World bible JSON parse failed: ${error instanceof Error ? error.message : "Unknown error"}`;
+      });
+      throw error;
+    }
+  }
+
+  private async generateSynopsisForSession(
+    session: NovelImportSession,
+    config: LlmProviderConfig,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ) {
+    return this.collectText(
+      "You are a screenplay development assistant. Write Chinese markdown.",
+      [
+        "基于小说、改编计划和世界观，生成结构化短剧大纲。",
+        "必须包含：故事概览、人物介绍、分集/节拍大纲。",
+        `\n改编计划：\n${session.adaptationPlan ?? ""}`,
+        `\n世界观：\n${JSON.stringify(session.worldBible ?? {}, null, 2)}`,
+        `\n小说片段：\n${session.sourceText.slice(0, 16000)}`,
+      ].join("\n"),
+      config,
+      streamLlm,
+    );
+  }
+
+  private async generateChunkScenesForSession(
+    session: NovelImportSession,
+    chunkIndex: number,
+    previousSummary: string,
+    config: LlmProviderConfig,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ): Promise<{ scenes: ScriptScene[]; summary: string; continuityNotes: string; rawOutput: string }> {
+    const chunk = session.chunks[chunkIndex];
+    if (!chunk) {
+      throw new BadRequestException(`Chunk ${chunkIndex} does not exist`);
+    }
+    const futureHints = session.chunks
+      .slice(chunkIndex + 1, chunkIndex + 3)
+      .map((item) => item.summary ? `后续块 ${item.index + 1}: ${item.summary}` : "")
+      .filter(Boolean)
+      .join("\n");
+    const raw = await this.collectText(
+      "You are a screenplay development assistant. Always return strict JSON.",
+      [
+        "把当前小说分块改编成短剧剧本场景。",
+        'Return JSON: { "scenes": [{ "id": "scene-N", "heading": "...", "synopsis": "...", "characters": ["name"], "dialogue": [{ "speaker": "...", "line": "..." }], "directorNote": "..." }], "summary": "2-3 sentence summary", "continuityNotes": "notes for following chunks" }',
+        `\n改编计划：\n${session.adaptationPlan ?? ""}`,
+        `\n世界观：\n${this.formatWorldBibleContext(session.worldBible)}`,
+        previousSummary ? `\n上一块摘要：\n${previousSummary}` : "",
+        futureHints ? `\n后续参考：\n${futureHints}` : "",
+        `\n当前分块：\n${chunk.text}`,
+      ].filter(Boolean).join("\n"),
+      config,
+      streamLlm,
+    );
+    const parsed = this.parseStrictJson<{ scenes?: unknown[]; summary?: unknown; continuityNotes?: unknown }>(raw);
+    return {
+      scenes: (parsed.scenes ?? []).map((scene, index) => normalizeScriptScene(scene, index + chunkIndex * 100)),
+      summary: typeof parsed.summary === "string" ? parsed.summary : "",
+      continuityNotes: typeof parsed.continuityNotes === "string" ? parsed.continuityNotes : "",
+      rawOutput: raw,
+    };
+  }
+
+  private formatWorldBibleContext(worldBible?: WorldBibleContent) {
+    if (!worldBible) return "";
+    const characters = worldBible.characters.map((item) => `${item.name}: ${item.appearance}`).join("；");
+    const locations = worldBible.locations.map((item) => `${item.name}: ${item.description}`).join("；");
+    return [`角色：${characters}`, `场景：${locations}`, worldBible.styleGuide?.visualStyle ? `风格：${worldBible.styleGuide.visualStyle}` : ""]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  // ===== Chunk generation loop =====
+
+  private async generateChunksFrom(
+    sessionId: string,
+    startIndex: number,
+    config: LlmProviderConfig,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+    includeFollowing: boolean,
+  ) {
+    let session = await this.database.query((db) => this.mustFindSession(db, sessionId));
+    let previousSummary = startIndex > 0 ? session.chunks[startIndex - 1]?.summary ?? "" : "";
+    const endExclusive = includeFollowing ? session.chunks.length : Math.min(startIndex + 1, session.chunks.length);
+
+    for (let index = startIndex; index < endExclusive; index++) {
+      await this.assertNotCancelled(sessionId);
+      session = await this.updateSession(sessionId, (live) => {
+        live.status = "running";
+        live.stage = "script";
+        live.progress = Math.min(95, 45 + Math.round((index / Math.max(1, live.chunks.length)) * 50));
+        const chunk = live.chunks[index];
+        if (chunk) {
+          chunk.status = "running";
+          chunk.error = undefined;
+          chunk.startedAt = new Date().toISOString();
+        }
+      });
+
+      try {
+        const result = await this.generateChunkScenesForSession(session, index, previousSummary, config, streamLlm);
+        previousSummary = result.summary;
+        session = await this.updateSession(sessionId, (live) => {
+          const chunk = live.chunks[index]!;
+          chunk.status = "completed";
+          chunk.scenes = result.scenes;
+          chunk.summary = result.summary;
+          chunk.continuityNotes = result.continuityNotes;
+          chunk.rawOutput = result.rawOutput;
+          chunk.error = undefined;
+          chunk.completedAt = new Date().toISOString();
+          live.scriptPreview = this.buildPreview(live);
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        await this.updateSession(sessionId, (live) => {
+          const chunk = live.chunks[index];
+          if (chunk) {
+            chunk.status = "failed";
+            chunk.error = message;
+            chunk.completedAt = new Date().toISOString();
+          }
+          live.status = "failed";
+          live.error = message;
+        });
+        throw error;
+      }
+    }
+
+    return this.database.query((db) => this.mustFindSession(db, sessionId));
+  }
+
+  private buildPreview(session: NovelImportSession): ScriptContent {
+    const characters = (session.worldBible?.characters ?? []).map((character) => ({
+      name: character.name,
+      profile: character.summary || character.appearance || character.personality || "",
+      worldBibleCharId: character.id,
+    }));
+    return normalizeScriptContent({
+      logline: session.synopsis?.split(/\r?\n/).find((line) => line.trim()) ?? "",
+      premise: session.adaptationPlan ?? "",
+      characters,
+      scenes: session.chunks.flatMap((chunk) => chunk.scenes),
+    });
   }
 
   chunkSourceText(text: string): NovelImportChunkRecord[] {
