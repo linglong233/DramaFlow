@@ -255,6 +255,29 @@ export class JobsController {
     return { session };
   }
 
+  @Post("novel-import-sessions/:id/start")
+  async startNovelImportSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+  ) {
+    const session = await this.novelImportService.getSession(user.id, sessionId);
+    const job = await this.jobsService.createNovelImportJob(user.id, session.projectId, {
+      action: "runSession",
+      sessionId,
+    });
+    const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id);
+    return { session: updated, job };
+  }
+
+  @Post("novel-import-sessions/:id/cancel")
+  async cancelNovelImportSession(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+  ) {
+    const session = await this.novelImportService.cancelSession(user.id, sessionId);
+    return { session };
+  }
+
   @Post("projects/:id/novel-import/stream")
   async streamNovelImport(
     @CurrentUser() user: { id: string },

@@ -1,9 +1,11 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type {
   CreateNovelImportSessionPayload,
+  JobRecord,
   LlmConfigSource,
   LlmProviderConfig,
   NovelImportChunkRecord,
+  NovelImportJobInput,
   NovelImportOptions,
   NovelImportSession,
   ScriptScene,
@@ -107,6 +109,57 @@ export class NovelImportService {
       throw new NotFoundException("Novel import session not found");
     }
     await this.assertProjectReadable(userId, session.projectId);
+    return session;
+  }
+
+  async attachJob(userId: string, sessionId: string, jobId: string) {
+    const session = await this.getSession(userId, sessionId);
+    return this.database.mutate((db) => {
+      const live = this.mustFindSession(db, session.id);
+      live.status = "queued";
+      live.lastJobId = jobId;
+      live.error = undefined;
+      live.updatedAt = new Date().toISOString();
+      return live;
+    });
+  }
+
+  async cancelSession(userId: string, sessionId: string) {
+    const session = await this.getSession(userId, sessionId);
+    if (session.status === "written") {
+      throw new BadRequestException("Written sessions cannot be cancelled");
+    }
+    return this.database.mutate((db) => {
+      const live = this.mustFindSession(db, session.id);
+      live.status = "cancelled";
+      live.error = undefined;
+      live.updatedAt = new Date().toISOString();
+      return live;
+    });
+  }
+
+  async processJob(
+    job: JobRecord<NovelImportJobInput>,
+    _resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    _streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+  ): Promise<Record<string, unknown>> {
+    const session = await this.database.mutate((db) => {
+      const live = this.mustFindSession(db, job.input.sessionId);
+      if (live.status === "cancelled") {
+        throw new Error("Novel import session was cancelled");
+      }
+      live.status = "running";
+      live.updatedAt = new Date().toISOString();
+      return live;
+    });
+    return { sessionId: session.id, action: job.input.action };
+  }
+
+  private mustFindSession(db: { novelImportSessions: NovelImportSession[] }, sessionId: string) {
+    const session = db.novelImportSessions.find((item) => item.id === sessionId);
+    if (!session) {
+      throw new NotFoundException("Novel import session not found");
+    }
     return session;
   }
 

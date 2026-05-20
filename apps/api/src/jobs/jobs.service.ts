@@ -32,6 +32,7 @@ import type {
   JobType,
   LlmProviderConfig,
   MediaContent,
+  NovelImportJobInput,
   PromptPreviewResult,
   ProviderEntry,
   RewriteSegmentInput,
@@ -58,6 +59,7 @@ import { PromptBuilderService } from "./prompt-builder.service";
 import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provider";
 import { TTSProviderService } from "./tts.provider";
 import { ExportService } from "./export.service";
+import { NovelImportService } from "./novel-import.service";
 
 export type { StreamChunk };
 
@@ -129,6 +131,7 @@ export class JobsService {
     @Inject(RealtimeEventsService) private readonly realtimeEvents: RealtimeEventsService,
     @Inject(TTSProviderService) private readonly ttsProvider: TTSProviderService,
     @Inject(ExportService) private readonly exportService: ExportService,
+    @Inject(NovelImportService) private readonly novelImportService: NovelImportService,
   ) {}
 
   async createScriptJob(userId: string, projectId: string, input: ScriptJobInput) {
@@ -213,6 +216,19 @@ export class JobsService {
       type: "shot_regenerate",
       projectId: input.projectId,
       shotId,
+      input,
+    });
+  }
+
+  async createNovelImportJob(
+    userId: string,
+    projectId: string,
+    input: NovelImportJobInput,
+  ) {
+    await this.assertProjectReadable(userId, projectId);
+    return this.enqueueJob(userId, {
+      type: "novel_import",
+      projectId,
       input,
     });
   }
@@ -517,6 +533,8 @@ export class JobsService {
           return await this.processTTSJob(job as unknown as JobRecord<GenerateTTSInput>);
         case "export_video":
           return await this.processExportJob(job as unknown as JobRecord<ExportTimelineInput>);
+        case "novel_import":
+          return await this.processNovelImportJob(job as unknown as JobRecord<NovelImportJobInput>);
         default:
           throw new Error(`Unsupported job type: ${job.type}`);
       }
@@ -2204,6 +2222,21 @@ export class JobsService {
       referenceId: job.id,
       referenceType: "job",
     });
+  }
+
+  private async processNovelImportJob(job: JobRecord<NovelImportJobInput>) {
+    const result = await this.novelImportService.processJob(
+      job,
+      (uid, pid, source) => this.resolveTextLlmConfig(uid, pid, source).then((config) => {
+        if (!config) {
+          throw new Error("LLM config is not available");
+        }
+        return config;
+      }),
+      (system, messages, config) => this.textProvider.streamChat(system, messages, config),
+    );
+
+    return this.completeJob(job.id, result);
   }
 
   // ===== SSE Streaming Methods =====

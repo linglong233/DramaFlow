@@ -336,6 +336,8 @@ async function main() {
       "createNovelImportSession",
       "getLatestNovelImportSession",
       "getNovelImportSession",
+      "startNovelImportSession",
+      "cancelNovelImportSession",
       "getJob",
     ]);
     assertMethodsStayOnPrototype(new UploadsController({} as never), [
@@ -405,6 +407,60 @@ async function main() {
         headers: authHeaders(user.accessToken),
       });
       assert.equal(getResponse.status, 200);
+    });
+  });
+
+  await runCase("novel import session start queues a worker job and cancel marks session", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-start@example.com",
+        displayName: "Novel Starter",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Queued Novel" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "悬疑",
+          adaptationFocus: "保留核心反转",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const created = await sessionResponse.json() as { session: { id: string } };
+
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(startResponse.status, 201);
+      const started = await startResponse.json() as {
+        session: { status: string; lastJobId?: string };
+        job: { id: string; type: string; status: string; input: { action: string; sessionId: string } };
+      };
+      assert.equal(started.session.status, "queued");
+      assert.equal(started.job.type, "novel_import");
+      assert.equal(started.job.input.action, "runSession");
+      assert.equal(started.job.input.sessionId, created.session.id);
+      assert.equal(started.session.lastJobId, started.job.id);
+
+      const cancelResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/cancel`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(cancelResponse.status, 201);
+      const cancelled = await cancelResponse.json() as { session: { status: string; stage: string } };
+      assert.equal(cancelled.session.status, "cancelled");
     });
   });
 
