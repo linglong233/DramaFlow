@@ -14,10 +14,11 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   UseGuards,
 } from "@nestjs/common";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import type {
   CreateImageJobPayload,
   CreateScriptJobPayload,
@@ -231,7 +232,16 @@ export class JobsController {
     @Param("id") projectId: string,
     @Body() body: { text: string; llmConfigSource?: LlmConfigSource },
     @Res() res: Response,
+    @Req() req: Request,
   ) {
+    if (!body.text?.trim()) {
+      res.status(400).json({ message: "文本不能为空" });
+      return;
+    }
+
+    let aborted = false;
+    req.on("close", () => { aborted = true; });
+
     const { llmConfigSource, ...input } = body;
     this.initSseResponse(res);
     for await (const event of this.novelImportService.streamNovelImport(
@@ -241,6 +251,7 @@ export class JobsController {
       this.workspaceService,
       (uid: string, pid: string, src?: LlmConfigSource) => this.jobsService.resolveTextLlmConfig(uid, pid, src).then((c) => c!),
       (sys: string, msgs: Array<{ role: string; content: string }>, cfg?: any) => this.textProvider.streamChat(sys, msgs, cfg),
+      () => aborted,
     )) {
       this.writeSseEvent(res, event);
     }
