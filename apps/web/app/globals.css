@@ -9565,6 +9565,80 @@ textarea.input {
   opacity: 0.9;
 }
 
+/* ── Novel Import ── */
+.novel-import__textarea {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  color: var(--text-primary);
+}
+
+.novel-import__textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.novel-import__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  justify-content: flex-end;
+}
+
+.novel-import__progress {
+  margin-top: var(--space-3);
+}
+
+.novel-import__progress-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.novel-import__progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.novel-import__progress-text {
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.novel-import__preview {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(96, 165, 250, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: #60a5fa;
+}
+
+.novel-import__done {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.15);
+  border-radius: var(--radius-md);
+  color: #34d399;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 /* ── Step Wizard ── */
 .gen-step-bar {
   display: flex;
