@@ -453,11 +453,31 @@ export interface WorldBibleReferenceImageGenerateRequest {
   configSource?: ImageConfigSource;
   /** 指定使用的 Provider ID（可选，未传则使用默认） */
   providerId?: string;
+  /** 参考图 Asset ID（可选，有值时走图生图） */
+  referenceImageAssetId?: string;
+  /** 负面 prompt（可选） */
+  negativePrompt?: string;
 }
 
 /** 世界观参考图片生成响应 */
 export interface WorldBibleReferenceImageGenerateResponse {
   assetUrl: string;
+  /** 存储 asset ID，用于后续图生图引用 */
+  assetId: string;
+  /** 回传实际使用的 prompt */
+  prompt: string;
+}
+
+export interface EnhanceReferencePromptRequest {
+  prompt: string;
+  type: "character" | "location" | "styleGuide";
+  configSource?: ImageConfigSource;
+  providerId?: string;
+}
+
+export interface EnhanceReferencePromptResponse {
+  enhancedPrompt: string;
+  originalPrompt: string;
 }
 
 // =============================================
