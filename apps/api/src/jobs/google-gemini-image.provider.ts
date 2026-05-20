@@ -52,6 +52,17 @@ export class GoogleGeminiImageProvider {
         },
       });
     }
+    if ((input as any).referenceImageBuffer) {
+      parts.push({
+        inline_data: {
+          mime_type: "image/png",
+          data: (input as any).referenceImageBuffer.toString("base64"),
+        },
+      });
+    }
+    if ((input as any).negativePrompt) {
+      parts.push({ text: `Avoid: ${(input as any).negativePrompt}` });
+    }
 
     const response = await fetch(
       `${effectiveBaseUrl}/models/${encodeURIComponent(effectiveModel)}:generateContent?key=${encodeURIComponent(effectiveApiKey)}`,

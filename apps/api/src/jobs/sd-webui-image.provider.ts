@@ -74,9 +74,14 @@ export class SdWebuiImageProvider {
       headers["Authorization"] = `Bearer ${effectiveApiKey}`;
     }
 
-    const body: SdTxt2ImgRequest = {
+    const hasRefImage = Boolean((input as any).referenceImageBuffer);
+    const endpoint = hasRefImage
+      ? `${effectiveBaseUrl}/sdapi/v1/img2img`
+      : `${effectiveBaseUrl}/sdapi/v1/txt2img`;
+
+    const body: any = {
       prompt: input.prompt,
-      negative_prompt: "",
+      negative_prompt: (input as any).negativePrompt || "",
       sampler_name: samplerName,
       steps,
       cfg_scale: cfgScale,
@@ -85,6 +90,12 @@ export class SdWebuiImageProvider {
       clip_skip: clipSkip,
       send_images: true,
       save_images: false,
+      ...(hasRefImage
+        ? {
+            init_images: [(input as any).referenceImageBuffer.toString("base64")],
+            denoising_strength: 0.6,
+          }
+        : {}),
     };
 
     if (sdModelCheckpoint) {
@@ -93,7 +104,7 @@ export class SdWebuiImageProvider {
 
     let response: Response;
     try {
-      response = await fetch(`${effectiveBaseUrl}/sdapi/v1/txt2img`, {
+      response = await fetch(endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(body),

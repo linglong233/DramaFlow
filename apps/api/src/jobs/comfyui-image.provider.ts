@@ -59,7 +59,25 @@ export class ComfyuiImageProvider {
     const comfyuiConfig = config?.comfyuiConfig;
     const { width, height } = this.resolveDimensions(input.aspectRatio, comfyuiConfig);
 
-    const negativePrompt = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blur, blurry";
+    const negativePrompt =
+      (input as any).negativePrompt ||
+      "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blur, blurry";
+
+    let refFilename: string | undefined;
+    if ((input as any).referenceImageBuffer) {
+      refFilename = `dramaflow_ref_${Date.now()}.png`;
+      const uploadForm = new FormData();
+      uploadForm.append(
+        "image",
+        new Blob([(input as any).referenceImageBuffer]),
+        refFilename,
+      );
+      uploadForm.append("overwrite", "true");
+      await fetch(`${effectiveBaseUrl}/upload/image`, {
+        method: "POST",
+        body: uploadForm,
+      });
+    }
 
     let workflow: ComfyuiWorkflow;
 
@@ -69,6 +87,7 @@ export class ComfyuiImageProvider {
         input.prompt,
         negativePrompt,
       );
+      // TODO: wire ref image into custom workflow
     } else {
       workflow = this.buildDefaultWorkflow(input.prompt, negativePrompt, {
         samplerName: comfyuiConfig?.samplerName,
@@ -77,6 +96,7 @@ export class ComfyuiImageProvider {
         width,
         height,
         checkpointName: comfyuiConfig?.checkpointName,
+        refFilename,
       });
     }
 
@@ -169,11 +189,12 @@ export class ComfyuiImageProvider {
       width: number;
       height: number;
       checkpointName?: string;
+      refFilename?: string;
     },
   ): ComfyuiWorkflow {
     const seed = Math.floor(Math.random() * 2_147_483_647);
 
-    return {
+    const workflow: ComfyuiWorkflow = {
       "4": {
         inputs: {
           ckpt_name: params.checkpointName || "model.safetensors",
@@ -238,6 +259,35 @@ export class ComfyuiImageProvider {
         _meta: { title: "Save Image" },
       },
     };
+
+    if (params.refFilename) {
+      // Add a LoadImage node for the reference image
+      workflow["ref_img"] = {
+        inputs: {
+          image: params.refFilename,
+        },
+        class_type: "LoadImage",
+        _meta: { title: "Load Reference Image" },
+      };
+
+      // Add a VAEEncode node to convert the reference image to latent space
+      workflow["ref_vae"] = {
+        inputs: {
+          pixels: ["ref_img", 0],
+          vae: ["4", 2],
+        },
+        class_type: "VAEEncode",
+        _meta: { title: "VAE Encode Reference" },
+      };
+
+      // Wire the reference latent into the KSampler instead of EmptyLatentImage
+      workflow["3"].inputs.latent_image = ["ref_vae", 0];
+
+      // Use a lower denoise strength for img2img
+      workflow["3"].inputs.denoise = 0.6;
+    }
+
+    return workflow;
   }
 
   // ---------------------------------------------------------------------------
