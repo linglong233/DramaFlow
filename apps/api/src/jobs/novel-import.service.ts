@@ -126,7 +126,8 @@ export class NovelImportService {
           status: "pending" as const,
           scenes: [],
         };
-      }).filter((chunk) => chunk.text);
+      }).filter((chunk) => chunk.text)
+        .map((chunk, correctedIndex) => ({ ...chunk, index: correctedIndex }));
     }
 
     const targetSize = 3000;
