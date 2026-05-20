@@ -25,6 +25,7 @@ import type {
   CreateSynopsisJobPayload,
   ConversationGeneratePayload,
   ConversationMessagePayload,
+  EnhanceReferencePromptRequest,
   ImageConfigSource,
   JobStatus,
   JobType,
@@ -77,6 +78,18 @@ export class JobsController {
     @Body() body: CreateImageJobPayload,
   ) {
     return this.jobsService.createImageJob(user.id, shotId, body);
+  }
+
+  @Post("projects/:projectId/world-bible/enhance-reference-prompt")
+  enhanceReferencePrompt(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Body() body: EnhanceReferencePromptRequest,
+  ) {
+    return this.jobsService.enhanceReferencePrompt(
+      user.id, projectId, body.prompt, body.type,
+      body.configSource ?? "team",
+    );
   }
 
   @Post("projects/:projectId/world-bible/characters/:characterId/generate-reference-image")

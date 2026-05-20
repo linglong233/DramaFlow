@@ -40,6 +40,7 @@ import type {
   VersionRecord,
   WorldBibleReferenceImageGenerateResponse,
   WorldBibleContent,
+  EnhanceReferencePromptResponse,
 } from "@dramaflow/shared";
 
 import { DevDatabaseService } from "../common/dev-database.service";
@@ -829,6 +830,68 @@ export class JobsService {
     };
 
     return this.finalizeMediaJob(job, "image", prompt, generated);
+  }
+
+  async enhanceReferencePrompt(
+    userId: string,
+    projectId: string,
+    prompt: string,
+    type: "character" | "location" | "styleGuide",
+    configSource: ImageConfigSource = "team",
+  ): Promise<EnhanceReferencePromptResponse> {
+    const originalPrompt = prompt;
+
+    const typeInstructions: Record<string, string> = {
+      character:
+        "You are an expert at writing image generation prompts for character portraits. Enhance the following description into a detailed, professional image generation prompt. Focus on: facial features, hair, body type, clothing, pose, expression, and artistic style. Output ONLY the enhanced prompt, no explanation.",
+      location:
+        "You are an expert at writing image generation prompts for scenic environments. Enhance the following description into a detailed, professional image generation prompt. Focus on: atmosphere, lighting, perspective, weather, time of day, and architectural details. Output ONLY the enhanced prompt, no explanation.",
+      styleGuide:
+        "You are an expert at writing image generation prompts that capture visual art styles. Enhance the following description into a detailed, professional image generation prompt. Focus on: color palette, brush strokes, composition, mood, and artistic techniques. Output ONLY the enhanced prompt, no explanation.",
+    };
+
+    const systemPrompt = typeInstructions[type] ?? typeInstructions.character;
+
+    const config = await this.database.query((db) => {
+      const project = db.projects.find((p) => p.id === projectId);
+      if (configSource === "personal") {
+        return db.users.find((u) => u.id === userId)?.llmConfig as LlmProviderConfig | undefined;
+      }
+      const team = project ? db.teams.find((t) => t.id === project.teamId) : undefined;
+      return team?.llmConfig as LlmProviderConfig | undefined;
+    });
+
+    if (!config?.apiKey || !config?.baseUrl) {
+      throw new BadRequestException("LLM provider not configured for prompt enhancement");
+    }
+
+    const model = config.model || "gpt-4o";
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 1024,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new BadRequestException(`LLM enhancement failed: ${text.slice(0, 200)}`);
+    }
+
+    const data = await response.json();
+    const enhancedPrompt = data.choices?.[0]?.message?.content?.trim() ?? originalPrompt;
+
+    return { enhancedPrompt, originalPrompt };
   }
 
   async generateImageFromPrompt(
