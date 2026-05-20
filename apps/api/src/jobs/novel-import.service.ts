@@ -181,12 +181,22 @@ export class NovelImportService {
     const config = await resolveLlmConfig(userId, session.projectId, session.options.llmConfigSource);
 
     if (!session.adaptationPlan) {
-      const adaptationPlan = await this.generateAdaptationPlan(session, config, streamLlm);
-      session = await this.updateSession(session.id, (live) => {
-        live.adaptationPlan = adaptationPlan;
-        live.stage = "worldBible";
-        live.progress = 20;
-      });
+      try {
+        const adaptationPlan = await this.generateAdaptationPlan(session, config, streamLlm);
+        session = await this.updateSession(session.id, (live) => {
+          live.adaptationPlan = adaptationPlan;
+          live.stage = "worldBible";
+          live.progress = 20;
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        await this.updateSession(session.id, (live) => {
+          live.status = "failed";
+          live.stage = "adaptationPlan";
+          live.error = message;
+        });
+        throw error;
+      }
     }
 
     if (!session.worldBible) {
@@ -199,12 +209,22 @@ export class NovelImportService {
     }
 
     if (!session.synopsis) {
-      const synopsis = await this.generateSynopsisForSession(session, config, streamLlm);
-      session = await this.updateSession(session.id, (live) => {
-        live.synopsis = synopsis;
-        live.stage = "script";
-        live.progress = 45;
-      });
+      try {
+        const synopsis = await this.generateSynopsisForSession(session, config, streamLlm);
+        session = await this.updateSession(session.id, (live) => {
+          live.synopsis = synopsis;
+          live.stage = "script";
+          live.progress = 45;
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        await this.updateSession(session.id, (live) => {
+          live.status = "failed";
+          live.stage = "synopsis";
+          live.error = message;
+        });
+        throw error;
+      }
     }
 
     const startIndex = session.chunks.find((chunk) => chunk.status !== "completed" && chunk.status !== "stale")?.index ?? 0;
