@@ -724,7 +724,9 @@ function CharacterForm({
       {showImageGen && (
         <WorldBibleReferenceImageDialog
           generatePath={`/projects/${projectId}/world-bible/characters/${char.id}/generate-reference-image`}
+          enhancePath={`/projects/${projectId}/world-bible/enhance-reference-prompt`}
           initialPrompt={buildCharacterReferencePrompt(char, styleGuide)}
+          worldBibleType="character"
           onImageGenerated={(assetUrl) => {
             onUpdate(char.id, {
               referenceImages: [...char.referenceImages, assetUrl],
@@ -829,7 +831,9 @@ function LocationForm({
       {showImageGen && (
         <WorldBibleReferenceImageDialog
           generatePath={`/projects/${projectId}/world-bible/locations/${loc.id}/generate-reference-image`}
+          enhancePath={`/projects/${projectId}/world-bible/enhance-reference-prompt`}
           initialPrompt={buildLocationReferencePrompt(loc, styleGuide)}
+          worldBibleType="location"
           onImageGenerated={(assetUrl) => {
             onUpdate(loc.id, {
               referenceImages: [...loc.referenceImages, assetUrl],
@@ -930,7 +934,9 @@ function StyleGuideForm({
       {showImageGen && (
         <WorldBibleReferenceImageDialog
           generatePath={`/projects/${projectId}/world-bible/style-guide/generate-reference-image`}
+          enhancePath={`/projects/${projectId}/world-bible/enhance-reference-prompt`}
           initialPrompt={buildStyleGuideReferencePrompt(styleGuide)}
+          worldBibleType="styleGuide"
           onImageGenerated={(assetUrl) => {
             onUpdate({
               referenceImages: [...(sg.referenceImages || []), assetUrl],
