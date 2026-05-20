@@ -34,6 +34,7 @@ interface State {
 }
 
 type Action =
+  | { type: "RESET" }
   | { type: "SET_INPUT"; text: string }
   | { type: "SET_READING_FILE"; reading: boolean }
   | { type: "START_IMPORT" }
@@ -60,6 +61,8 @@ const initialState: State = {
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
+    case "RESET":
+      return initialState;
     case "SET_INPUT":
       return { ...state, inputText: action.text };
     case "SET_READING_FILE":
@@ -310,6 +313,14 @@ export function NovelImportGenerator({ projectId, llmConfigSource }: Props) {
         <>
           <div className="novel-import__done">
             导入完成！世界观、大纲和剧本已自动写入对应文档
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              style={{ marginLeft: "var(--space-3)" }}
+              onClick={() => dispatch({ type: "RESET" })}
+            >
+              重新导入
+            </button>
           </div>
 
           <div className="novel-import__preview-tabs">
