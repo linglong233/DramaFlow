@@ -338,6 +338,9 @@ async function main() {
       "getNovelImportSession",
       "startNovelImportSession",
       "cancelNovelImportSession",
+      "retryNovelImportChunk",
+      "rerunNovelImportFollowingChunks",
+      "writeNovelImportDrafts",
       "getJob",
     ]);
     assertMethodsStayOnPrototype(new UploadsController({} as never), [
@@ -590,6 +593,188 @@ async function main() {
       assert.equal(loaded.session.synopsis?.includes("故事概览"), true);
       assert.equal(loaded.session.scriptPreview?.scenes.length, 2);
       assert.equal(loaded.session.writeResult, undefined);
+    });
+  });
+
+  await runCase("novel import retry rerun and write drafts are recoverable", async () => {
+    process.env.OPENAI_COMPAT_API_KEY = "test-key";
+    process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+    process.env.OPENAI_TEXT_MODEL = "gpt-test";
+
+    const replies = [
+      "主要人物：林夏。核心冲突：她发现门后秘密。目标集数：8。",
+      JSON.stringify({
+        characters: [{ id: "char-1", name: "林夏", appearance: "短发，黑色风衣", personality: "冷静", tags: ["主角"], referenceImages: [], sortOrder: 0 }],
+        locations: [{ id: "loc-1", name: "旧公寓", description: "昏暗狭窄", referenceImages: [], sortOrder: 0 }],
+        styleGuide: { visualStyle: "冷峻都市悬疑" },
+      }),
+      "## 故事概览\n林夏发现门后秘密。",
+      JSON.stringify({
+        scenes: [{ id: "scene-1", heading: "INT. 旧公寓 - 夜", synopsis: "林夏进门。", characters: ["林夏"], dialogue: [], directorNote: "压低环境声。" }],
+        summary: "第一块初稿。",
+        continuityNotes: "电话即将响起。",
+      }),
+      JSON.stringify({
+        scenes: [{ id: "scene-2", heading: "INT. 旧公寓 - 夜", synopsis: "电话响起。", characters: ["林夏"], dialogue: [], directorNote: "电话铃声突出。" }],
+        summary: "第二块初稿。",
+        continuityNotes: "秘密升级。",
+      }),
+      JSON.stringify({
+        scenes: [{ id: "scene-1r", heading: "INT. 旧公寓 - 夜", synopsis: "林夏发现门缝血迹。", characters: ["林夏"], dialogue: [], directorNote: "特写门缝。" }],
+        summary: "重试后的第一块。",
+        continuityNotes: "后续必须接血迹线索。",
+      }),
+      JSON.stringify({
+        scenes: [{ id: "scene-1rr", heading: "INT. 旧公寓 - 夜", synopsis: "林夏确认血迹。", characters: ["林夏"], dialogue: [], directorNote: "手持镜头。" }],
+        summary: "重跑后的第一块。",
+        continuityNotes: "电话接血迹线索。",
+      }),
+      JSON.stringify({
+        scenes: [{ id: "scene-2rr", heading: "INT. 旧公寓 - 夜", synopsis: "来电者提到血迹。", characters: ["林夏"], dialogue: [{ speaker: "来电者", line: "你已经看见了。" }], directorNote: "铃声戛然而止。" }],
+        summary: "重跑后的第二块。",
+        continuityNotes: "进入下一幕追查。",
+      }),
+    ];
+
+    globalThis.fetch = (async () => {
+      const content = replies.shift() ?? "{}";
+      const sseBody = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(sseBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    await withHttpApp(async (baseUrl) => {
+      const processInternalJob = async (jobId: string) => {
+        const response = await originalFetch(`${baseUrl}/internal/jobs/${jobId}/process`, {
+          method: "POST",
+          headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+        });
+        assert.equal(response.status, 201);
+        return response.json() as Promise<{ id: string; status: string }>;
+      };
+
+      const loadSession = async (accessToken: string, sessionId: string) => {
+        const response = await originalFetch(`${baseUrl}/novel-import-sessions/${sessionId}`, {
+          headers: authHeaders(accessToken),
+        });
+        assert.equal(response.status, 200);
+        return response.json() as Promise<{
+          session: {
+            id: string;
+            chunks: Array<{ index: number; status: string; summary?: string }>;
+            writeResult?: {
+              worldBibleVersionId: string;
+              synopsisVersionId: string;
+              scriptVersionId: string;
+            };
+          };
+        }>;
+      };
+
+      const user = await registerUser(baseUrl, {
+        email: "novel-retry@example.com",
+        displayName: "Novel Retry",
+      });
+
+      const updateProfileResponse = await originalFetch(`${baseUrl}/auth/me`, {
+        method: "PATCH",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "test-key",
+            baseUrl: "https://example.test/v1",
+            model: "gpt-test",
+            stream: true,
+          },
+        }),
+      });
+      assert.equal(updateProfileResponse.status, 200);
+
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Retry Novel" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "都市悬疑",
+          adaptationFocus: "强化悬念",
+          llmConfigSource: "personal",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const created = await sessionResponse.json() as { session: { id: string } };
+
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(startResponse.status, 201);
+      const started = await startResponse.json() as { job: { id: string } };
+      await processInternalJob(started.job.id);
+
+      const retryResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/0/retry`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(retryResponse.status, 201);
+      const retry = await retryResponse.json() as { job: { id: string } };
+      await processInternalJob(retry.job.id);
+      const afterRetry = await loadSession(user.accessToken, created.session.id);
+      assert.equal(afterRetry.session.chunks[0]?.summary, "重试后的第一块。");
+      assert.equal(afterRetry.session.chunks[1]?.status, "stale");
+
+      const rerunResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/0/rerun-following`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(rerunResponse.status, 201);
+      const rerun = await rerunResponse.json() as { job: { id: string } };
+      await processInternalJob(rerun.job.id);
+      const afterRerun = await loadSession(user.accessToken, created.session.id);
+      assert.equal(afterRerun.session.chunks.every((chunk) => chunk.status === "completed"), true);
+
+      const writeResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/write-drafts`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(writeResponse.status, 201);
+      const writeResult = await writeResponse.json() as {
+        writeResult: { worldBibleVersionId: string; synopsisVersionId: string; scriptVersionId: string };
+      };
+
+      const duplicateWriteResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/write-drafts`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(duplicateWriteResponse.status, 201);
+      const duplicateWrite = await duplicateWriteResponse.json() as {
+        writeResult: { worldBibleVersionId: string; synopsisVersionId: string; scriptVersionId: string };
+      };
+      assert.equal(writeResult.writeResult.scriptVersionId, duplicateWrite.writeResult.scriptVersionId);
+
+      const versions = await listProjectVersions<{ id: string; status: string }>(baseUrl, user.accessToken, project.id);
+      const scriptVersion = versions.find((version) => version.id === writeResult.writeResult.scriptVersionId);
+      const worldBibleVersion = versions.find((version) => version.id === writeResult.writeResult.worldBibleVersionId);
+      const synopsisVersion = versions.find((version) => version.id === writeResult.writeResult.synopsisVersionId);
+      assert.equal(scriptVersion?.status, "draft");
+      assert.equal(worldBibleVersion?.status, "draft");
+      assert.equal(synopsisVersion?.status, "draft");
     });
   });
 

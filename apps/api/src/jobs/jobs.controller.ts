@@ -278,6 +278,46 @@ export class JobsController {
     return { session };
   }
 
+  @Post("novel-import-sessions/:id/chunks/:index/retry")
+  async retryNovelImportChunk(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+    @Param("index") index: string,
+  ) {
+    const session = await this.novelImportService.getSession(user.id, sessionId);
+    const job = await this.jobsService.createNovelImportJob(user.id, session.projectId, {
+      action: "retryChunk",
+      sessionId,
+      chunkIndex: Number(index),
+    });
+    const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id);
+    return { session: updated, job };
+  }
+
+  @Post("novel-import-sessions/:id/chunks/:index/rerun-following")
+  async rerunNovelImportFollowingChunks(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+    @Param("index") index: string,
+  ) {
+    const session = await this.novelImportService.getSession(user.id, sessionId);
+    const job = await this.jobsService.createNovelImportJob(user.id, session.projectId, {
+      action: "rerunFromChunk",
+      sessionId,
+      chunkIndex: Number(index),
+    });
+    const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id);
+    return { session: updated, job };
+  }
+
+  @Post("novel-import-sessions/:id/write-drafts")
+  async writeNovelImportDrafts(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+  ) {
+    return this.novelImportService.writeDrafts(user.id, sessionId);
+  }
+
   @Post("projects/:id/novel-import/stream")
   async streamNovelImport(
     @CurrentUser() user: { id: string },

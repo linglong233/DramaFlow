@@ -9,6 +9,7 @@ import type {
   NovelImportOptions,
   NovelImportSession,
   NovelImportStage,
+  NovelImportWriteResult,
   ScriptContent,
   ScriptScene,
   WorldBibleContent,
@@ -144,6 +145,80 @@ export class NovelImportService {
     });
   }
 
+  async writeDrafts(userId: string, sessionId: string) {
+    const session = await this.getSession(userId, sessionId);
+    if (session.writeResult) {
+      return { session, writeResult: session.writeResult };
+    }
+    if (!session.worldBible || !session.synopsis || !session.scriptPreview) {
+      throw new BadRequestException("Novel import session is not ready to write drafts");
+    }
+
+    const wbDoc = await this.workspaceService.ensureDocumentForProject({
+      projectId: session.projectId,
+      type: "world_bible",
+      title: "AI 世界观",
+      createdBy: userId,
+    });
+    const wbVersion = await this.workspaceService.createVersionForDocument({
+      documentId: wbDoc.id,
+      title: "小说导入世界观草稿",
+      content: session.worldBible,
+      metadata: { source: "novel_import", novelImportSessionId: session.id },
+      createdBy: userId,
+      status: "draft",
+    });
+
+    const synopsisDoc = await this.workspaceService.ensureDocumentForProject({
+      projectId: session.projectId,
+      type: "synopsis",
+      title: "AI 大纲",
+      createdBy: userId,
+    });
+    const synopsisVersion = await this.workspaceService.createVersionForDocument({
+      documentId: synopsisDoc.id,
+      title: "小说导入大纲草稿",
+      content: session.synopsis,
+      metadata: { source: "novel_import", novelImportSessionId: session.id },
+      createdBy: userId,
+      status: "draft",
+    });
+
+    const scriptDoc = await this.workspaceService.ensureDocumentForProject({
+      projectId: session.projectId,
+      type: "script",
+      title: "AI 剧本",
+      createdBy: userId,
+    });
+    const scriptVersion = await this.workspaceService.createVersionForDocument({
+      documentId: scriptDoc.id,
+      title: "小说导入剧本草稿",
+      content: session.scriptPreview,
+      metadata: { source: "novel_import", novelImportSessionId: session.id },
+      createdBy: userId,
+      status: "draft",
+    });
+
+    const writeResult: NovelImportWriteResult = {
+      worldBibleDocumentId: wbDoc.id,
+      worldBibleVersionId: wbVersion.id,
+      synopsisDocumentId: synopsisDoc.id,
+      synopsisVersionId: synopsisVersion.id,
+      scriptDocumentId: scriptDoc.id,
+      scriptVersionId: scriptVersion.id,
+      writtenAt: new Date().toISOString(),
+    };
+
+    const updated = await this.updateSession(session.id, (live) => {
+      live.status = "written";
+      live.stage = "write";
+      live.progress = 100;
+      live.writeResult = writeResult;
+      live.error = undefined;
+    });
+    return { session: updated, writeResult };
+  }
+
   async processJob(
     job: JobRecord<NovelImportJobInput>,
     resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
@@ -239,23 +314,52 @@ export class NovelImportService {
   }
 
   private async retryChunk(
-    _userId: string,
-    _sessionId: string,
-    _chunkIndex: number,
-    _resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
-    _streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+    userId: string,
+    sessionId: string,
+    chunkIndex: number,
+    resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ): Promise<NovelImportSession> {
-    throw new Error("retryChunk not yet implemented");
+    const session = await this.getSession(userId, sessionId);
+    if (!session.chunks[chunkIndex]) {
+      throw new BadRequestException(`Chunk ${chunkIndex} does not exist`);
+    }
+    const config = await resolveLlmConfig(userId, session.projectId, session.options.llmConfigSource);
+    await this.generateChunksFrom(session.id, chunkIndex, config, streamLlm, false);
+    return this.updateSession(session.id, (live) => {
+      for (const chunk of live.chunks.slice(chunkIndex + 1)) {
+        if (chunk.status === "completed") {
+          chunk.status = "stale";
+        }
+      }
+      live.status = "needs_review";
+      live.stage = "review";
+      live.progress = 100;
+      live.scriptPreview = this.buildPreview(live);
+      live.error = undefined;
+    });
   }
 
   private async rerunFromChunk(
-    _userId: string,
-    _sessionId: string,
-    _chunkIndex: number,
-    _resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
-    _streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
+    userId: string,
+    sessionId: string,
+    chunkIndex: number,
+    resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
+    streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ): Promise<NovelImportSession> {
-    throw new Error("rerunFromChunk not yet implemented");
+    const session = await this.getSession(userId, sessionId);
+    if (!session.chunks[chunkIndex]) {
+      throw new BadRequestException(`Chunk ${chunkIndex} does not exist`);
+    }
+    const config = await resolveLlmConfig(userId, session.projectId, session.options.llmConfigSource);
+    await this.generateChunksFrom(session.id, chunkIndex, config, streamLlm, true);
+    return this.updateSession(session.id, (live) => {
+      live.status = "needs_review";
+      live.stage = "review";
+      live.progress = 100;
+      live.scriptPreview = this.buildPreview(live);
+      live.error = undefined;
+    });
   }
 
   // ===== Session state helpers =====
