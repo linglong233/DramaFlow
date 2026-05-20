@@ -39,6 +39,8 @@ import { JobsService } from "./jobs.service";
 import { PromptBuilderService } from "./prompt-builder.service";
 import { ExportService } from "./export.service";
 import { ConversationService } from "./conversation.service";
+import { NovelImportService } from "./novel-import.service";
+import { OpenAiCompatTextProvider } from "./text-generation.provider";
 import { WorkspaceService } from "../workspace/workspace.service";
 
 /** AI 任务控制器，处理生成任务、流式响应、批量操作等 */
@@ -50,6 +52,8 @@ export class JobsController {
     @Inject(PromptBuilderService) private readonly promptBuilder: PromptBuilderService,
     @Inject(ExportService) private readonly exportService: ExportService,
     @Inject(ConversationService) private readonly conversationService: ConversationService,
+    @Inject(NovelImportService) private readonly novelImportService: NovelImportService,
+    @Inject(OpenAiCompatTextProvider) private readonly textProvider: OpenAiCompatTextProvider,
     @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
   ) {}
 
@@ -217,6 +221,28 @@ export class JobsController {
     this.initSseResponse(res);
     for await (const chunk of this.jobsService.streamStoryboardJob(user.id, projectId, input, llmConfigSource)) {
       this.writeSseEvent(res, chunk);
+    }
+    this.endSseResponse(res);
+  }
+
+  @Post("projects/:id/novel-import/stream")
+  async streamNovelImport(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: { text: string; llmConfigSource?: LlmConfigSource },
+    @Res() res: Response,
+  ) {
+    const { llmConfigSource, ...input } = body;
+    this.initSseResponse(res);
+    for await (const event of this.novelImportService.streamNovelImport(
+      user.id,
+      projectId,
+      input,
+      this.workspaceService,
+      (uid: string, pid: string, src?: LlmConfigSource) => this.jobsService.resolveTextLlmConfig(uid, pid, src),
+      (sys: string, msgs: Array<{ role: string; content: string }>, cfg?: any) => this.textProvider.streamChat(sys, msgs, cfg),
+    )) {
+      this.writeSseEvent(res, event);
     }
     this.endSseResponse(res);
   }

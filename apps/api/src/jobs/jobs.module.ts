@@ -27,11 +27,12 @@ import { SdWebuiImageProvider } from "./sd-webui-image.provider";
 import { ComfyuiImageProvider } from "./comfyui-image.provider";
 import { GrokMediaProvider } from "./grok-media.provider";
 import { ConversationService } from "./conversation.service";
+import { NovelImportService } from "./novel-import.service";
 
 @Module({
   imports: [CommonModule, AuthModule, WorkspaceModule, StorageModule, NotificationModule, RealtimeModule],
   controllers: [JobsController, InternalJobsController],
-  providers: [JobsService, OpenAiCompatTextProvider, OpenAiMediaProvider, GoogleGeminiImageProvider, SdWebuiImageProvider, ComfyuiImageProvider, GrokMediaProvider, PromptBuilderService, TTSProviderService, ExportService, ConversationService],
+  providers: [JobsService, OpenAiCompatTextProvider, OpenAiMediaProvider, GoogleGeminiImageProvider, SdWebuiImageProvider, ComfyuiImageProvider, GrokMediaProvider, PromptBuilderService, TTSProviderService, ExportService, ConversationService, NovelImportService],
   exports: [JobsService, PromptBuilderService, ConversationService],
 })
 export class JobsModule {}
