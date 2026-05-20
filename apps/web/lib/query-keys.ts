@@ -25,4 +25,6 @@ export const queryKeys = {
   timeline: (projectId: string) => ["timeline", projectId] as const,
   ttsVoices: ["tts-voices"] as const,
   exports: (projectId: string) => ["exports", projectId] as const,
+  novelImportLatest: (projectId: string) => ["novel-import-latest", projectId] as const,
+  novelImportSession: (sessionId: string) => ["novel-import-session", sessionId] as const,
 };
