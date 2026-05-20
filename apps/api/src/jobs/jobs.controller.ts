@@ -240,7 +240,8 @@ export class JobsController {
     }
 
     let aborted = false;
-    req.on("close", () => { aborted = true; });
+    const closeHandler = () => { aborted = true; };
+    req.on("close", closeHandler);
 
     const { llmConfigSource, ...input } = body;
     this.initSseResponse(res);
@@ -253,9 +254,13 @@ export class JobsController {
       (sys: string, msgs: Array<{ role: string; content: string }>, cfg?: any) => this.textProvider.streamChat(sys, msgs, cfg),
       () => aborted,
     )) {
+      if (aborted) break;
       this.writeSseEvent(res, event);
     }
-    this.endSseResponse(res);
+    req.off("close", closeHandler);
+    if (!aborted) {
+      this.endSseResponse(res);
+    }
   }
 
   @Post("projects/:id/rewrite-jobs/stream")
