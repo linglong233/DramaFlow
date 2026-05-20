@@ -1720,7 +1720,7 @@ export class JobsService {
     });
   }
 
-  private async resolveTextLlmConfig(
+  public async resolveTextLlmConfig(
     userId: string,
     projectId: string,
     configSource?: LlmConfigSource,
