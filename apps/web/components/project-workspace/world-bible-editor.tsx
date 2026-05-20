@@ -433,6 +433,7 @@ export function WorldBibleEditor({
                 onUpdate={updateCharacter}
                 t={t}
                 projectId={projectId}
+                styleGuide={content.styleGuide}
               />
             )}
             {activeTab === "locations" && selectedLoc && (
@@ -441,6 +442,7 @@ export function WorldBibleEditor({
                 onUpdate={updateLocation}
                 t={t}
                 projectId={projectId}
+                styleGuide={content.styleGuide}
               />
             )}
             {activeTab === "voiceConfigs" && selectedVoice &&
@@ -545,18 +547,24 @@ function buildWorldBibleReferencePrompt(parts: Array<string | undefined>) {
     .join("\n");
 }
 
-function buildCharacterReferencePrompt(character: CharacterProfile) {
+function buildCharacterReferencePrompt(character: CharacterProfile, styleGuide?: StyleGuideProfile) {
   return buildWorldBibleReferencePrompt([
     character.appearance,
+    character.costumes ? Object.values(character.costumes).join(", ") : undefined,
+    character.personality,
+    styleGuide?.visualStyle,
+    styleGuide?.colorPalette,
   ]);
 }
 
-function buildLocationReferencePrompt(location: LocationProfile) {
+function buildLocationReferencePrompt(location: LocationProfile, styleGuide?: StyleGuideProfile) {
   return buildWorldBibleReferencePrompt([
     location.name,
     location.description,
     location.lighting,
     location.timeOfDay,
+    styleGuide?.visualStyle,
+    styleGuide?.colorPalette,
   ]);
 }
 
@@ -573,11 +581,13 @@ function CharacterForm({
   onUpdate,
   t,
   projectId,
+  styleGuide,
 }: {
   character: CharacterProfile;
   onUpdate: (id: string, u: Partial<CharacterProfile>) => void;
   t: TFn;
   projectId: string;
+  styleGuide?: StyleGuideProfile;
 }) {
   const [costumeKey, setCostumeKey] = useState("");
   const [costumeVal, setCostumeVal] = useState("");
@@ -714,7 +724,7 @@ function CharacterForm({
       {showImageGen && (
         <WorldBibleReferenceImageDialog
           generatePath={`/projects/${projectId}/world-bible/characters/${char.id}/generate-reference-image`}
-          initialPrompt={buildCharacterReferencePrompt(char)}
+          initialPrompt={buildCharacterReferencePrompt(char, styleGuide)}
           onImageGenerated={(assetUrl) => {
             onUpdate(char.id, {
               referenceImages: [...char.referenceImages, assetUrl],
@@ -732,11 +742,13 @@ function LocationForm({
   onUpdate,
   t,
   projectId,
+  styleGuide,
 }: {
   location: LocationProfile;
   onUpdate: (id: string, u: Partial<LocationProfile>) => void;
   t: TFn;
   projectId: string;
+  styleGuide?: StyleGuideProfile;
 }) {
   const [showImageGen, setShowImageGen] = useState(false);
 
@@ -817,7 +829,7 @@ function LocationForm({
       {showImageGen && (
         <WorldBibleReferenceImageDialog
           generatePath={`/projects/${projectId}/world-bible/locations/${loc.id}/generate-reference-image`}
-          initialPrompt={buildLocationReferencePrompt(loc)}
+          initialPrompt={buildLocationReferencePrompt(loc, styleGuide)}
           onImageGenerated={(assetUrl) => {
             onUpdate(loc.id, {
               referenceImages: [...loc.referenceImages, assetUrl],
