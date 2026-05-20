@@ -18,5 +18,7 @@ test("createEmptyDatabase starts with every collection empty", () => {
   assert.equal(db.projects.length, 0);
   assert.equal(db.documents.length, 0);
   assert.equal(db.jobs.length, 0);
+  assert.equal(Array.isArray(db.novelImportSessions), true);
+  assert.equal(db.novelImportSessions.length, 0);
   assert.ok(db.updatedAt.length > 10);
 });

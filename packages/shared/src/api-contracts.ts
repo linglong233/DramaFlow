@@ -41,6 +41,8 @@ import type {
   LlmProviderConfig,
   NotificationRecord,
   NotificationType,
+  NovelImportSession,
+  NovelImportWriteResult,
   ProjectRole,
   ProjectMemberRecord,
   ProjectRecord,
@@ -361,6 +363,38 @@ export type NovelImportEvent =
   | { type: "scenes"; chunkIndex: number; scenes: import("./domain").ScriptScene[] }
   | { type: "done"; worldBibleDocId: string; synopsisDocId: string; scriptDocId: string }
   | { type: "error"; error: string };
+
+/** 创建小说导入会话请求体 */
+export interface CreateNovelImportSessionPayload {
+  text: string;
+  targetEpisodeCount: number;
+  episodeDurationMinutes: number;
+  genreStyle: string;
+  adaptationFocus: string;
+  llmConfigSource?: LlmConfigSource;
+}
+
+/** 小说导入会话响应 */
+export interface NovelImportSessionResponse {
+  session: NovelImportSession;
+}
+
+/** 最近小说导入会话响应 */
+export interface LatestNovelImportSessionResponse {
+  session: NovelImportSession | null;
+}
+
+/** 小说导入任务响应 */
+export interface NovelImportJobResponse {
+  session: NovelImportSession;
+  job: JobRecord;
+}
+
+/** 小说导入写入草稿响应 */
+export interface NovelImportWriteDraftsResponse {
+  session: NovelImportSession;
+  writeResult: NovelImportWriteResult;
+}
 
 /** 添加项目成员请求体 */
 export interface ProjectMemberAssignmentPayload {

@@ -69,7 +69,8 @@ export type JobType =
   | "rewrite_segment"
   | "tts_generation"
   | "export_video"
-  | "shot_regenerate";
+  | "shot_regenerate"
+  | "novel_import";
 
 /** 任务执行状态 */
 export type JobStatus = "queued" | "running" | "completed" | "failed";
@@ -690,6 +691,98 @@ export interface NovelImportInput {
   /** LLM 配置来源 */
   llmConfigSource?: LlmConfigSource;
 }
+
+/** 小说导入状态 */
+export type NovelImportStatus =
+  | "draft"
+  | "queued"
+  | "running"
+  | "needs_review"
+  | "failed"
+  | "cancelled"
+  | "written";
+
+/** 小说导入阶段 */
+export type NovelImportStage =
+  | "setup"
+  | "chunking"
+  | "adaptationPlan"
+  | "worldBible"
+  | "synopsis"
+  | "script"
+  | "review"
+  | "write";
+
+/** 小说导入分块状态 */
+export type NovelImportChunkStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "stale";
+
+/** 小说导入参数 */
+export interface NovelImportOptions {
+  targetEpisodeCount: number;
+  episodeDurationMinutes: number;
+  genreStyle: string;
+  adaptationFocus: string;
+  llmConfigSource?: LlmConfigSource;
+}
+
+/** 小说导入分块记录 */
+export interface NovelImportChunkRecord {
+  index: number;
+  title?: string;
+  text: string;
+  status: NovelImportChunkStatus;
+  summary?: string;
+  continuityNotes?: string;
+  scenes: ScriptScene[];
+  rawOutput?: string;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+/** 小说导入写入结果 */
+export interface NovelImportWriteResult {
+  worldBibleDocumentId: string;
+  worldBibleVersionId: string;
+  synopsisDocumentId: string;
+  synopsisVersionId: string;
+  scriptDocumentId: string;
+  scriptVersionId: string;
+  writtenAt: string;
+}
+
+/** 小说导入会话 */
+export interface NovelImportSession {
+  id: string;
+  projectId: string;
+  createdBy: string;
+  status: NovelImportStatus;
+  stage: NovelImportStage;
+  progress: number;
+  sourceText: string;
+  options: NovelImportOptions;
+  chunks: NovelImportChunkRecord[];
+  adaptationPlan?: string;
+  worldBible?: WorldBibleContent;
+  synopsis?: string;
+  scriptPreview?: ScriptContent;
+  writeResult?: NovelImportWriteResult;
+  lastJobId?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 小说导入后台任务输入 */
+export type NovelImportJobInput =
+  | { action: "runSession"; sessionId: string }
+  | { action: "retryChunk"; sessionId: string; chunkIndex: number }
+  | { action: "rerunFromChunk"; sessionId: string; chunkIndex: number };
 
 /** 媒体（图片/视频）生成输入参数 */
 export interface GenerateMediaInput {

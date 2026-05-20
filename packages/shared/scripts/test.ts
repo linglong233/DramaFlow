@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import type { NovelImportSession, NovelImportJobInput } from "../src";
 import {
   canTransitionVersionStatus,
   getSubmittedStatus,
@@ -156,5 +157,40 @@ const customScene = normalizeStoryboardShot({
   visualDescription: "Custom scene",
 }, 5);
 assert.equal(customScene.sceneId, "kitchen-scene");
+
+const sampleNovelImportJob: NovelImportJobInput = {
+  action: "runSession",
+  sessionId: "novel_session_1",
+};
+assert.equal(sampleNovelImportJob.action, "runSession");
+
+const sampleNovelImportSession: NovelImportSession = {
+  id: "novel_session_1",
+  projectId: "project_1",
+  createdBy: "user_1",
+  status: "draft",
+  stage: "setup",
+  progress: 0,
+  sourceText: "第一章\n她推开门。",
+  options: {
+    targetEpisodeCount: 12,
+    episodeDurationMinutes: 2,
+    genreStyle: "都市悬疑",
+    adaptationFocus: "强化反转",
+    llmConfigSource: "team",
+  },
+  chunks: [
+    {
+      index: 0,
+      title: "第一章",
+      text: "第一章\n她推开门。",
+      status: "pending",
+      scenes: [],
+    },
+  ],
+  createdAt: "2026-05-20T00:00:00.000Z",
+  updatedAt: "2026-05-20T00:00:00.000Z",
+};
+assert.equal(sampleNovelImportSession.chunks[0]?.status, "pending");
 
 console.log("shared tests passed");

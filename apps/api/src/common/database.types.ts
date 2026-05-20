@@ -16,6 +16,7 @@ import type {
   ExportRecord,
   JobRecord,
   NotificationRecord,
+  NovelImportSession,
   ProjectMemberRecord,
   ProjectRecord,
   RefreshTokenRecord,
@@ -61,6 +62,7 @@ export interface DevDatabase {
   timelines: TimelineRecord[];
   exports: ExportRecord[];
   conversationSessions: ConversationSession[];
+  novelImportSessions: NovelImportSession[];
   updatedAt: string;
 }
 
@@ -87,6 +89,7 @@ export function createEmptyDatabase(): DevDatabase {
     timelines: [],
     exports: [],
     conversationSessions: [],
+    novelImportSessions: [],
     updatedAt: new Date().toISOString(),
   };
 }
