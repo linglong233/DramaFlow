@@ -12,7 +12,7 @@ import { scriptConfig } from "./generators/script";
 import { storyboardConfig } from "./generators/storyboard";
 
 export type GeneratorId = "synopsis" | "script" | "storyboard";
-export type GenerationMode = "quick" | "conversational";
+export type GenerationMode = "quick" | "conversational" | "novelImport";
 
 export interface FieldDef {
   key: string;

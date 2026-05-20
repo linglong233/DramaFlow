@@ -8,7 +8,7 @@ import type { GeneratorConfig } from "../generator-registry";
 export const scriptConfig: GeneratorConfig = {
   id: "script",
   labelKey: "projectWorkspace.generate.scriptLabel",
-  modes: ["quick", "conversational"],
+  modes: ["quick", "conversational", "novelImport"],
   outputType: "script",
   streamEndpoint: "/script-jobs/stream",
   quickFields: [
