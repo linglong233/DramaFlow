@@ -14,6 +14,7 @@ import { useI18n } from "../../../lib/i18n";
 import { getGeneratorConfig, type GeneratorId, type GenerationMode } from "./generator-registry";
 import { QuickGenerator } from "./quick-generator";
 import { ConversationalGenerator } from "./conversational-generator";
+import { NovelImportGenerator } from "./novel-import-generator";
 
 interface Props {
   generatorId: GeneratorId;
@@ -43,7 +44,9 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
                 type="button"
                 onClick={() => setMode(m)}
               >
-                {t(m === "quick" ? "projectWorkspace.generate.quickMode" : "projectWorkspace.generate.conversationalMode")}
+                {m === "quick" ? t("projectWorkspace.generate.quickMode")
+                  : m === "conversational" ? t("projectWorkspace.generate.conversationalMode")
+                  : "📖 小说导入"}
               </button>
             ))}
           </div>
@@ -66,7 +69,14 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
         </div>
       </div>
 
-      {mode === "conversational" && availableModes.includes("conversational") ? (
+      {mode === "novelImport" && availableModes.includes("novelImport") ? (
+        <NovelImportGenerator
+          config={config}
+          projectId={projectId}
+          project={project}
+          llmConfigSource={llmConfigSource}
+        />
+      ) : mode === "conversational" && availableModes.includes("conversational") ? (
         <ConversationalGenerator
           config={config}
           projectId={projectId}
