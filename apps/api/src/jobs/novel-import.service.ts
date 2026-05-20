@@ -85,13 +85,15 @@ export class NovelImportService {
       yield { type: "worldBible", content: worldBible };
 
       // Build world bible context string — used for ALL chunks
-      const wbContext = [
+      const hasWb = worldBible.characters.length > 0 || worldBible.locations.length > 0;
+      const wbContext = hasWb ? [
         "## 项目世界观",
         worldBible.characters.length > 0 ? `角色：${worldBible.characters.map((c) => `${c.name}（${c.appearance}）`).join("；")}` : "",
         worldBible.locations.length > 0 ? `场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}` : "",
-      ].filter(Boolean).join("\n");
+      ].filter(Boolean).join("\n") : "";
 
       // Phase 2b: Synopsis
+      if (shouldAbort()) { yield { type: "error", error: "导入已取消" }; return; }
       yield { type: "progress", phase: "worldBible", message: "生成大纲..." };
       const synopsis = await this.generateSynopsis(wbChunks, worldBible, config, streamLlm);
       yield { type: "synopsis", content: synopsis };
