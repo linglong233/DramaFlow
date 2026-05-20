@@ -9639,6 +9639,63 @@ textarea.input {
   font-weight: 500;
 }
 
+.novel-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.novel-import__input-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.novel-import__input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.novel-import__char-count {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  min-height: 1em;
+}
+
+.novel-import__preview-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.novel-import__tab {
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.novel-import__tab:hover {
+  color: var(--text-primary);
+}
+
+.novel-import__tab--on {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.novel-import__preview-content {
+  margin-top: var(--space-3);
+  max-height: 500px;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
 /* ── Step Wizard ── */
 .gen-step-bar {
   display: flex;
