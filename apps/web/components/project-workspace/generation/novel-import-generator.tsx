@@ -7,7 +7,6 @@ import { normalizeScriptContent, normalizeWorldBibleContent } from "@dramaflow/s
 
 import { apiStreamFetch } from "../../../lib/api";
 import { useFeedback } from "../../../lib/hooks";
-import { useI18n } from "../../../lib/i18n";
 import type { GeneratorConfig } from "./generator-registry";
 import { ScriptView, WorldBibleView } from "../version-view";
 
@@ -101,7 +100,6 @@ function reducer(state: State, action: Action): State {
 }
 
 export function NovelImportGenerator({ projectId, llmConfigSource }: Props) {
-  const { t } = useI18n();
   const { feedback, setFeedback } = useFeedback();
   const [state, dispatch] = useReducer(reducer, initialState);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,16 +126,20 @@ export function NovelImportGenerator({ projectId, llmConfigSource }: Props) {
     dispatch({ type: "SET_READING_FILE", reading: true });
     const reader = new FileReader();
     reader.onload = (evt) => {
-      dispatch({ type: "SET_INPUT", text: evt.target?.result as string });
+      const text = evt.target?.result;
+      if (typeof text === "string") {
+        dispatch({ type: "SET_INPUT", text });
+      }
       dispatch({ type: "SET_READING_FILE", reading: false });
     };
     reader.onerror = () => {
       dispatch({ type: "SET_READING_FILE", reading: false });
+      setFeedback({ message: null, error: "文件读取失败" });
     };
     reader.readAsText(file, "utf-8");
     // Reset file input so re-uploading the same file works
     e.target.value = "";
-  }, []);
+  }, [setFeedback]);
 
   const handleStart = useCallback(async () => {
     if (!state.inputText.trim()) {
@@ -145,14 +147,14 @@ export function NovelImportGenerator({ projectId, llmConfigSource }: Props) {
       return;
     }
     if (state.inputText.length > 500_000) {
-      dispatch({ type: "ERROR", error: "文本较长（超过50万字），导入可能需要较长时间" });
-      // Don't return — just warn, let user proceed
+      setFeedback({ message: "文本较长（超过50万字），导入可能需要较长时间", error: null });
+    } else {
+      setFeedback({ message: null, error: null });
     }
 
     const controller = new AbortController();
     abortRef.current = controller;
     dispatch({ type: "START_IMPORT" });
-    setFeedback({ message: null, error: null });
 
     try {
       for await (const chunk of apiStreamFetch(
