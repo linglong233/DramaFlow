@@ -260,6 +260,8 @@ export class JobsController {
     req.off("close", closeHandler);
     if (!aborted) {
       this.endSseResponse(res);
+    } else if (!res.writableEnded) {
+      res.end();
     }
   }
 
