@@ -159,6 +159,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
 
   const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>();
   const [selectedVideoProvider, setSelectedVideoProvider] = useState<string | undefined>();
+  const [optimisticBindings, setOptimisticBindings] = useState<Record<string, ShotMediaBinding>>({});
 
   const providerEntries = useProviderEntries(imageConfigSource, project?.team?.id);
 
@@ -240,8 +241,9 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
 
     const map = new Map<string, ShotProjectState>();
     for (const shot of safeContent.shots) {
-      const binding: ShotMediaBinding | undefined = safeContent.mediaBindings[shot.id]
+      const rawBinding: ShotMediaBinding | undefined = safeContent.mediaBindings[shot.id]
         ?? (reverseMappings.has(shot.id) ? safeContent.mediaBindings[reverseMappings.get(shot.id)!] : undefined);
+      const binding = optimisticBindings[shot.id] ?? rawBinding;
       const docs = documentsByShot.get(shot.id)
         ?? (reverseMappings.has(shot.id) ? documentsByShot.get(reverseMappings.get(shot.id)!) : undefined)
         ?? {};
@@ -279,7 +281,26 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       });
     }
     return map;
-  }, [safeContent, documentsByShot, latestJobsByShot, versionsByDocument, versionsById]);
+  }, [safeContent, documentsByShot, latestJobsByShot, versionsByDocument, versionsById, optimisticBindings]);
+
+  useEffect(() => {
+    if (Object.keys(optimisticBindings).length === 0) return;
+    setOptimisticBindings((prev) => {
+      const next: typeof prev = {};
+      let changed = false;
+      for (const [shotId, binding] of Object.entries(prev)) {
+        const real = safeContent.mediaBindings[shotId];
+        if (real && real.imageVersionId === binding.imageVersionId
+          && real.videoVersionId === binding.videoVersionId
+          && real.audioVersionId === binding.audioVersionId) {
+          changed = true;
+          continue;
+        }
+        next[shotId] = binding;
+      }
+      return changed ? next : prev;
+    });
+  }, [safeContent.mediaBindings, optimisticBindings]);
 
   const visibleShots = useMemo(() => safeContent.shots.filter((shot) => {
     const state = shotStateById.get(shot.id);
@@ -553,11 +574,27 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         body: { shotId, binding: { [`${mediaType}VersionId`]: versionId } },
       });
     },
+    onMutate: ({ shotId, mediaType, versionId }) => {
+      setOptimisticBindings((prev) => ({
+        ...prev,
+        [shotId]: {
+          ...(prev[shotId] ?? safeContent.mediaBindings[shotId] ?? {}),
+          [`${mediaType}VersionId`]: versionId,
+        },
+      }));
+    },
     onSuccess: async () => {
       setFeedback({ message: t("shotDetailDrawer.mediaSelected"), error: null });
       await invalidateWorkspace();
     },
-    onError: setMutationError,
+    onError: (error, { shotId }) => {
+      setMutationError(error);
+      setOptimisticBindings((prev) => {
+        const next = { ...prev };
+        delete next[shotId];
+        return next;
+      });
+    },
   });
 
   const handleSubtitleChange = useCallback((shotId: string, subtitle: string) => {
