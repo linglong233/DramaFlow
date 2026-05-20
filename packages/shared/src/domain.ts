@@ -683,6 +683,14 @@ export interface GenerateStoryboardInput {
   shotDensity: "sparse" | "balanced" | "dense";
 }
 
+/** 小说导入输入参数 */
+export interface NovelImportInput {
+  /** 小说全文 */
+  text: string;
+  /** LLM 配置来源 */
+  llmConfigSource?: LlmConfigSource;
+}
+
 /** 媒体（图片/视频）生成输入参数 */
 export interface GenerateMediaInput {
   /** 目标镜头 ID */

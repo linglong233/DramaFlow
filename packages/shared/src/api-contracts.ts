@@ -345,6 +345,23 @@ export interface CreateStoryboardJobPayload extends GenerateStoryboardInput {
   llmConfigSource?: LlmConfigSource;
 }
 
+/** 小说导入请求体 */
+export interface CreateNovelImportPayload {
+  text: string;
+  llmConfigSource?: LlmConfigSource;
+}
+
+/** 小说导入 SSE 事件 */
+export type NovelImportEvent =
+  | { type: "progress"; phase: "chunking"; totalChunks: number }
+  | { type: "progress"; phase: "worldBible"; message: string }
+  | { type: "worldBible"; content: import("./domain").WorldBibleContent }
+  | { type: "synopsis"; content: string }
+  | { type: "progress"; phase: "script"; chunkIndex: number; totalChunks: number }
+  | { type: "scenes"; chunkIndex: number; scenes: import("./domain").ScriptScene[] }
+  | { type: "done"; worldBibleDocId: string; synopsisDocId: string; scriptDocId: string }
+  | { type: "error"; error: string };
+
 /** 添加项目成员请求体 */
 export interface ProjectMemberAssignmentPayload {
   email: string;
