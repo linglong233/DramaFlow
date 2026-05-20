@@ -46,7 +46,7 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
               >
                 {m === "quick" ? t("projectWorkspace.generate.quickMode")
                   : m === "conversational" ? t("projectWorkspace.generate.conversationalMode")
-                  : "📖 小说导入"}
+                  : "小说导入"}
               </button>
             ))}
           </div>
