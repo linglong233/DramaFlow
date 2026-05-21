@@ -16,12 +16,8 @@ import {
 import {
   canAutoApprove,
   canChangeTeamMemberRole,
-  canEditProject,
-  canEditTimeline,
-  canExportProject,
   canManageTenant,
   canRemoveTeamMember,
-  canReviewProject,
   canTransitionVersionStatus,
   getSubmittedStatus,
   getNextVersionNumber,
@@ -29,11 +25,12 @@ import {
   normalizeStoryboardContent,
   ensureMediaBindings,
   resolveReviewRequired,
+  findInvalidPermissionOverrideValues,
+  findInvalidProjectRolePermissionTemplateValues,
   PROJECT_PERMISSIONS,
   PROJECT_ROLES,
   SYSTEM_PROJECT_ROLE_PERMISSION_TEMPLATES,
   getProjectRoleTemplatePermissions,
-  hasProjectPermission,
   normalizePermissionOverride,
   normalizeProjectRolePermissionTemplates,
   resolveProjectPermissions,
@@ -168,6 +165,8 @@ export class WorkspaceService {
     if (!canManageTenant(actor)) {
       throw new ForbiddenException("Only team admins can update permission templates");
     }
+
+    this.assertNoInvalidProjectPermissions(findInvalidProjectRolePermissionTemplateValues(input.templates));
 
     return this.database.mutate((db) => {
       const team = this.mustFindTeam(db, teamId);
@@ -652,25 +651,9 @@ export class WorkspaceService {
           autoApproveRoles: c.autoApproveRoles,
         }));
 
-      const currentUserPermissions: ProjectPermission[] = (() => {
-        const user = this.mustFindUser(db, userId);
-        const projectMember = db.projectMembers.find(
-          (m) => m.projectId === projectId && m.userId === userId,
-        );
-        const teamMembers = db.teamMembers.filter(
-          (m) => m.teamId === project.teamId && m.userId === userId,
-        );
-        return resolveProjectPermissions({
-          userId,
-          globalRole: user.globalRole,
-          teamRoles: teamMembers.map((m) => m.role),
-          projectRoles: projectMember ? [projectMember.role] : [],
-          projectMembers: projectMember
-            ? [{ role: projectMember.role, permissionOverride: projectMember.permissionOverride }]
-            : undefined,
-          projectRolePermissionTemplates: team.projectRolePermissionTemplates,
-        });
-      })();
+      const currentUserPermissions = this.resolveActorProjectPermissions(
+        this.buildProjectActorContext(db, userId, projectId),
+      );
 
       return {
         team: {
@@ -698,14 +681,14 @@ export class WorkspaceService {
     message = "You do not have permission to perform this project action",
   ): Promise<void> {
     const actor = await this.getActor(userId, projectId);
-    if (!hasProjectPermission(actor, permission) && !canManageTenant(actor)) {
+    if (!this.actorHasProjectPermission(actor, permission)) {
       throw new ForbiddenException(message);
     }
   }
 
   async updateProjectReviewPolicy(userId: string, projectId: string, reviewPolicyMode: "inherit" | "required" | "bypass") {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to change the project review policy");
     }
 
@@ -723,7 +706,7 @@ export class WorkspaceService {
     input: { name?: string; description?: string; genre?: string; coverUrl?: string; status?: ProjectStatus; reviewPolicyMode?: "inherit" | "required" | "bypass" },
   ) {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to update this project");
     }
 
@@ -770,7 +753,7 @@ export class WorkspaceService {
 
   async inviteProjectMember(userId: string, projectId: string, input: { email: string; role: ProjectRole }) {
     const actor = await this.getActor(userId, projectId);
-    if (!hasProjectPermission(actor, "member.manage") && !canManageTenant(actor)) {
+    if (!this.actorHasProjectPermission(actor, "member.manage")) {
       throw new ForbiddenException("Only project member managers can assign collaborators");
     }
 
@@ -920,7 +903,7 @@ export class WorkspaceService {
 
   async addProjectMember(userId: string, projectId: string, input: { email: string; role: ProjectRole }) {
     const actor = await this.getActor(userId, projectId);
-    if (!hasProjectPermission(actor, "member.manage") && !canManageTenant(actor)) {
+    if (!this.actorHasProjectPermission(actor, "member.manage")) {
       throw new ForbiddenException("Only project member managers can assign collaborators");
     }
 
@@ -966,7 +949,7 @@ export class WorkspaceService {
     memberId: string,
   ): Promise<ProjectMemberPermissionsResponse> {
     const actor = await this.getActor(userId, projectId);
-    if (!hasProjectPermission(actor, "permission.manage") && !canManageTenant(actor)) {
+    if (!this.actorHasProjectPermission(actor, "permission.manage")) {
       throw new ForbiddenException("You do not have permission to view project member permissions");
     }
 
@@ -984,9 +967,11 @@ export class WorkspaceService {
     input: UpdateProjectMemberPermissionsPayload,
   ): Promise<ProjectMemberPermissionsResponse> {
     const actor = await this.getActor(userId, projectId);
-    if (!hasProjectPermission(actor, "permission.manage") && !canManageTenant(actor)) {
+    if (!this.actorHasProjectPermission(actor, "permission.manage")) {
       throw new ForbiddenException("You do not have permission to update project member permissions");
     }
+
+    this.assertNoInvalidProjectPermissions(findInvalidPermissionOverrideValues(input.permissionOverride));
 
     return this.database.mutate((db) => {
       const project = this.mustFindProject(db, projectId);
@@ -1042,7 +1027,7 @@ export class WorkspaceService {
   async adoptDocumentVersion(userId: string, documentId: string, versionId: string) {
     const document = await this.database.query((db) => this.mustFindDocument(db, documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to adopt a candidate version");
     }
 
@@ -1079,7 +1064,7 @@ export class WorkspaceService {
   ) {
     const document = await this.database.query((db) => this.mustFindDocument(db, documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to create a version");
     }
 
@@ -1104,7 +1089,7 @@ export class WorkspaceService {
     }
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to update this version");
     }
 
@@ -1148,7 +1133,7 @@ export class WorkspaceService {
     }
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to delete this version");
     }
 
@@ -1195,7 +1180,7 @@ export class WorkspaceService {
     const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to restore versions");
     }
 
@@ -1235,7 +1220,7 @@ export class WorkspaceService {
     const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canReviewProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "version.review")) {
       throw new ForbiddenException("You do not have permission to advance versions to review");
     }
 
@@ -1276,7 +1261,7 @@ export class WorkspaceService {
     const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to submit versions");
     }
 
@@ -1465,7 +1450,7 @@ export class WorkspaceService {
     content: Partial<WorldBibleContent>,
   ): Promise<WorldBibleContent> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to update the world bible");
     }
 
@@ -1488,7 +1473,7 @@ export class WorkspaceService {
     input: { name: string; appearance: string; personality?: string; tags?: string[]; referenceImages?: string[]; costumes?: Record<string, string> },
   ): Promise<CharacterProfile> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1517,7 +1502,7 @@ export class WorkspaceService {
     input: Partial<Omit<CharacterProfile, "id" | "sortOrder">>,
   ): Promise<CharacterProfile> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1544,7 +1529,7 @@ export class WorkspaceService {
 
   async deleteCharacter(userId: string, projectId: string, characterId: string) {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1566,7 +1551,7 @@ export class WorkspaceService {
     input: { name: string; description: string; lighting?: string; timeOfDay?: string; referenceImages?: string[] },
   ): Promise<LocationProfile> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1594,7 +1579,7 @@ export class WorkspaceService {
     input: Partial<Omit<LocationProfile, "id" | "sortOrder">>,
   ): Promise<LocationProfile> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1616,7 +1601,7 @@ export class WorkspaceService {
 
   async deleteLocation(userId: string, projectId: string, locationId: string) {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1638,7 +1623,7 @@ export class WorkspaceService {
     input: { visualStyle: string; colorPalette?: string; compositionNote?: string; negativePrompt?: string; referenceImages?: string[] },
   ): Promise<StyleGuideProfile> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
@@ -1756,7 +1741,7 @@ export class WorkspaceService {
     const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to update media bindings");
     }
 
@@ -1847,7 +1832,7 @@ export class WorkspaceService {
     const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
     const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
     const actor = await this.getActor(userId, document.projectId);
-    if (!canReviewProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "version.review")) {
       throw new ForbiddenException("You do not have permission to review this version");
     }
 
@@ -1893,27 +1878,66 @@ export class WorkspaceService {
     return updatedVersion;
   }
 
+  private buildProjectActorContext(db: DevDatabase, userId: string, projectId: string): ActorContext {
+    const user = this.mustFindUser(db, userId);
+    const project = this.mustFindProject(db, projectId);
+    const team = this.mustFindTeam(db, project.teamId);
+    const projectMembers = db.projectMembers.filter((member) => member.projectId === projectId && member.userId === userId);
+    const teamRoles = db.teamMembers
+      .filter((member) => member.teamId === project.teamId && member.userId === userId)
+      .map((member) => member.role);
+
+    return {
+      userId,
+      globalRole: user.globalRole,
+      teamRoles,
+      projectRoles: projectMembers.map((member) => member.role),
+      projectMembers: projectMembers.map((member) => ({
+        role: member.role,
+        permissionOverride: normalizePermissionOverride(member.permissionOverride),
+      })),
+      projectRolePermissionTemplates: team.projectRolePermissionTemplates,
+    };
+  }
+
+  private resolveActorProjectPermissions(actor: ActorContext): ProjectPermission[] {
+    if (canManageTenant(actor)) {
+      return [...PROJECT_PERMISSIONS];
+    }
+
+    return resolveProjectPermissions(actor);
+  }
+
+  private actorHasProjectPermission(actor: ActorContext, permission: ProjectPermission): boolean {
+    return this.resolveActorProjectPermissions(actor).includes(permission);
+  }
+
+  private assertNoInvalidProjectPermissions(invalid: Array<{ path: string; value: string }>): void {
+    if (invalid.length === 0) {
+      return;
+    }
+
+    const details = invalid.map((entry) => `${entry.path}: ${entry.value}`).join(", ");
+    throw new BadRequestException(`Invalid project permission value: ${details}`);
+  }
+
   private async getActor(userId: string, projectId?: string, teamId?: string): Promise<ActorContext> {
     return this.database.query((db) => {
+      if (projectId) {
+        return this.buildProjectActorContext(db, userId, projectId);
+      }
+
       const user = this.mustFindUser(db, userId);
-      const resolvedProjectId = projectId;
-      const resolvedTeamId = teamId ?? (resolvedProjectId ? this.mustFindProject(db, resolvedProjectId).teamId : undefined);
-      const projectMembers = resolvedProjectId
-        ? db.projectMembers.filter((member) => member.projectId === resolvedProjectId && member.userId === userId)
-        : [];
-      const team = resolvedTeamId ? this.mustFindTeam(db, resolvedTeamId) : undefined;
+      const team = teamId ? this.mustFindTeam(db, teamId) : undefined;
 
       return {
         userId,
         globalRole: user.globalRole,
-        teamRoles: resolvedTeamId
-          ? db.teamMembers.filter((member) => member.teamId === resolvedTeamId && member.userId === userId).map((member) => member.role)
+        teamRoles: team
+          ? db.teamMembers.filter((member) => member.teamId === team.id && member.userId === userId).map((member) => member.role)
           : [],
-        projectRoles: projectMembers.map((member) => member.role),
-        projectMembers: projectMembers.map((member) => ({
-          role: member.role,
-          permissionOverride: normalizePermissionOverride(member.permissionOverride),
-        })),
+        projectRoles: [],
+        projectMembers: [],
         projectRolePermissionTemplates: team?.projectRolePermissionTemplates,
       };
     });
@@ -2224,12 +2248,9 @@ export class WorkspaceService {
   }
 
   private assertProjectReadable(db: DevDatabase, projectId: string, userId: string) {
-    const project = this.mustFindProject(db, projectId);
-    const hasTeamAccess = db.teamMembers.some((member) => member.teamId === project.teamId && member.userId === userId);
-    const hasProjectAccess = db.projectMembers.some((member) => member.projectId === projectId && member.userId === userId);
-    const user = this.mustFindUser(db, userId);
+    const actor = this.buildProjectActorContext(db, userId, projectId);
 
-    if (user.globalRole !== "platform_super_admin" && !hasTeamAccess && !hasProjectAccess) {
+    if (!this.actorHasProjectPermission(actor, "project.view")) {
       throw new ForbiddenException("You do not have access to this project");
     }
   }
@@ -2783,7 +2804,7 @@ export class WorkspaceService {
 
   async saveTimeline(userId: string, projectId: string, payload: TimelineSavePayload): Promise<TimelineRecord> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditTimeline(actor)) {
+    if (!this.actorHasProjectPermission(actor, "timeline.edit")) {
       throw new ForbiddenException("You do not have permission to edit the timeline");
     }
 
@@ -2818,7 +2839,7 @@ export class WorkspaceService {
 
   async autoAssembleTimeline(userId: string, projectId: string): Promise<TimelineRecord> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditTimeline(actor)) {
+    if (!this.actorHasProjectPermission(actor, "timeline.edit")) {
       throw new ForbiddenException("You do not have permission to edit the timeline");
     }
 
@@ -2963,7 +2984,7 @@ export class WorkspaceService {
     },
   ) {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to register assets");
     }
 
@@ -3010,7 +3031,7 @@ export class WorkspaceService {
     config: Omit<CharacterVoiceConfig, "characterId">,
   ): Promise<CharacterVoiceConfig> {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
+    if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to edit voice configuration");
     }
 
