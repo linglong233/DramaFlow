@@ -330,10 +330,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     if (!activeDoc || activeDoc.id === VIRTUAL_VIDEO_DOC_ID) return;
     if (!selectedDocId || activeDoc.id !== selectedDocId) setSelectedDocId(activeDoc.id);
     if (selectedVersionId && !activeDoc.versions.some((version) => version.id === selectedVersionId)) {
-      setSelectedVersionId(activeDoc.versions[0]?.id ?? "");
+      setSelectedVersionId(activeDoc.currentVersionId ?? activeDoc.versions[0]?.id ?? "");
       return;
     }
-    if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.versions[0].id);
+    if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.currentVersionId ?? activeDoc.versions[0].id);
   }, [documents, selectedDocId, selectedVersionId, searchParams]);
 
   useEffect(() => {
@@ -733,7 +733,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   if (docSubTab === "edit") {
                     setDocSubTab("view");
                   }
-                  setSelectedVersionId(doc?.versions[0]?.id ?? "");
+                  setSelectedVersionId(doc?.currentVersionId ?? doc?.versions[0]?.id ?? "");
                 }}
                 isCollapsed={!leftPanelOpen}
                 onToggleCollapse={() => {
@@ -990,7 +990,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                   setSelectedDocId(id);
                   if (isEditing) setIsEditing(false);
                   const doc = documents.find((d) => d.id === id);
-                  if (doc?.versions[0]) setSelectedVersionId(doc.versions[0].id);
+                  if (doc) setSelectedVersionId(doc.currentVersionId ?? doc.versions[0]?.id ?? "");
                   setLeftDrawerOpen(false);
                 }}
               />
