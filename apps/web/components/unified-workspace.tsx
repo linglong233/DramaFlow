@@ -582,6 +582,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const canManageJobs = currentUserPermissions.includes("job.manage");
   const canEditTimeline = currentUserPermissions.includes("timeline.edit");
   const canCreateExport = currentUserPermissions.includes("export.create");
+  const canEditProject = currentUserPermissions.includes("project.edit");
 
   const isInfoMode = mode === "info";
   const isTasksMode = mode === "tasks";
@@ -647,11 +648,13 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
           )}
           {showThreeColumnLayout && !isDocumentMode && (
             <>
-              <ReviewPolicySwitcher
-                projectId={projectId}
-                currentMode={payload.project.reviewPolicyMode}
-                variant="compact"
-              />
+              {canEditProject && (
+                <ReviewPolicySwitcher
+                  projectId={projectId}
+                  currentMode={payload.project.reviewPolicyMode}
+                  variant="compact"
+                />
+              )}
               <button
                 className={`uw-panel-toggle${rightPanelOpen ? " uw-panel-toggle--active" : ""}`}
                 type="button"

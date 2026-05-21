@@ -109,6 +109,7 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
   const permissions = payload.currentUserPermissions as ProjectPermission[];
   const canManageMembers = hasProjectPermission(permissions, "member.manage");
   const canManagePermissions = hasProjectPermission(permissions, "permission.manage");
+  const canEditProject = hasProjectPermission(permissions, "project.edit");
 
   const project = payload.project;
 
@@ -215,15 +216,17 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
               ) : (
                 <div className="pip-editable-field" style={{ margin: "var(--space-2) 0 var(--space-1)" }}>
                   <h2 className="pip-title">{project?.name ?? t("common.loading")}</h2>
-                  <button
-                    className="pip-edit-btn"
-                    type="button"
-                    onClick={() => startEdit("name")}
-                    aria-label={t("projectWorkspace.overview.editName")}
-                  >
-                    <PencilIcon />
-                    {t("common.edit")}
-                  </button>
+                  {canEditProject && (
+                    <button
+                      className="pip-edit-btn"
+                      type="button"
+                      onClick={() => startEdit("name")}
+                      aria-label={t("projectWorkspace.overview.editName")}
+                    >
+                      <PencilIcon />
+                      {t("common.edit")}
+                    </button>
+                  )}
                 </div>
               )}
               {editingField === "description" ? (
@@ -257,15 +260,17 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
               ) : (
                 <div className="pip-editable-field">
                   <p className="pip-desc">{project?.description || t("projectWorkspace.overview.noDescription")}</p>
-                  <button
-                    className="pip-edit-btn"
-                    type="button"
-                    onClick={() => startEdit("description")}
-                    aria-label={t("projectWorkspace.overview.editDescription")}
-                  >
-                    <PencilIcon />
-                    {t("common.edit")}
-                  </button>
+                  {canEditProject && (
+                    <button
+                      className="pip-edit-btn"
+                      type="button"
+                      onClick={() => startEdit("description")}
+                      aria-label={t("projectWorkspace.overview.editDescription")}
+                    >
+                      <PencilIcon />
+                      {t("common.edit")}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -290,13 +295,15 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
           </div>
         </div>
 
-        <div className="pip-policy-row">
-          <ReviewPolicySwitcher
-            projectId={projectId}
-            currentMode={project?.reviewPolicyMode ?? "inherit"}
-            teamId={payload.team.id}
-          />
-        </div>
+        {canEditProject && (
+          <div className="pip-policy-row">
+            <ReviewPolicySwitcher
+              projectId={projectId}
+              currentMode={project?.reviewPolicyMode ?? "inherit"}
+              teamId={payload.team.id}
+            />
+          </div>
+        )}
       </header>
 
       <InlineFeedback message={feedback.message} error={feedback.error} />
