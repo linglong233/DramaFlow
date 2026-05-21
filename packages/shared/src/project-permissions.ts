@@ -60,6 +60,80 @@ export function isProjectRole(value: unknown): value is ProjectRole {
   return typeof value === "string" && PROJECT_ROLE_SET.has(value as ProjectRole);
 }
 
+export interface InvalidProjectPermissionValue {
+  path: string;
+  value: string;
+}
+
+function describeInvalidPermissionValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === null) {
+    return "null";
+  }
+
+  if (Array.isArray(value)) {
+    return "array";
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return typeof value;
+}
+
+export function findInvalidProjectPermissionValues(
+  values: unknown,
+  path: string,
+): InvalidProjectPermissionValue[] {
+  if (!Array.isArray(values)) {
+    return values === undefined
+      ? []
+      : [{ path, value: typeof values }];
+  }
+
+  return values
+    .map((value, index) => ({ value, index }))
+    .filter(({ value }) => !isProjectPermission(value))
+    .map(({ value, index }) => ({
+      path: `${path}[${index}]`,
+      value: describeInvalidPermissionValue(value),
+    }));
+}
+
+export function findInvalidPermissionOverrideValues(value: unknown): InvalidProjectPermissionValue[] {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+  return [
+    ...findInvalidProjectPermissionValues(record.allow, "permissionOverride.allow"),
+    ...findInvalidProjectPermissionValues(record.deny, "permissionOverride.deny"),
+  ];
+}
+
+export function findInvalidProjectRolePermissionTemplateValues(value: unknown): InvalidProjectPermissionValue[] {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const invalid: InvalidProjectPermissionValue[] = [];
+
+  for (const role of PROJECT_ROLES) {
+    if (role === "project_admin") {
+      continue;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(record, role)) {
+      invalid.push(...findInvalidProjectPermissionValues(record[role], `templates.${role}`));
+    }
+  }
+
+  return invalid;
+}
+
 /** 归一化权限列表：去除无效值和重复项，保持规范排序 */
 export function normalizeProjectPermissionList(values: unknown): ProjectPermission[] {
   if (!Array.isArray(values)) {

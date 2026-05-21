@@ -36,6 +36,9 @@ import {
   hasProjectPermission,
   getDefaultProjectRolePermissions,
   normalizePermissionOverride,
+  findInvalidPermissionOverrideValues,
+  findInvalidProjectPermissionValues,
+  findInvalidProjectRolePermissionTemplateValues,
 } from "./project-permissions";
 
 // =============================================
@@ -480,4 +483,35 @@ test("normalizePermissionOverride removes duplicates and invalid values", () => 
     allow: ["project.view"],
     deny: ["version.review"],
   });
+});
+
+test("findInvalidProjectPermissionValues reports invalid array entries with paths", () => {
+  assert.deepEqual(findInvalidProjectPermissionValues(
+    ["project.view", "bad.permission", 123],
+    "templates.writer",
+  ), [
+    { path: "templates.writer[1]", value: "bad.permission" },
+    { path: "templates.writer[2]", value: "123" },
+  ]);
+});
+
+test("findInvalidProjectRolePermissionTemplateValues ignores locked project_admin and reports editable roles", () => {
+  assert.deepEqual(findInvalidProjectRolePermissionTemplateValues({
+    project_admin: ["bad.admin"],
+    writer: ["project.view", "bad.permission"],
+    viewer: "project.view",
+  }), [
+    { path: "templates.writer[1]", value: "bad.permission" },
+    { path: "templates.viewer", value: "string" },
+  ]);
+});
+
+test("findInvalidPermissionOverrideValues reports invalid allow and deny values", () => {
+  assert.deepEqual(findInvalidPermissionOverrideValues({
+    allow: ["job.manage", "bad.permission"],
+    deny: ["version.review", false],
+  }), [
+    { path: "permissionOverride.allow[1]", value: "bad.permission" },
+    { path: "permissionOverride.deny[1]", value: "false" },
+  ]);
 });
