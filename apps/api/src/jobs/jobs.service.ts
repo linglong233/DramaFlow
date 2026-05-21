@@ -9,7 +9,6 @@
 
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -1669,20 +1668,12 @@ export class JobsService {
   }
 
   private async assertProjectReadable(userId: string, projectId: string) {
-    const allowed = await this.database.query((db) => {
-      const project = db.projects.find((item) => item.id === projectId);
-      if (!project) {
-        throw new NotFoundException("Project not found");
-      }
-      const user = db.users.find((item) => item.id === userId);
-      const hasTeamAccess = db.teamMembers.some((member) => member.teamId === project.teamId && member.userId === userId);
-      const hasProjectAccess = db.projectMembers.some((member) => member.projectId === projectId && member.userId === userId);
-      return user?.globalRole === "platform_super_admin" || hasTeamAccess || hasProjectAccess;
-    });
-
-    if (!allowed) {
-      throw new ForbiddenException("You do not have access to this project");
-    }
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "project.view",
+      "You do not have access to this project",
+    );
   }
 
   private normalizeLlmConfig(
