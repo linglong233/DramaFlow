@@ -22,6 +22,8 @@ interface TimelineEditorProps {
   projectId: string;
   data: ProjectWorkspacePayload;
   onRefresh: () => void;
+  canEditTimeline?: boolean;
+  canCreateExport?: boolean;
 }
 
 type TrackType = TimelineTrackRecord["type"];
@@ -93,7 +95,7 @@ function formatTime(seconds: number): string {
 }
 
 /* ── Component ── */
-export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorProps) {
+export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = false, canCreateExport = false }: TimelineEditorProps) {
   const { t } = useI18n();
 
   // State
@@ -317,7 +319,7 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
           <button
             className="timeline-btn timeline-btn-primary"
             onClick={() => autoAssemble.mutate()}
-            disabled={autoAssemble.isPending}
+            disabled={autoAssemble.isPending || !canEditTimeline}
           >
             {autoAssemble.isPending ? "装配中..." : "⚡ 自动装配"}
           </button>
@@ -332,7 +334,7 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
                 tracks,
               });
             }}
-            disabled={saveMutation.isPending || !timeline}
+            disabled={saveMutation.isPending || !timeline || !canEditTimeline}
           >
             {saveMutation.isPending ? "保存中..." : "💾 保存"}
           </button>
@@ -381,7 +383,7 @@ export function TimelineEditor({ projectId, data, onRefresh }: TimelineEditorPro
           <button
             className="timeline-btn timeline-btn-primary"
             onClick={handleExportClick}
-            disabled={exportMutation.isPending || totalDuration <= 0}
+            disabled={exportMutation.isPending || totalDuration <= 0 || !canCreateExport}
           >
             {exportMutation.isPending ? "导出中..." : "🎬 导出视频"}
           </button>

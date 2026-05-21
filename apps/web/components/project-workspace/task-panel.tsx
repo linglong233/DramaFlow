@@ -101,9 +101,10 @@ interface TaskPanelProps {
   videoConfigSource?: string;
   selectedImageProvider?: string;
   selectedVideoProvider?: string;
+  canManageJobs?: boolean;
 }
 
-export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImageProvider, selectedVideoProvider }: TaskPanelProps) {
+export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImageProvider, selectedVideoProvider, canManageJobs = false }: TaskPanelProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
@@ -176,6 +177,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
     <div className="task-panel">
       <div className="task-panel__header">
         <h2 className="task-panel__title">{t("taskPanel.title")}</h2>
+        {canManageJobs && (
         <div className="task-panel__actions">
           {confirmBatch === "images" ? (
             <div className="task-panel__confirm">
@@ -218,6 +220,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
             </>
           )}
         </div>
+        )}
       </div>
 
       <InlineFeedback message={feedback.message} error={feedback.error} />
@@ -263,6 +266,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
                 onRetry={() => retryMutation.mutate(job.id)}
                 isCancelling={cancelMutation.isPending}
                 isRetrying={retryMutation.isPending}
+                canManageJobs={canManageJobs}
               />
             ))}
           </div>
@@ -278,6 +282,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
             onRetry={() => retryMutation.mutate(job.id)}
             isCancelling={cancelMutation.isPending}
             isRetrying={retryMutation.isPending}
+            canManageJobs={canManageJobs}
           />
         ))}
       </div>
@@ -292,6 +297,7 @@ function JobRow({
   onRetry,
   isCancelling,
   isRetrying,
+  canManageJobs,
 }: {
   job: ProjectJobSummary;
   t: TranslateFn;
@@ -299,6 +305,7 @@ function JobRow({
   onRetry: () => void;
   isCancelling: boolean;
   isRetrying: boolean;
+  canManageJobs: boolean;
 }) {
   return (
     <div className="task-panel__row">
@@ -331,6 +338,7 @@ function JobRow({
           <span className="task-panel__progress-text">{t("taskPanel.progress", { value: job.progress })}</span>
         </div>
       )}
+      {canManageJobs && (
       <div className="task-panel__row-actions">
         {job.status === "queued" && (
           <button
@@ -353,6 +361,7 @@ function JobRow({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

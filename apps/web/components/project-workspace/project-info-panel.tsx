@@ -9,15 +9,17 @@
 
 import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ProjectRole, ProjectWorkspacePayload } from "@dramaflow/shared";
+import type { ProjectPermission, ProjectRole, ProjectWorkspacePayload } from "@dramaflow/shared";
 
 import { useI18n, getProjectRoleLabel, getReviewPolicyLabel, getVersionStatusLabel } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
 import { useFeedback } from "../../lib/hooks";
 import { queryKeys } from "../../lib/query-keys";
+import { hasProjectPermission } from "../../lib/project-permissions";
 import { InlineFeedback } from "../inline-feedback";
 import { ReviewPolicySwitcher } from "../review-policy-switcher";
 import { AuditConfigPanel } from "./audit-config-panel";
+import { MemberPermissionDialog } from "./member-permission-dialog";
 
 /* ── Inline SVG Icons ── */
 function MembersIcon() {
@@ -102,6 +104,11 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
   const [showAddMember, setShowAddMember] = useState(false);
   const [editingField, setEditingField] = useState<"name" | "description" | null>(null);
   const [draftValue, setDraftValue] = useState("");
+  const [permissionMember, setPermissionMember] = useState<ProjectWorkspacePayload["members"][number] | null>(null);
+
+  const permissions = payload.currentUserPermissions as ProjectPermission[];
+  const canManageMembers = hasProjectPermission(permissions, "member.manage");
+  const canManagePermissions = hasProjectPermission(permissions, "permission.manage");
 
   const project = payload.project;
 
@@ -316,16 +323,18 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
         <section className="pip-section">
           <div className="pip-section__head">
             <h3 className="pip-section__title">{t("projectWorkspace.collaboration.membersTitle")}</h3>
-            <button
-              className="pip-inline-action"
-              type="button"
-              onClick={() => setShowAddMember(!showAddMember)}
-            >
-              {showAddMember ? t("common.cancel") : t("projectWorkspace.collaboration.addTitle")}
-            </button>
+            {canManageMembers && (
+              <button
+                className="pip-inline-action"
+                type="button"
+                onClick={() => setShowAddMember(!showAddMember)}
+              >
+                {showAddMember ? t("common.cancel") : t("projectWorkspace.collaboration.addTitle")}
+              </button>
+            )}
           </div>
 
-          {showAddMember && (
+          {showAddMember && canManageMembers && (
             <div className="pip-add-form">
               <input
                 id="project-member-email"
@@ -376,6 +385,11 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
                   <span className="pip-row__sub">{m.email}</span>
                 </div>
                 <span className="status-badge badge-neutral">{getProjectRoleLabel(t, m.role)}</span>
+                {canManagePermissions && (
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPermissionMember(m)}>
+                    {t("projectWorkspace.collaboration.permissionsAction")}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -444,6 +458,14 @@ export function ProjectInfoPanel({ projectId, payload, onNavigateToVersion }: Pr
       <div className="pip-body animate-slide-up" style={{ animationDelay: "0.15s" }}>
         <AuditConfigPanel projectId={projectId} />
       </div>
+
+      {permissionMember && (
+        <MemberPermissionDialog
+          projectId={projectId}
+          member={permissionMember}
+          onClose={() => setPermissionMember(null)}
+        />
+      )}
     </div>
   );
 }

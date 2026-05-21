@@ -578,6 +578,11 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const storyboardVersion = payload.versions.find((version) => version.id === storyboardDocument?.currentVersionId);
   const storyboardShots = normalizeStoryboardContent(storyboardVersion?.content).shots;
 
+  const currentUserPermissions = payload.currentUserPermissions ?? [];
+  const canManageJobs = currentUserPermissions.includes("job.manage");
+  const canEditTimeline = currentUserPermissions.includes("timeline.edit");
+  const canCreateExport = currentUserPermissions.includes("export.create");
+
   const isInfoMode = mode === "info";
   const isTasksMode = mode === "tasks";
   const isTimelineMode = mode === "timeline";
@@ -691,7 +696,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       {isTasksMode && (
         <div className="uw-info-scroll">
           <div className="uw-info-inner">
-            <TaskPanel projectId={projectId} shotIds={storyboardShots.map((shot) => shot.id)} />
+            <TaskPanel projectId={projectId} shotIds={storyboardShots.map((shot) => shot.id)} canManageJobs={canManageJobs} />
           </div>
         </div>
       )}
@@ -703,6 +708,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
             <TimelineEditor
               projectId={projectId}
               data={payload}
+              canEditTimeline={canEditTimeline}
+              canCreateExport={canCreateExport}
               onRefresh={() => {
                 void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
                 void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(projectId) });
@@ -964,6 +971,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 jobs={jobs}
                 documents={payload.documents}
                 versions={payload.versions}
+                permissions={currentUserPermissions}
               />
             </div>
           )}
@@ -1019,6 +1027,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               jobs={jobs}
               documents={payload.documents}
               versions={payload.versions}
+              permissions={currentUserPermissions}
             />
           </div>
         </div>

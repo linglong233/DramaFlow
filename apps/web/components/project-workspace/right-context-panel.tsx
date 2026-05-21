@@ -8,7 +8,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { VersionRecord } from "@dramaflow/shared";
+import type { ProjectPermission, VersionRecord } from "@dramaflow/shared";
 
 import { formatApiError } from "../../lib/api";
 import { useI18n, getVersionStatusLabel } from "../../lib/i18n";
@@ -50,6 +50,7 @@ interface Props {
   jobs: JobItem[];
   documents: DocItem[];
   versions: VersionItem[];
+  permissions: ProjectPermission[];
 }
 
 function CommentIcon() {
@@ -112,10 +113,13 @@ function JobDot({ status }: { status: string }) {
 
 export function RightContextPanel({
   projectId, selectedVersionId, selectedVersion, currentMode, docSubTab = "view",
-  isEditing, onStartEdit, onFeedback, jobs, documents, versions,
+  isEditing, onStartEdit, onFeedback, jobs, documents, versions, permissions,
 }: Props) {
   const { t, formatDate } = useI18n();
   const [reviewComment, setReviewComment] = useState("");
+
+  const canEditProject = permissions.includes("project.edit");
+  const canReviewVersion = permissions.includes("version.review");
 
   const versionMutations = useVersionMutations(projectId);
 
@@ -151,7 +155,7 @@ export function RightContextPanel({
     isPending: versionMutations.restore.isPending,
   };
 
-  const canReview = selectedVersion?.status === "pending_review" || selectedVersion?.status === "submitted";
+  const canReview = canReviewVersion && (selectedVersion?.status === "pending_review" || selectedVersion?.status === "submitted");
 
   // Find current document for rewrite panel
   const selectedDocId = useMemo(() => {
@@ -183,7 +187,7 @@ export function RightContextPanel({
       {currentMode === "document" && docSubTab !== "generate" && (
         <>
           {/* Edit action */}
-          {selectedVersion && !isEditing && (
+          {selectedVersion && !isEditing && canEditProject && (
             <div className="uw-right-section">
               <div className="uw-right-section-header">
                 <span className="uw-right-section-icon"><EditIcon /></span>
