@@ -690,6 +690,19 @@ export class WorkspaceService {
     });
   }
 
+  /** 断言用户拥有指定的项目权限，否则抛出 ForbiddenException */
+  async assertProjectPermission(
+    userId: string,
+    projectId: string,
+    permission: ProjectPermission,
+    message = "You do not have permission to perform this project action",
+  ): Promise<void> {
+    const actor = await this.getActor(userId, projectId);
+    if (!hasProjectPermission(actor, permission) && !canManageTenant(actor)) {
+      throw new ForbiddenException(message);
+    }
+  }
+
   async updateProjectReviewPolicy(userId: string, projectId: string, reviewPolicyMode: "inherit" | "required" | "bypass") {
     const actor = await this.getActor(userId, projectId);
     if (!canEditProject(actor)) {
@@ -757,8 +770,8 @@ export class WorkspaceService {
 
   async inviteProjectMember(userId: string, projectId: string, input: { email: string; role: ProjectRole }) {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
-      throw new ForbiddenException("Only project editors can invite collaborators");
+    if (!hasProjectPermission(actor, "member.manage") && !canManageTenant(actor)) {
+      throw new ForbiddenException("Only project member managers can assign collaborators");
     }
 
     const result = await this.database.mutate((db) => {
@@ -907,8 +920,8 @@ export class WorkspaceService {
 
   async addProjectMember(userId: string, projectId: string, input: { email: string; role: ProjectRole }) {
     const actor = await this.getActor(userId, projectId);
-    if (!canEditProject(actor)) {
-      throw new ForbiddenException("Only project editors can assign collaborators");
+    if (!hasProjectPermission(actor, "member.manage") && !canManageTenant(actor)) {
+      throw new ForbiddenException("Only project member managers can assign collaborators");
     }
 
     return this.database.mutate((db) => {

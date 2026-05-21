@@ -278,7 +278,12 @@ export class JobsService {
     if (!job) {
       throw new NotFoundException("Job not found");
     }
-    await this.assertProjectReadable(userId, job.projectId);
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      job.projectId,
+      "job.manage",
+      "You do not have permission to manage project jobs",
+    );
 
     if (job.status !== "queued") {
       throw new BadRequestException("Only queued jobs can be cancelled");
@@ -300,7 +305,12 @@ export class JobsService {
     if (!job) {
       throw new NotFoundException("Job not found");
     }
-    await this.assertProjectReadable(userId, job.projectId);
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      job.projectId,
+      "job.manage",
+      "You do not have permission to manage project jobs",
+    );
 
     if (job.status !== "failed") {
       throw new BadRequestException("Only failed jobs can be retried");
@@ -332,7 +342,12 @@ export class JobsService {
     configSource?: ImageConfigSource,
     providerId?: string,
   ): Promise<BatchJobGroupRecord> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "job.manage",
+      "You do not have permission to manage project jobs",
+    );
 
     const uniqueShotIds = Array.from(new Set(shotIds.filter(Boolean)));
     if (uniqueShotIds.length === 0) {
@@ -390,7 +405,12 @@ export class JobsService {
     configSource?: ImageConfigSource,
     providerId?: string,
   ): Promise<BatchJobGroupRecord> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "job.manage",
+      "You do not have permission to manage project jobs",
+    );
 
     const uniqueShotIds = Array.from(new Set(shotIds.filter(Boolean)));
     if (uniqueShotIds.length === 0) {
@@ -2177,7 +2197,12 @@ export class JobsService {
     projectId: string,
     input: { resolution: string; fps: number; bitrate?: string; format: import("@dramaflow/shared").ExportFormat; allowMockFallback?: boolean },
   ) {
-    await this.assertProjectReadable(userId, projectId);
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "export.create",
+      "You do not have permission to export this project",
+    );
     return this.enqueueJob(userId, {
       type: "export_video",
       projectId,

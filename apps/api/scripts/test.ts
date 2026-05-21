@@ -2508,6 +2508,157 @@ async function main() {
     });
   });
 
+  await runCase("project permissions enforce review member job timeline and export actions", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, { email: "enforce-owner@example.com", displayName: "Enforce Owner" });
+      const director = await registerUser(baseUrl, { email: "enforce-director@example.com", displayName: "Enforce Director" });
+      const writer = await registerUser(baseUrl, { email: "enforce-writer@example.com", displayName: "Enforce Writer" });
+      const viewer = await registerUser(baseUrl, { email: "enforce-viewer@example.com", displayName: "Enforce Viewer" });
+      const ownerJsonHeaders = authHeaders(owner.accessToken, true);
+      const directorJsonHeaders = authHeaders(director.accessToken, true);
+      const writerJsonHeaders = authHeaders(writer.accessToken, true);
+      const viewerJsonHeaders = authHeaders(viewer.accessToken, true);
+
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams[0].id;
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ teamId, name: "Enforcement Project", reviewPolicyMode: "required" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const addDirectorResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ email: director.user.email, role: "director" }),
+      });
+      assert.equal(addDirectorResponse.status, 201);
+      const directorMember = await addDirectorResponse.json() as { id: string };
+
+      const addWriterResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ email: writer.user.email, role: "writer" }),
+      });
+      assert.equal(addWriterResponse.status, 201);
+      const writerMember = await addWriterResponse.json() as { id: string };
+
+      const addViewerResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ email: viewer.user.email, role: "viewer" }),
+      });
+      assert.equal(addViewerResponse.status, 201);
+
+      const projectPayloadResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(projectPayloadResponse.status, 200);
+      const projectPayload = await projectPayloadResponse.json() as {
+        documents: Array<{ id: string; type: string }>;
+      };
+      const scriptDocument = projectPayload.documents.find((document) => document.type === "script");
+      assert.ok(scriptDocument);
+
+      const versionResponse = await originalFetch(`${baseUrl}/documents/${scriptDocument.id}/versions`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          title: "Manual Review",
+          content: { logline: "Permission review", premise: "A test.", characters: [], scenes: [] },
+        }),
+      });
+      assert.equal(versionResponse.status, 201);
+      const version = await versionResponse.json() as { id: string };
+
+      const submitResponse = await originalFetch(`${baseUrl}/versions/${version.id}/submit`, {
+        method: "POST",
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(submitResponse.status, 201);
+
+      const directorApproveResponse = await originalFetch(`${baseUrl}/versions/${version.id}/approve`, {
+        method: "POST",
+        headers: directorJsonHeaders,
+        body: JSON.stringify({ comment: "Director approved." }),
+      });
+      assert.equal(directorApproveResponse.status, 201);
+
+      const deniedOverrideResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${directorMember.id}/permissions`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ permissionOverride: { allow: [], deny: ["version.review"] } }),
+      });
+      assert.equal(deniedOverrideResponse.status, 200);
+
+      const secondVersionResponse = await originalFetch(`${baseUrl}/documents/${scriptDocument.id}/versions`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          title: "Denied Review",
+          content: { logline: "Denied", premise: "A test.", characters: [], scenes: [] },
+        }),
+      });
+      assert.equal(secondVersionResponse.status, 201);
+      const secondVersion = await secondVersionResponse.json() as { id: string };
+      await originalFetch(`${baseUrl}/versions/${secondVersion.id}/submit`, {
+        method: "POST",
+        headers: authHeaders(owner.accessToken),
+      });
+
+      const deniedDirectorApproveResponse = await originalFetch(`${baseUrl}/versions/${secondVersion.id}/approve`, {
+        method: "POST",
+        headers: directorJsonHeaders,
+        body: JSON.stringify({ comment: "Should fail." }),
+      });
+      assert.equal(deniedDirectorApproveResponse.status, 403);
+
+      const allowWriterReviewResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${writerMember.id}/permissions`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ permissionOverride: { allow: ["version.review"], deny: [] } }),
+      });
+      assert.equal(allowWriterReviewResponse.status, 200);
+
+      const writerApproveResponse = await originalFetch(`${baseUrl}/versions/${secondVersion.id}/approve`, {
+        method: "POST",
+        headers: writerJsonHeaders,
+        body: JSON.stringify({ comment: "Writer approved by override." }),
+      });
+      assert.equal(writerApproveResponse.status, 201);
+
+      const viewerAddMemberResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members`, {
+        method: "POST",
+        headers: viewerJsonHeaders,
+        body: JSON.stringify({ email: "nobody@example.com", role: "viewer" }),
+      });
+      assert.equal(viewerAddMemberResponse.status, 403);
+
+      const viewerBatchResponse = await originalFetch(`${baseUrl}/projects/${project.id}/batch-image-jobs`, {
+        method: "POST",
+        headers: viewerJsonHeaders,
+        body: JSON.stringify({ shotIds: ["shot-permission-1"] }),
+      });
+      assert.equal(viewerBatchResponse.status, 403);
+
+      const viewerExportResponse = await originalFetch(`${baseUrl}/projects/${project.id}/export-jobs`, {
+        method: "POST",
+        headers: viewerJsonHeaders,
+        body: JSON.stringify({ resolution: "1080x1920", fps: 30, format: "mp4" }),
+      });
+      assert.equal(viewerExportResponse.status, 403);
+
+      const ownerWorkspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(ownerWorkspaceResponse.status, 200);
+      const ownerWorkspace = await ownerWorkspaceResponse.json() as { currentUserPermissions: string[] };
+      assert.equal(ownerWorkspace.currentUserPermissions.includes("permission.manage"), true);
+    });
+  });
+
   await runCase("mock image generation", async () => {
     const mediaProvider = new OpenAiMediaProvider();
     const image = await mediaProvider.generateImage({
