@@ -10,6 +10,11 @@ import {
   normalizeWorldBibleContent,
   resolveReviewRequired,
 } from "../src";
+import {
+  PROJECT_PERMISSIONS,
+  getDefaultProjectRolePermissions,
+  hasProjectPermission,
+} from "../src";
 
 assert.equal(resolveReviewRequired("required", "bypass"), false);
 assert.equal(resolveReviewRequired("bypass", "required"), true);
@@ -192,5 +197,16 @@ const sampleNovelImportSession: NovelImportSession = {
   updatedAt: "2026-05-20T00:00:00.000Z",
 };
 assert.equal(sampleNovelImportSession.chunks[0]?.status, "pending");
+
+// --- 权限解析导出断言 ---
+
+assert.equal(PROJECT_PERMISSIONS.includes("version.review"), true);
+assert.equal(getDefaultProjectRolePermissions("director").includes("version.review"), true);
+assert.equal(hasProjectPermission({
+  userId: "director-1",
+  globalRole: "user",
+  teamRoles: [],
+  projectRoles: ["director"],
+}, "version.review"), true);
 
 console.log("shared tests passed");

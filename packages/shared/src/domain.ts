@@ -31,6 +31,32 @@ export type ProjectRole =
   | "reviewer"
   | "viewer";
 
+/** 项目权限：细粒度权限枚举 */
+export type ProjectPermission =
+  | "project.view"
+  | "project.edit"
+  | "version.review"
+  | "job.manage"
+  | "timeline.edit"
+  | "export.create"
+  | "member.manage"
+  | "permission.manage";
+
+/** 权限覆盖（允许/拒绝列表） */
+export interface PermissionOverride {
+  allow: ProjectPermission[];
+  deny: ProjectPermission[];
+}
+
+/** 项目角色权限模板（团队级别自定义各角色的权限集合） */
+export type ProjectRolePermissionTemplates = Partial<Record<ProjectRole, ProjectPermission[]>>;
+
+/** 访问权限上下文中使用的项目成员信息 */
+export interface AccessProjectMemberContext {
+  role: ProjectRole;
+  permissionOverride?: PermissionOverride;
+}
+
 /** 审核策略模式：inherit 继承团队默认、required 强制审核、bypass 跳过审核 */
 export type ReviewPolicyMode = "inherit" | "required" | "bypass";
 
@@ -302,6 +328,8 @@ export interface TeamRecord {
   defaultImageProvider?: string;
   /** 默认视频 Provider ID（指向 videoProviders 中某项） */
   defaultVideoProvider?: string;
+  /** 项目角色权限模板（团队级别自定义各角色的权限集合） */
+  projectRolePermissionTemplates?: ProjectRolePermissionTemplates;
   createdAt: string;
   updatedAt: string;
 }
@@ -360,6 +388,8 @@ export interface ProjectMemberRecord {
   userId: string;
   /** 该成员在项目中的角色 */
   role: ProjectRole;
+  /** 权限覆盖（允许/拒绝列表） */
+  permissionOverride?: PermissionOverride;
   createdAt: string;
 }
 
@@ -812,6 +842,10 @@ export interface AccessContext {
   teamRoles: TeamRole[];
   /** 用户在相关项目中的角色列表 */
   projectRoles: ProjectRole[];
+  /** 项目成员上下文（含权限覆盖） */
+  projectMembers?: AccessProjectMemberContext[];
+  /** 团队级项目角色权限模板 */
+  projectRolePermissionTemplates?: ProjectRolePermissionTemplates;
 }
 
 /** 项目摘要（包含项目信息、文档列表和成员列表） */

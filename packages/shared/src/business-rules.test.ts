@@ -30,6 +30,13 @@ import {
   resolveReviewRequired,
   validateVersionContent,
 } from "./business-rules";
+import {
+  PROJECT_PERMISSIONS,
+  resolveProjectPermissions,
+  hasProjectPermission,
+  getDefaultProjectRolePermissions,
+  normalizePermissionOverride,
+} from "./project-permissions";
 
 // =============================================
 // resolveReviewRequired
@@ -278,8 +285,8 @@ test("canReviewProject: reviewer roles can review", () => {
   }
 });
 
-test("canReviewProject: editor roles cannot review", () => {
-  for (const role of ["director", "writer", "artist", "viewer"] as const) {
+test("canReviewProject: non-review editor roles cannot review", () => {
+  for (const role of ["writer", "artist", "viewer"] as const) {
     const ctx: AccessContext = { userId: "u1", globalRole: "user", teamRoles: [], projectRoles: [role] };
     assert.equal(canReviewProject(ctx), false);
   }
@@ -384,4 +391,93 @@ test("canExportProject: same as timeline editors", () => {
   }
   const ctx: AccessContext = { userId: "u1", globalRole: "user", teamRoles: [], projectRoles: ["viewer"] };
   assert.equal(canExportProject(ctx), false);
+});
+
+// =============================================
+// resolveProjectPermissions
+// =============================================
+
+test("canReviewProject: director can review by default", () => {
+  const ctx: AccessContext = { userId: "u1", globalRole: "user", teamRoles: [], projectRoles: ["director"] };
+  assert.equal(canReviewProject(ctx), true);
+});
+
+test("resolveProjectPermissions: director default includes version review", () => {
+  const ctx: AccessContext = { userId: "u1", globalRole: "user", teamRoles: [], projectRoles: ["director"] };
+  assert.deepEqual(resolveProjectPermissions(ctx), [
+    "project.view",
+    "project.edit",
+    "version.review",
+    "job.manage",
+    "timeline.edit",
+    "export.create",
+  ]);
+});
+
+test("resolveProjectPermissions: team templates replace system defaults for a role", () => {
+  const ctx: AccessContext = {
+    userId: "u1",
+    globalRole: "user",
+    teamRoles: [],
+    projectRoles: ["writer"],
+    projectRolePermissionTemplates: {
+      writer: ["project.view", "version.review"],
+    },
+  };
+
+  assert.equal(hasProjectPermission(ctx, "project.edit"), false);
+  assert.equal(hasProjectPermission(ctx, "version.review"), true);
+});
+
+test("resolveProjectPermissions: project allow and deny overrides are applied with deny winning", () => {
+  const ctx: AccessContext = {
+    userId: "u1",
+    globalRole: "user",
+    teamRoles: [],
+    projectRoles: ["writer"],
+    projectMembers: [{
+      role: "writer",
+      permissionOverride: {
+        allow: ["version.review", "job.manage"],
+        deny: ["project.edit", "job.manage"],
+      },
+    }],
+  };
+
+  assert.equal(hasProjectPermission(ctx, "project.view"), true);
+  assert.equal(hasProjectPermission(ctx, "project.edit"), false);
+  assert.equal(hasProjectPermission(ctx, "version.review"), true);
+  assert.equal(hasProjectPermission(ctx, "job.manage"), false);
+});
+
+test("resolveProjectPermissions: high-trust roles cannot be weakened", () => {
+  const projectAdmin: AccessContext = {
+    userId: "u1",
+    globalRole: "user",
+    teamRoles: [],
+    projectRoles: ["project_admin"],
+    projectMembers: [{
+      role: "project_admin",
+      permissionOverride: { allow: [], deny: ["project.edit", "permission.manage"] },
+    }],
+  };
+  const superAdmin: AccessContext = {
+    userId: "u2",
+    globalRole: "platform_super_admin",
+    teamRoles: [],
+    projectRoles: [],
+  };
+
+  assert.deepEqual(resolveProjectPermissions(projectAdmin), PROJECT_PERMISSIONS);
+  assert.deepEqual(resolveProjectPermissions(superAdmin), PROJECT_PERMISSIONS);
+});
+
+test("normalizePermissionOverride removes duplicates and invalid values", () => {
+  assert.deepEqual(normalizePermissionOverride({
+    allow: ["project.view", "project.view", "bad.permission"],
+    deny: ["version.review", "bad.permission"],
+  }), {
+    allow: ["project.view"],
+    deny: ["version.review"],
+  });
 });

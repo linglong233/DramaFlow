@@ -17,19 +17,10 @@ import type {
   VersionStatus,
 } from "./domain";
 
+import { hasProjectPermission } from "./project-permissions";
+
 /** 拥有团队管理权限的角色 */
 const TEAM_ADMIN_ROLES: TeamRole[] = ["tenant_owner", "tenant_admin"];
-
-/** 拥有项目编辑权限的角色 */
-const PROJECT_EDITOR_ROLES: ProjectRole[] = [
-  "project_admin",
-  "director",
-  "writer",
-  "artist",
-];
-
-/** 拥有项目审核权限的角色 */
-const PROJECT_REVIEW_ROLES: ProjectRole[] = ["project_admin", "reviewer"];
 
 /**
  * 解析最终生效的审核策略
@@ -140,19 +131,19 @@ export function canChangeTeamMemberRole(context: AccessContext, currentRole: Tea
 /**
  * 检查用户是否有项目编辑权限
  * @param context - 访问权限上下文
- * @returns 平台超管或项目编辑角色返回 true
+ * @returns 拥有 project.edit 权限返回 true
  */
 export function canEditProject(context: AccessContext): boolean {
-  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => PROJECT_EDITOR_ROLES.includes(role));
+  return hasProjectPermission(context, "project.edit");
 }
 
 /**
  * 检查用户是否有项目审核权限
  * @param context - 访问权限上下文
- * @returns 平台超管或审核角色返回 true
+ * @returns 拥有 version.review 权限返回 true
  */
 export function canReviewProject(context: AccessContext): boolean {
-  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => PROJECT_REVIEW_ROLES.includes(role));
+  return hasProjectPermission(context, "version.review");
 }
 
 /**
@@ -196,26 +187,20 @@ export function canAutoApprove(
   return userRoles.some((role) => config.autoApproveRoles.includes(role));
 }
 
-/** 拥有任务管理权限的角色 */
-const JOB_MANAGEMENT_ROLES: ProjectRole[] = ["project_admin", "director"];
-
 /**
  * 检查用户是否有 AI 任务管理权限
  * @param context - 访问权限上下文
  */
 export function canManageJobs(context: AccessContext): boolean {
-  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => JOB_MANAGEMENT_ROLES.includes(role));
+  return hasProjectPermission(context, "job.manage");
 }
-
-/** 拥有时间线编辑权限的角色 */
-const TIMELINE_EDITOR_ROLES: ProjectRole[] = ["project_admin", "director"];
 
 /**
  * 检查用户是否有时间线编辑权限
  * @param context - 访问权限上下文
  */
 export function canEditTimeline(context: AccessContext): boolean {
-  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => TIMELINE_EDITOR_ROLES.includes(role));
+  return hasProjectPermission(context, "timeline.edit");
 }
 
 /**
@@ -223,7 +208,7 @@ export function canEditTimeline(context: AccessContext): boolean {
  * @param context - 访问权限上下文
  */
 export function canExportProject(context: AccessContext): boolean {
-  return context.globalRole === "platform_super_admin" || context.projectRoles.some((role) => TIMELINE_EDITOR_ROLES.includes(role));
+  return hasProjectPermission(context, "export.create");
 }
 
 /**
