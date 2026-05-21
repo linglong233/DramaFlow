@@ -22,6 +22,7 @@ import {
 import type { Request, Response } from "express";
 import type {
   CreateImageJobPayload,
+  CreateImpactSuggestionPayload,
   CreateNovelImportSessionPayload,
   CreateScriptJobPayload,
   CreateStoryboardJobPayload,
@@ -179,6 +180,15 @@ export class JobsController {
     @Body() body: { originalText: string; instruction: string; context?: string; documentId: string },
   ) {
     return this.jobsService.createRewriteJob(user.id, projectId, body);
+  }
+
+  @Post("impact-issues/:id/suggestions")
+  createImpactSuggestion(
+    @CurrentUser() user: { id: string },
+    @Param("id") issueId: string,
+    @Body() body: CreateImpactSuggestionPayload,
+  ) {
+    return this.jobsService.createImpactSuggestionJob(user.id, issueId, body.instruction);
   }
 
   // ===== SSE 流式生成端点 =====

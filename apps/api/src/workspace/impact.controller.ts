@@ -174,4 +174,20 @@ export class ImpactController {
     );
     return this.impactService.assignIssue(issueId, user.id, body.assignedTo);
   }
+
+  /** 接受影响建议 */
+  @Post("impact-suggestions/:id/accept")
+  async acceptSuggestion(@CurrentUser() user: { id: string }, @Param("id") suggestionId: string) {
+    const projectId = await this.impactService.getSuggestionProjectId(suggestionId);
+    await this.workspaceService.assertProjectPermission(user.id, projectId, "project.edit", "You do not have permission to accept impact suggestions");
+    return this.impactService.acceptSuggestion(suggestionId, user.id);
+  }
+
+  /** 撤回已接受的影响建议 */
+  @Post("impact-suggestions/:id/revert-acceptance")
+  async revertSuggestionAcceptance(@CurrentUser() user: { id: string }, @Param("id") suggestionId: string) {
+    const projectId = await this.impactService.getSuggestionProjectId(suggestionId);
+    await this.workspaceService.assertProjectPermission(user.id, projectId, "project.edit", "You do not have permission to revert impact suggestions");
+    return this.impactService.revertSuggestionAcceptance(suggestionId, user.id);
+  }
 }

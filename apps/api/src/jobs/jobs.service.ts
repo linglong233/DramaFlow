@@ -49,6 +49,7 @@ import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { StorageService } from "../storage/storage.service";
 import { WorkspaceService } from "../workspace/workspace.service";
+import { ImpactService } from "../workspace/impact.service";
 import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { SdWebuiImageProvider } from "./sd-webui-image.provider";
@@ -131,6 +132,7 @@ export class JobsService {
     @Inject(TTSProviderService) private readonly ttsProvider: TTSProviderService,
     @Inject(ExportService) private readonly exportService: ExportService,
     @Inject(NovelImportService) private readonly novelImportService: NovelImportService,
+    @Inject(ImpactService) private readonly impactService: ImpactService,
   ) {}
 
   async createScriptJob(userId: string, projectId: string, input: ScriptJobInput) {
@@ -230,6 +232,20 @@ export class JobsService {
       projectId,
       input,
     });
+  }
+
+  /** 创建影响建议生成任务 */
+  async createImpactSuggestionJob(userId: string, issueId: string, instruction?: string) {
+    const projectId = await this.impactService.getIssueProjectId(issueId);
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "job.manage",
+      "You do not have permission to create impact suggestion jobs",
+    );
+    const job = await this.impactService.createSuggestionJob(issueId, userId, instruction);
+    this.emitJobUpdated(job);
+    return job;
   }
 
   async getJob(userId: string, jobId: string) {
@@ -554,6 +570,8 @@ export class JobsService {
           return await this.processExportJob(job as unknown as JobRecord<ExportTimelineInput>);
         case "novel_import":
           return await this.processNovelImportJob(job as unknown as JobRecord<NovelImportJobInput>);
+        case "impact_suggestion":
+          return await this.processImpactSuggestionJob(job as unknown as JobRecord<{ issueId: string; instruction?: string }>);
         default:
           throw new Error(`Unsupported job type: ${job.type}`);
       }
@@ -667,6 +685,44 @@ export class JobsService {
       instruction: job.input.instruction,
       model: resolvedModel,
       ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
+    });
+  }
+
+  /** 处理影响建议生成任务 */
+  private async processImpactSuggestionJob(job: JobRecord<{ issueId: string; instruction?: string }>) {
+    const promptData = await this.impactService.buildSuggestionPrompt(job.input.issueId);
+    const config = await this.resolveTextLlmConfig(job.createdBy, promptData.projectId);
+    const model = this.resolveTextModel(config);
+    const response = await this.textProvider.rewriteSegment({
+      documentId: job.documentId ?? "",
+      originalText: `${promptData.system}\n\n${promptData.prompt}`,
+      instruction: job.input.instruction || "Create a safe candidate update for this impact issue.",
+    }, config);
+
+    let parsed: { summary?: string; suggestedContent?: unknown };
+    try {
+      const cleaned = response.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+      parsed = JSON.parse(cleaned) as { summary?: string; suggestedContent?: unknown };
+    } catch {
+      parsed = { summary: response, suggestedContent: undefined };
+    }
+
+    const suggestion = await this.impactService.storeSuggestion({
+      issueId: job.input.issueId,
+      actorId: job.createdBy,
+      summary: parsed.summary?.trim() || "Impact suggestion generated",
+      suggestedContent: parsed.suggestedContent,
+      promptSnapshot: `${promptData.system}\n\n${promptData.prompt}`,
+      provider: "openai-completions",
+      model,
+      createdJobId: job.id,
+    });
+
+    return this.completeJob(job.id, {
+      issueId: job.input.issueId,
+      suggestionId: suggestion.id,
+      summary: suggestion.summary,
+      model,
     });
   }
 

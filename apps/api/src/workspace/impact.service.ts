@@ -23,6 +23,7 @@ import {
   type ImpactIssueRecord,
   type ImpactIssueStatus,
   type ImpactSeverity,
+  type ImpactSuggestionRecord,
   type ImpactTargetRecord,
   type ProjectImpactIssuesQuery,
   type ProjectImpactIssuesResponse,
@@ -528,6 +529,188 @@ export class ImpactService {
   /** 构建影响议题标题 */
   private buildIssueTitle(sourceDocument: DocumentRecord, targetDocument: DocumentRecord, targetVersion: VersionRecord): string {
     return `${targetDocument.title} V${targetVersion.versionNumber} 可能受更新的 ${sourceDocument.type} 影响`;
+  }
+
+  // ─── 建议任务与候选人接受 ──────────────────────────────────────
+
+  /** 创建影响建议生成任务 */
+  async createSuggestionJob(issueId: string, actorId: string, instruction?: string) {
+    return this.database.mutate((db) => {
+      const issue = this.mustFindIssue(db, issueId);
+      const now = new Date().toISOString();
+      const job = {
+        id: createId("job"),
+        type: "impact_suggestion" as const,
+        status: "queued" as const,
+        projectId: issue.projectId,
+        documentId: issue.targetDocumentId,
+        input: { issueId, instruction: instruction?.trim() || undefined },
+        createdBy: actorId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.jobs.push(job);
+      return job;
+    });
+  }
+
+  /** 构建建议生成的 LLM 提示词 */
+  async buildSuggestionPrompt(issueId: string): Promise<{ system: string; prompt: string; projectId: string }> {
+    return this.database.query((db) => {
+      const issue = this.mustFindIssue(db, issueId);
+      const targetVersion = db.versions.find((version) => version.id === issue.targetVersionId);
+      const previousSource = issue.previousSourceVersionId ? db.versions.find((version) => version.id === issue.previousSourceVersionId) : undefined;
+      const changedSource = db.versions.find((version) => version.id === issue.changedSourceVersionId);
+      const targets = db.impactTargets.filter((target) => target.issueId === issue.id);
+      return {
+        projectId: issue.projectId,
+        system: "You are a professional film production script supervisor. Analyze upstream changes and propose a safe candidate update. Return JSON with summary and suggestedContent.",
+        prompt: [
+          `Impact issue: ${issue.title}`,
+          issue.summary,
+          "",
+          "Previous source version:",
+          JSON.stringify(previousSource?.content ?? null, null, 2).slice(0, 5000),
+          "",
+          "Changed source version:",
+          JSON.stringify(changedSource?.content ?? null, null, 2).slice(0, 5000),
+          "",
+          "Target content:",
+          JSON.stringify(targetVersion?.content ?? null, null, 2).slice(0, 8000),
+          "",
+          "Targets:",
+          JSON.stringify(targets, null, 2),
+          "",
+          "Return JSON: { \"summary\": string, \"suggestedContent\": any }.",
+        ].join("\n"),
+      };
+    });
+  }
+
+  /** 存储生成的影响建议记录 */
+  async storeSuggestion(input: {
+    issueId: string;
+    actorId: string;
+    summary: string;
+    suggestedContent?: unknown;
+    promptSnapshot?: string;
+    provider?: string;
+    model?: string;
+    createdJobId?: string;
+  }): Promise<ImpactSuggestionRecord> {
+    return this.database.mutate((db) => {
+      const issue = this.mustFindIssue(db, input.issueId);
+      const suggestion: ImpactSuggestionRecord = {
+        id: createId("impact_suggestion"),
+        issueId: issue.id,
+        projectId: issue.projectId,
+        status: "generated",
+        summary: input.summary,
+        suggestedContent: input.suggestedContent,
+        promptSnapshot: input.promptSnapshot,
+        provider: input.provider,
+        model: input.model,
+        createdJobId: input.createdJobId,
+        createdBy: input.actorId,
+        createdAt: new Date().toISOString(),
+      };
+      db.impactSuggestions.push(suggestion);
+      issue.status = "suggested";
+      issue.latestSuggestionId = suggestion.id;
+      issue.updatedAt = new Date().toISOString();
+      this.appendEvent(db, issue, "suggestion_created", input.actorId, input.summary);
+      return suggestion;
+    });
+  }
+
+  /** 接受影响建议：创建候选版本并更新状态 */
+  async acceptSuggestion(suggestionId: string, actorId: string) {
+    return this.database.mutate((db) => {
+      const suggestion = db.impactSuggestions.find((item) => item.id === suggestionId);
+      if (!suggestion) throw new NotFoundException("Impact suggestion not found");
+      const issue = this.mustFindIssue(db, suggestion.issueId);
+      if (suggestion.status !== "generated") {
+        throw new BadRequestException("Only generated suggestions can be accepted");
+      }
+      if (!canTransitionImpactIssueStatus(issue.status, "accepted")) {
+        throw new BadRequestException(`Cannot accept suggestion while impact issue is ${issue.status}`);
+      }
+
+      const targetDocument = db.documents.find((document) => document.id === issue.targetDocumentId);
+      const targetVersion = db.versions.find((version) => version.id === issue.targetVersionId);
+      if (!targetDocument || !targetVersion) {
+        throw new NotFoundException("Suggestion target is not available");
+      }
+
+      const siblingVersions = db.versions.filter((version) => version.documentId === targetDocument.id);
+      const nextVersionNumber = siblingVersions.reduce((max, version) => Math.max(max, version.versionNumber), 0) + 1;
+      const now = new Date().toISOString();
+      const createdVersion: VersionRecord = {
+        id: createId("version"),
+        documentId: targetDocument.id,
+        versionNumber: nextVersionNumber,
+        status: "draft",
+        title: `${targetVersion.title} - Impact candidate`,
+        content: suggestion.suggestedContent ?? targetVersion.content,
+        metadata: {
+          ...(targetVersion.metadata ?? {}),
+          source: "impact-suggestion",
+          impactIssueId: issue.id,
+          impactSuggestionId: suggestion.id,
+        },
+        parentVersionId: targetVersion.id,
+        createdBy: actorId,
+        createdAt: now,
+      };
+      db.versions.push(createdVersion);
+      for (const dependency of db.versionDependencies.filter((item) => item.targetVersionId === targetVersion.id)) {
+        db.versionDependencies.push({
+          ...dependency,
+          id: createId("dependency"),
+          targetDocumentId: targetDocument.id,
+          targetVersionId: createdVersion.id,
+          targetDocumentType: targetDocument.type,
+          dependencyType: "manual_inherited",
+          createdBy: actorId,
+          createdAt: now,
+        });
+      }
+      targetDocument.draftVersionId = createdVersion.id;
+      targetDocument.updatedAt = now;
+
+      suggestion.status = "accepted";
+      suggestion.createdVersionId = createdVersion.id;
+      suggestion.createdDocumentId = targetDocument.id;
+      suggestion.acceptedBy = actorId;
+      suggestion.acceptedAt = now;
+      issue.status = "accepted";
+      issue.acceptedSuggestionId = suggestion.id;
+      issue.updatedAt = now;
+      this.appendEvent(db, issue, "suggestion_accepted", actorId, `Created candidate version V${createdVersion.versionNumber}`);
+      return { issue, suggestion, createdVersion };
+    });
+  }
+
+  /** 撤回已接受的影响建议 */
+  async revertSuggestionAcceptance(suggestionId: string, actorId: string) {
+    return this.database.mutate((db) => {
+      const suggestion = db.impactSuggestions.find((item) => item.id === suggestionId);
+      if (!suggestion) throw new NotFoundException("Impact suggestion not found");
+      const issue = this.mustFindIssue(db, suggestion.issueId);
+      if (suggestion.status !== "accepted") {
+        throw new BadRequestException("Only accepted suggestions can be reverted");
+      }
+
+      const now = new Date().toISOString();
+      suggestion.status = "acceptance_reverted";
+      suggestion.revertedBy = actorId;
+      suggestion.revertedAt = now;
+      issue.status = "suggested";
+      issue.acceptedSuggestionId = undefined;
+      issue.updatedAt = now;
+      this.appendEvent(db, issue, "acceptance_reverted", actorId, "Suggestion acceptance reverted");
+      return this.buildIssueDetail(db, issue);
+    });
   }
 
   // ─── 摘要与辅助方法 ──────────────────────────────────────────
