@@ -5314,6 +5314,7 @@ textarea.input {
   color: var(--text-tertiary);
   font-size: 12px;
   font-weight: 600;
+  text-align: center;
 }
 
 .permission-matrix__row {
