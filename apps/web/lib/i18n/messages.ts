@@ -706,14 +706,28 @@ export const zhCNMessages = {
       s3: "S3 兼容对象存储"
     },
     projectPermission: {
-      "project.view": { label: "查看项目", help: "进入项目工作区并查看项目内容。" },
-      "project.edit": { label: "编辑项目", help: "编辑项目信息、文档、版本和世界观内容。" },
-      "version.review": { label: "审核版本", help: "批准或拒绝已提交的版本。" },
-      "job.manage": { label: "管理任务", help: "启动批量任务、取消排队任务并重试失败任务。" },
-      "timeline.edit": { label: "编辑时间线", help: "保存时间线修改并自动组装成片。" },
-      "export.create": { label: "创建导出", help: "基于时间线创建渲染导出任务。" },
-      "member.manage": { label: "管理成员", help: "邀请或分配项目协作者。" },
-      "permission.manage": { label: "管理权限", help: "编辑项目成员的权限覆盖规则。" },
+      project: {
+        view: { label: "查看项目", help: "进入项目工作区并查看项目内容。" },
+        edit: { label: "编辑项目", help: "编辑项目信息、文档、版本和世界观内容。" },
+      },
+      version: {
+        review: { label: "审核版本", help: "批准或拒绝已提交的版本。" },
+      },
+      job: {
+        manage: { label: "管理任务", help: "启动批量任务、取消排队任务并重试失败任务。" },
+      },
+      timeline: {
+        edit: { label: "编辑时间线", help: "保存时间线修改并自动组装成片。" },
+      },
+      export: {
+        create: { label: "创建导出", help: "基于时间线创建渲染导出任务。" },
+      },
+      member: {
+        manage: { label: "管理成员", help: "邀请或分配项目协作者。" },
+      },
+      permission: {
+        manage: { label: "管理权限", help: "编辑项目成员的权限覆盖规则。" },
+      },
     }
   },
   authRecovery: {
@@ -2256,14 +2270,28 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       s3: "S3-compatible object storage"
     },
     projectPermission: {
-      "project.view": { label: "View project", help: "Open the project workspace and read project content." },
-      "project.edit": { label: "Edit project", help: "Edit project details, documents, versions, and world bible content." },
-      "version.review": { label: "Review versions", help: "Approve or reject submitted versions." },
-      "job.manage": { label: "Manage jobs", help: "Start batch jobs, cancel queued jobs, and retry failed jobs." },
-      "timeline.edit": { label: "Edit timeline", help: "Save timeline edits and auto-assemble a cut." },
-      "export.create": { label: "Create exports", help: "Create rendered export jobs from the timeline." },
-      "member.manage": { label: "Manage members", help: "Invite or assign project collaborators." },
-      "permission.manage": { label: "Manage permissions", help: "Edit project member permission overrides." },
+      project: {
+        view: { label: "View project", help: "Open the project workspace and read project content." },
+        edit: { label: "Edit project", help: "Edit project details, documents, versions, and world bible content." },
+      },
+      version: {
+        review: { label: "Review versions", help: "Approve or reject submitted versions." },
+      },
+      job: {
+        manage: { label: "Manage jobs", help: "Start batch jobs, cancel queued jobs, and retry failed jobs." },
+      },
+      timeline: {
+        edit: { label: "Edit timeline", help: "Save timeline edits and auto-assemble a cut." },
+      },
+      export: {
+        create: { label: "Create exports", help: "Create rendered export jobs from the timeline." },
+      },
+      member: {
+        manage: { label: "Manage members", help: "Invite or assign project collaborators." },
+      },
+      permission: {
+        manage: { label: "Manage permissions", help: "Edit project member permission overrides." },
+      },
     }
   },
   authRecovery: {
