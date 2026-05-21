@@ -20,7 +20,15 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import type { AuditContentType, DocumentType, ExportFormat, ProjectRole, TimelineTrackRecord } from "@dramaflow/shared";
+import type {
+  AuditContentType,
+  DocumentType,
+  ExportFormat,
+  ProjectRole,
+  TimelineTrackRecord,
+  UpdateProjectMemberPermissionsPayload,
+  UpdateTeamPermissionTemplatesPayload,
+} from "@dramaflow/shared";
 
 import { CurrentUser } from "../common/current-user.decorator";
 import { AuthGuard } from "../common/auth.guard";
@@ -80,6 +88,23 @@ export class WorkspaceController {
     @Body() body?: { llmConfig?: import("@dramaflow/shared").LlmProviderConfig },
   ) {
     return this.workspaceService.listTeamLlmModels(user.id, teamId, body?.llmConfig);
+  }
+
+  @Get("teams/:id/permission-templates")
+  getTeamPermissionTemplates(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+  ) {
+    return this.workspaceService.getTeamPermissionTemplates(user.id, teamId);
+  }
+
+  @Put("teams/:id/permission-templates")
+  updateTeamPermissionTemplates(
+    @CurrentUser() user: { id: string },
+    @Param("id") teamId: string,
+    @Body() body: UpdateTeamPermissionTemplatesPayload,
+  ) {
+    return this.workspaceService.updateTeamPermissionTemplates(user.id, teamId, body);
   }
 
   @Post("teams/:id/members")
@@ -235,6 +260,25 @@ export class WorkspaceController {
     @Body() body: { email: string; role: "project_admin" | "director" | "writer" | "artist" | "reviewer" | "viewer" },
   ) {
     return this.workspaceService.addProjectMember(user.id, projectId, body);
+  }
+
+  @Get("projects/:projectId/members/:memberId/permissions")
+  getProjectMemberPermissions(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("memberId") memberId: string,
+  ) {
+    return this.workspaceService.getProjectMemberPermissions(user.id, projectId, memberId);
+  }
+
+  @Put("projects/:projectId/members/:memberId/permissions")
+  updateProjectMemberPermissions(
+    @CurrentUser() user: { id: string },
+    @Param("projectId") projectId: string,
+    @Param("memberId") memberId: string,
+    @Body() body: UpdateProjectMemberPermissionsPayload,
+  ) {
+    return this.workspaceService.updateProjectMemberPermissions(user.id, projectId, memberId, body);
   }
 
   @Get("documents/:id/versions")

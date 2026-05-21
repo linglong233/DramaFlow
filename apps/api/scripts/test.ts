@@ -315,6 +315,10 @@ async function main() {
       "rejectVersion",
       "listComments",
       "addComment",
+      "getTeamPermissionTemplates",
+      "updateTeamPermissionTemplates",
+      "getProjectMemberPermissions",
+      "updateProjectMemberPermissions",
     ]);
     assertMethodsStayOnPrototype(new AdminController({} as never), [
       "getPlatformOverview",
@@ -2189,6 +2193,107 @@ async function main() {
       assert.equal(approvedAuditResponse.status, 200);
       const approvedAuditRecords = await approvedAuditResponse.json() as Array<{ action: string; comment?: string }>;
       assert.equal(approvedAuditRecords.some((record) => record.action === "approved" && record.comment === "LGTM with one minor note."), true);
+    });
+  });
+
+  await runCase("project permission endpoints resolve templates and member overrides", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "permission-owner@example.com",
+        displayName: "Permission Owner",
+      });
+      const writer = await registerUser(baseUrl, {
+        email: "permission-writer@example.com",
+        displayName: "Permission Writer",
+      });
+      const ownerJsonHeaders = authHeaders(owner.accessToken, true);
+      const writerJsonHeaders = authHeaders(writer.accessToken, true);
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams[0].id;
+
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ teamId, name: "Permission Endpoint Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const addWriterResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ email: writer.user.email, role: "writer" }),
+      });
+      assert.equal(addWriterResponse.status, 201);
+      const writerMember = await addWriterResponse.json() as { id: string; effectivePermissions: string[] };
+      assert.equal(writerMember.effectivePermissions.includes("project.edit"), true);
+
+      const getTemplatesResponse = await originalFetch(`${baseUrl}/teams/${teamId}/permission-templates`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(getTemplatesResponse.status, 200);
+      const defaultTemplates = await getTemplatesResponse.json() as {
+        resolvedTemplates: Array<{ role: string; effectivePermissions: string[]; locked: boolean }>;
+      };
+      const directorTemplate = defaultTemplates.resolvedTemplates.find((item) => item.role === "director");
+      assert.equal(directorTemplate?.effectivePermissions.includes("version.review"), true);
+
+      const updateTemplatesResponse = await originalFetch(`${baseUrl}/teams/${teamId}/permission-templates`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          templates: {
+            writer: ["project.view", "version.review", "bad.permission"],
+          },
+        }),
+      });
+      assert.equal(updateTemplatesResponse.status, 200);
+      const updatedTemplates = await updateTemplatesResponse.json() as {
+        templates: { writer: string[] };
+        resolvedTemplates: Array<{ role: string; effectivePermissions: string[] }>;
+      };
+      assert.deepEqual(updatedTemplates.templates.writer, ["project.view", "version.review"]);
+
+      const deniedTemplateResponse = await originalFetch(`${baseUrl}/teams/${teamId}/permission-templates`, {
+        method: "PUT",
+        headers: writerJsonHeaders,
+        body: JSON.stringify({ templates: { viewer: ["project.view", "project.edit"] } }),
+      });
+      assert.equal(deniedTemplateResponse.status, 403);
+
+      const getMemberPermissionsResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${writerMember.id}/permissions`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(getMemberPermissionsResponse.status, 200);
+      const memberPermissions = await getMemberPermissionsResponse.json() as {
+        inheritedPermissions: string[];
+        permissionOverride: { allow: string[]; deny: string[] };
+        effectivePermissions: string[];
+      };
+      assert.deepEqual(memberPermissions.inheritedPermissions, ["project.view", "version.review"]);
+      assert.deepEqual(memberPermissions.permissionOverride, { allow: [], deny: [] });
+
+      const updateMemberPermissionsResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${writerMember.id}/permissions`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          permissionOverride: {
+            allow: ["job.manage", "bad.permission"],
+            deny: ["version.review"],
+          },
+        }),
+      });
+      assert.equal(updateMemberPermissionsResponse.status, 200);
+      const updatedMemberPermissions = await updateMemberPermissionsResponse.json() as {
+        permissionOverride: { allow: string[]; deny: string[] };
+        effectivePermissions: string[];
+      };
+      assert.deepEqual(updatedMemberPermissions.permissionOverride, {
+        allow: ["job.manage"],
+        deny: ["version.review"],
+      });
+      assert.equal(updatedMemberPermissions.effectivePermissions.includes("job.manage"), true);
+      assert.equal(updatedMemberPermissions.effectivePermissions.includes("version.review"), false);
     });
   });
 

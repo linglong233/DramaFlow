@@ -29,9 +29,15 @@ import {
   normalizeStoryboardContent,
   ensureMediaBindings,
   resolveReviewRequired,
+  PROJECT_PERMISSIONS,
+  PROJECT_ROLES,
+  SYSTEM_PROJECT_ROLE_PERMISSION_TEMPLATES,
   getProjectRoleTemplatePermissions,
+  hasProjectPermission,
   normalizePermissionOverride,
+  normalizeProjectRolePermissionTemplates,
   resolveProjectPermissions,
+  type AccessContext,
   type AnchorType,
   type AuditContentType,
   type CharacterProfile,
@@ -44,11 +50,15 @@ import {
   type LlmModelListResponse,
   type LlmProviderConfig,
   type LocationProfile,
+  type PermissionOverride,
   type ProjectInviteSummary,
+  type ProjectMemberPermissionsResponse,
   type ProjectMemberRecord,
   type ProjectMemberSummary,
   type ProjectPermission,
   type ProjectRole,
+  type ProjectRolePermissionTemplateSummary,
+  type ProjectRolePermissionTemplates,
   type ProjectStatus,
   type ProjectWorkspaceSummaryPayload,
   type RealtimeCharacterSyncedEvent,
@@ -57,6 +67,7 @@ import {
   type StyleGuideProfile,
   type StoryboardContent,
   type ShotMediaBinding,
+  type TeamPermissionTemplatesResponse,
   type TeamSettingsLlmConfig,
   type TeamSettingsResponse,
   type TeamInviteLinkRecord,
@@ -69,6 +80,8 @@ import {
   type TimelineRecord,
   type TimelineSavePayload,
   type TimelineTrackRecord,
+  type UpdateProjectMemberPermissionsPayload,
+  type UpdateTeamPermissionTemplatesPayload,
   type VersionRecord,
   type VersionStatus,
   type WorldBibleContent,
@@ -85,12 +98,7 @@ import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { AuditService } from "./audit.service";
 
 /** 操作者上下文，封装用户在团队和项目中的角色 */
-interface ActorContext {
-  userId: string;
-  globalRole: "platform_super_admin" | "user";
-  teamRoles: TeamRole[];
-  projectRoles: ProjectRole[];
-}
+interface ActorContext extends AccessContext {}
 
 function applyPagination<T>(items: T[], limit?: number, offset?: number): T[] {
   const start = offset ?? 0;
@@ -140,6 +148,33 @@ export class WorkspaceService {
     }
 
     return this.database.query((db) => this.buildTeamSettingsResponse(db, this.mustFindTeam(db, teamId), actor.userId, actor.globalRole));
+  }
+
+  async getTeamPermissionTemplates(userId: string, teamId: string): Promise<TeamPermissionTemplatesResponse> {
+    const actor = await this.getActor(userId, undefined, teamId);
+    if (!canManageTenant(actor)) {
+      throw new ForbiddenException("You do not have permission to view team permission templates");
+    }
+
+    return this.database.query((db) => this.buildTeamPermissionTemplatesResponse(this.mustFindTeam(db, teamId)));
+  }
+
+  async updateTeamPermissionTemplates(
+    userId: string,
+    teamId: string,
+    input: UpdateTeamPermissionTemplatesPayload,
+  ): Promise<TeamPermissionTemplatesResponse> {
+    const actor = await this.getActor(userId, undefined, teamId);
+    if (!canManageTenant(actor)) {
+      throw new ForbiddenException("Only team admins can update permission templates");
+    }
+
+    return this.database.mutate((db) => {
+      const team = this.mustFindTeam(db, teamId);
+      team.projectRolePermissionTemplates = normalizeProjectRolePermissionTemplates(input.templates);
+      team.updatedAt = new Date().toISOString();
+      return this.buildTeamPermissionTemplatesResponse(team);
+    });
   }
 
   async createTeam(userId: string, input: { name: string; slug?: string; defaultReviewPolicy?: "required" | "bypass" }) {
@@ -909,6 +944,48 @@ export class WorkspaceService {
       };
       db.projectMembers.push(member);
       return this.buildProjectMemberSummary(db, member);
+    });
+  }
+
+  async getProjectMemberPermissions(
+    userId: string,
+    projectId: string,
+    memberId: string,
+  ): Promise<ProjectMemberPermissionsResponse> {
+    const actor = await this.getActor(userId, projectId);
+    if (!hasProjectPermission(actor, "permission.manage") && !canManageTenant(actor)) {
+      throw new ForbiddenException("You do not have permission to view project member permissions");
+    }
+
+    return this.database.query((db) => {
+      const project = this.mustFindProject(db, projectId);
+      const member = this.mustFindProjectMember(db, projectId, memberId);
+      return this.buildMemberPermissionsResponse(db, project, member);
+    });
+  }
+
+  async updateProjectMemberPermissions(
+    userId: string,
+    projectId: string,
+    memberId: string,
+    input: UpdateProjectMemberPermissionsPayload,
+  ): Promise<ProjectMemberPermissionsResponse> {
+    const actor = await this.getActor(userId, projectId);
+    if (!hasProjectPermission(actor, "permission.manage") && !canManageTenant(actor)) {
+      throw new ForbiddenException("You do not have permission to update project member permissions");
+    }
+
+    return this.database.mutate((db) => {
+      const project = this.mustFindProject(db, projectId);
+      const member = this.mustFindProjectMember(db, projectId, memberId);
+      const nextOverride = normalizePermissionOverride(input.permissionOverride);
+
+      if (this.removesOwnLastPermissionManager(db, project, member, userId, nextOverride)) {
+        throw new BadRequestException("You cannot remove your own last permission management path");
+      }
+
+      member.permissionOverride = nextOverride;
+      return this.buildMemberPermissionsResponse(db, project, member);
     });
   }
 
@@ -1808,15 +1885,23 @@ export class WorkspaceService {
       const user = this.mustFindUser(db, userId);
       const resolvedProjectId = projectId;
       const resolvedTeamId = teamId ?? (resolvedProjectId ? this.mustFindProject(db, resolvedProjectId).teamId : undefined);
+      const projectMembers = resolvedProjectId
+        ? db.projectMembers.filter((member) => member.projectId === resolvedProjectId && member.userId === userId)
+        : [];
+      const team = resolvedTeamId ? this.mustFindTeam(db, resolvedTeamId) : undefined;
+
       return {
         userId,
         globalRole: user.globalRole,
         teamRoles: resolvedTeamId
           ? db.teamMembers.filter((member) => member.teamId === resolvedTeamId && member.userId === userId).map((member) => member.role)
           : [],
-        projectRoles: resolvedProjectId
-          ? db.projectMembers.filter((member) => member.projectId === resolvedProjectId && member.userId === userId).map((member) => member.role)
-          : [],
+        projectRoles: projectMembers.map((member) => member.role),
+        projectMembers: projectMembers.map((member) => ({
+          role: member.role,
+          permissionOverride: normalizePermissionOverride(member.permissionOverride),
+        })),
+        projectRolePermissionTemplates: team?.projectRolePermissionTemplates,
       };
     });
   }
@@ -1940,6 +2025,54 @@ export class WorkspaceService {
       videoProviders: team.videoProviders,
       defaultImageProvider: team.defaultImageProvider,
       defaultVideoProvider: team.defaultVideoProvider,
+      permissionTemplates: this.buildTeamPermissionTemplatesResponse(team),
+    };
+  }
+
+  private buildTeamPermissionTemplatesResponse(team: DevDatabase["teams"][number]): TeamPermissionTemplatesResponse {
+    const templates = normalizeProjectRolePermissionTemplates(team.projectRolePermissionTemplates);
+    const resolvedTemplates: ProjectRolePermissionTemplateSummary[] = PROJECT_ROLES.map((role) => {
+      const teamPermissions = templates[role];
+      return {
+        role,
+        systemPermissions: [...SYSTEM_PROJECT_ROLE_PERMISSION_TEMPLATES[role]],
+        ...(teamPermissions ? { teamPermissions } : {}),
+        effectivePermissions: getProjectRoleTemplatePermissions(role, templates),
+        locked: role === "project_admin",
+      };
+    });
+
+    return {
+      systemDefaults: SYSTEM_PROJECT_ROLE_PERMISSION_TEMPLATES,
+      templates,
+      resolvedTemplates,
+    };
+  }
+
+  private buildMemberPermissionsResponse(
+    db: DevDatabase,
+    project: DevDatabase["projects"][number],
+    member: ProjectMemberRecord,
+  ): ProjectMemberPermissionsResponse {
+    const team = this.mustFindTeam(db, project.teamId);
+    const permissionOverride = normalizePermissionOverride(member.permissionOverride);
+    const inheritedPermissions = getProjectRoleTemplatePermissions(member.role, team.projectRolePermissionTemplates);
+    const effectivePermissions = resolveProjectPermissions({
+      userId: member.userId,
+      globalRole: this.mustFindUser(db, member.userId).globalRole,
+      teamRoles: db.teamMembers.filter((item) => item.teamId === project.teamId && item.userId === member.userId).map((item) => item.role),
+      projectRoles: [member.role],
+      projectMembers: [{ role: member.role, permissionOverride }],
+      projectRolePermissionTemplates: team.projectRolePermissionTemplates,
+    });
+
+    return {
+      memberId: member.id,
+      userId: member.userId,
+      role: member.role,
+      inheritedPermissions,
+      permissionOverride,
+      effectivePermissions,
     };
   }
 
@@ -2002,15 +2135,7 @@ export class WorkspaceService {
   private buildProjectMemberSummary(db: DevDatabase, member: ProjectMemberRecord): ProjectMemberSummary {
     const user = this.mustFindUser(db, member.userId);
     const project = this.mustFindProject(db, member.projectId);
-    const team = this.mustFindTeam(db, project.teamId);
-    const inheritedPermissions = getProjectRoleTemplatePermissions(member.role, team.projectRolePermissionTemplates);
-    const permissionOverride = normalizePermissionOverride(member.permissionOverride);
-    const overrideAllow = new Set(permissionOverride.allow);
-    const overrideDeny = new Set(permissionOverride.deny);
-    const effectivePermissions = inheritedPermissions
-      .filter((p: ProjectPermission) => !overrideDeny.has(p))
-      .concat(Array.from(overrideAllow).filter((p: ProjectPermission) => !inheritedPermissions.includes(p)));
-
+    const permissions = this.buildMemberPermissionsResponse(db, project, member);
     return {
       id: member.id,
       userId: member.userId,
@@ -2018,9 +2143,9 @@ export class WorkspaceService {
       createdAt: member.createdAt,
       displayName: user.displayName,
       email: user.email,
-      inheritedPermissions,
-      permissionOverride,
-      effectivePermissions,
+      inheritedPermissions: permissions.inheritedPermissions,
+      permissionOverride: permissions.permissionOverride,
+      effectivePermissions: permissions.effectivePermissions,
     };
   }
 
@@ -2102,6 +2227,40 @@ export class WorkspaceService {
       throw new NotFoundException("Project not found");
     }
     return project;
+  }
+
+  private mustFindProjectMember(db: DevDatabase, projectId: string, memberId: string): ProjectMemberRecord {
+    const member = db.projectMembers.find((item) => item.id === memberId && item.projectId === projectId);
+    if (!member) {
+      throw new NotFoundException("Project member not found");
+    }
+    return member;
+  }
+
+  private removesOwnLastPermissionManager(
+    db: DevDatabase,
+    project: DevDatabase["projects"][number],
+    member: ProjectMemberRecord,
+    actorUserId: string,
+    nextOverride: PermissionOverride,
+  ): boolean {
+    if (member.userId !== actorUserId) {
+      return false;
+    }
+
+    const members = db.projectMembers.filter((item) => item.projectId === project.id);
+    const hasPermissionManage = (item: ProjectMemberRecord) => this.buildMemberPermissionsResponse(db, project, item)
+      .effectivePermissions.includes("permission.manage");
+    const managersBefore = members.filter(hasPermissionManage);
+
+    if (managersBefore.length !== 1 || managersBefore[0]?.id !== member.id) {
+      return false;
+    }
+
+    const nextMember = { ...member, permissionOverride: nextOverride };
+    return !members
+      .map((item) => item.id === member.id ? nextMember : item)
+      .some(hasPermissionManage);
   }
 
   private mustFindDocument(db: DevDatabase, documentId: string) {
