@@ -341,6 +341,25 @@ export class PromptBuilderService {
     };
   }
 
+  private getStoryboardVersionCandidates(
+    db: import("../common/database.types").DevDatabase,
+    documentId: string,
+    currentVersionId?: string,
+    draftVersionId?: string,
+  ) {
+    const candidateIds = [currentVersionId, draftVersionId].filter((id): id is string => Boolean(id));
+    const versions = candidateIds
+      .map((id) => db.versions.find((version) => version.id === id && version.documentId === documentId))
+      .filter((version): version is NonNullable<typeof version> => Boolean(version));
+    const seen = new Set(versions.map((version) => version.id));
+
+    const newestVersions = db.versions
+      .filter((version) => version.documentId === documentId && !seen.has(version.id))
+      .sort((left, right) => right.versionNumber - left.versionNumber);
+
+    return [...versions, ...newestVersions];
+  }
+
   private findShotInVersions(
     db: import("../common/database.types").DevDatabase,
     projectId: string,
@@ -351,15 +370,22 @@ export class PromptBuilderService {
     );
 
     for (const doc of storyboardDocs) {
-      if (!doc.currentVersionId) continue;
-      const version = db.versions.find((v) => v.id === doc.currentVersionId);
-      if (!version?.content || typeof version.content !== "object") continue;
+      const versions = this.getStoryboardVersionCandidates(
+        db,
+        doc.id,
+        doc.currentVersionId,
+        doc.draftVersionId,
+      );
 
-      const content = version.content as { shots?: StoryboardShot[] };
-      if (!Array.isArray(content.shots)) continue;
+      for (const version of versions) {
+        if (!version.content || typeof version.content !== "object") continue;
 
-      const found = content.shots.find((s) => s.id === shotId);
-      if (found) return found;
+        const content = version.content as { shots?: StoryboardShot[] };
+        if (!Array.isArray(content.shots)) continue;
+
+        const found = content.shots.find((s) => s.id === shotId);
+        if (found) return found;
+      }
     }
 
     return undefined;
