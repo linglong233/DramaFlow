@@ -241,7 +241,7 @@ export class JobsService {
     await this.workspaceService.assertProjectPermission(
       userId,
       projectId,
-      "job.manage",
+      "project.edit",
       "You do not have permission to create impact suggestion jobs",
     );
     const job = await this.impactService.createSuggestionJob(issueId, userId, instruction);

@@ -366,6 +366,7 @@ export class ImpactService {
         }
       }
 
+      // 仅用于审计追溯，scanAfterAdoption 要求 sourceVersionId 有值，因此 manual_unlinked 不会触发影响扫描
       if (created.length === 0) {
         const dependency: VersionDependencyRecord = {
           id: createId("dependency"),
