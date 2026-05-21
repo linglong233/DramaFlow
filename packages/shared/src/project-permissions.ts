@@ -39,7 +39,7 @@ export const PROJECT_ROLES: ProjectRole[] = [
 
 /** 系统默认的项目角色权限模板 */
 export const SYSTEM_PROJECT_ROLE_PERMISSION_TEMPLATES: Record<ProjectRole, ProjectPermission[]> = {
-  project_admin: PROJECT_PERMISSIONS,
+  project_admin: [...PROJECT_PERMISSIONS],
   director: ["project.view", "project.edit", "version.review", "job.manage", "timeline.edit", "export.create"],
   writer: ["project.view", "project.edit"],
   artist: ["project.view", "project.edit"],
