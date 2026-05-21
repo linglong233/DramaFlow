@@ -1310,6 +1310,7 @@ export const zhCNMessages = {
     batchPrefix: "批次",
     batchCount: "{count} 个任务",
     progress: "{value}%",
+    jobsView: "任务",
     jobTypes: {
       script_generation: "剧本生成",
       synopsis_generation: "大纲生成",
@@ -1318,7 +1319,8 @@ export const zhCNMessages = {
       video_generation: "视频生成",
       rewrite_segment: "文本重写",
       tts_generation: "语音合成",
-      export_video: "视频导出"
+      export_video: "视频导出",
+      impact_suggestion: "影响建议"
     },
     statusLabels: {
       queued: "排队中",
@@ -1558,6 +1560,39 @@ export const zhCNMessages = {
     statusFailed: "失败",
     statusCancelled: "已取消",
     statusWritten: "已写入",
+  },
+  impact: {
+    title: "影响事项",
+    empty: "暂无影响事项",
+    status: {
+      open: "未处理",
+      suggested: "已有建议",
+      accepted: "已接受",
+      ignored: "已忽略",
+      resolved: "已解决",
+    },
+    severity: {
+      low: "低",
+      medium: "中",
+      high: "高",
+    },
+    actions: {
+      view: "查看影响",
+      suggest: "生成建议",
+      ignore: "忽略",
+      reopen: "重新打开",
+      resolve: "标记解决",
+    },
+    lineage: {
+      basedOn: "基于",
+      unlinked: "未记录来源",
+      activeCount: "{count} 条待处理",
+      ignoredCount: "{count} 条已忽略",
+    },
+    health: {
+      ok: "当前生成输入没有未处理影响。",
+      warning: "来源 {version} 有 {count} 条未处理影响，建议生成前先检查。",
+    },
   }
 } as const;
 
@@ -2874,6 +2909,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     batchPrefix: "Batch",
     batchCount: "{count} jobs",
     progress: "{value}%",
+    jobsView: "Jobs",
     jobTypes: {
       script_generation: "Script",
       synopsis_generation: "Synopsis",
@@ -2882,7 +2918,8 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       video_generation: "Video",
       rewrite_segment: "Rewrite",
       tts_generation: "TTS",
-      export_video: "Export"
+      export_video: "Export",
+      impact_suggestion: "Impact suggestion"
     },
     statusLabels: {
       queued: "Queued",
@@ -3122,6 +3159,39 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     statusFailed: "Failed",
     statusCancelled: "Cancelled",
     statusWritten: "Written",
+  },
+  impact: {
+    title: "Impact Issues",
+    empty: "No impact issues",
+    status: {
+      open: "Open",
+      suggested: "Suggested",
+      accepted: "Accepted",
+      ignored: "Ignored",
+      resolved: "Resolved",
+    },
+    severity: {
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+    },
+    actions: {
+      view: "View",
+      suggest: "Generate suggestion",
+      ignore: "Ignore",
+      reopen: "Reopen",
+      resolve: "Resolve",
+    },
+    lineage: {
+      basedOn: "Based on",
+      unlinked: "Unlinked",
+      activeCount: "{count} active",
+      ignoredCount: "{count} ignored",
+    },
+    health: {
+      ok: "The selected generation input has no active impact issues.",
+      warning: "Source {version} has {count} active impact issues. Review them before generating.",
+    },
   }
 };
 
