@@ -14,6 +14,10 @@ import type {
   ConversationSession,
   DocumentRecord,
   ExportRecord,
+  ImpactIssueEventRecord,
+  ImpactIssueRecord,
+  ImpactSuggestionRecord,
+  ImpactTargetRecord,
   JobRecord,
   NotificationRecord,
   NovelImportSession,
@@ -26,6 +30,7 @@ import type {
   TimelineRecord,
   UploadAssetRecord,
   UserRecord,
+  VersionDependencyRecord,
   VersionRecord,
 } from "@dramaflow/shared";
 
@@ -58,6 +63,11 @@ export interface DevDatabase {
   notifications: NotificationRecord[];
   auditConfigs: AuditConfigRecord[];
   auditRecords: AuditRecordEntry[];
+  versionDependencies: VersionDependencyRecord[];
+  impactIssues: ImpactIssueRecord[];
+  impactTargets: ImpactTargetRecord[];
+  impactSuggestions: ImpactSuggestionRecord[];
+  impactIssueEvents: ImpactIssueEventRecord[];
   batchJobs: BatchJobGroupRecord[];
   timelines: TimelineRecord[];
   exports: ExportRecord[];
@@ -85,6 +95,11 @@ export function createEmptyDatabase(): DevDatabase {
     notifications: [],
     auditConfigs: [],
     auditRecords: [],
+    versionDependencies: [],
+    impactIssues: [],
+    impactTargets: [],
+    impactSuggestions: [],
+    impactIssueEvents: [],
     batchJobs: [],
     timelines: [],
     exports: [],

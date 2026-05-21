@@ -98,7 +98,10 @@ export class DevDatabaseService implements OnModuleInit {
       "users", "refreshTokens", "teams", "teamMembers", "teamInviteLinks",
       "projects", "projectMembers", "projectInvites",
       "documents", "versions", "comments", "jobs", "assets",
-      "notifications", "auditConfigs", "auditRecords", "batchJobs",
+      "notifications", "auditConfigs", "auditRecords",
+      "versionDependencies", "impactIssues", "impactTargets",
+      "impactSuggestions", "impactIssueEvents",
+      "batchJobs",
       "timelines", "exports",
       "novelImportSessions",
     ];
