@@ -32,6 +32,9 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
   async generateImage(input: GenerateMediaInput & { prompt: string }, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<GeneratedMediaContent> {
     const effectiveApiKey = config?.apiKey || this.apiKey;
     if (!effectiveApiKey || effectiveApiKey === "replace-me") {
+      if (process.env.NODE_ENV !== "production") {
+        return this.mockImage(input);
+      }
       throw new Error("OpenAI image generation skipped: API key is not configured");
     }
 

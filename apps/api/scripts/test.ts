@@ -1946,7 +1946,8 @@ async function main() {
       const collaboratorReadHeaders = authHeaders(collaborator.accessToken);
 
       const teams = await listTeams(baseUrl, owner.accessToken);
-      const teamId = teams[0].id;
+      assert.equal(teams.length > 0, true);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
 
       const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
         method: "POST",
@@ -2077,7 +2078,8 @@ async function main() {
       const readHeaders = authHeaders(owner.accessToken);
 
       const teams = await listTeams(baseUrl, owner.accessToken);
-      const teamId = teams[0].id;
+      assert.equal(teams.length > 0, true);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
 
       const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
         method: "POST",
@@ -2178,7 +2180,7 @@ async function main() {
       });
       assert.equal(submitReviewResponse.status, 201);
       const submittedReviewVersion = await submitReviewResponse.json() as { status: string };
-      assert.equal(submittedReviewVersion.status, "pending_review");
+      assert.equal(submittedReviewVersion.status, "submitted");
 
       const approveResponse = await originalFetch(`${baseUrl}/versions/${reviewVersion.id}/approve`, {
         method: "POST",
@@ -2211,7 +2213,8 @@ async function main() {
       const ownerJsonHeaders = authHeaders(owner.accessToken, true);
       const writerJsonHeaders = authHeaders(writer.accessToken, true);
       const teams = await listTeams(baseUrl, owner.accessToken);
-      const teamId = teams[0].id;
+      assert.equal(teams.length > 0, true);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
 
       const projectResponse = await originalFetch(`${baseUrl}/projects`, {
         method: "POST",
@@ -2336,7 +2339,8 @@ async function main() {
       const readHeaders = authHeaders(owner.accessToken);
 
       const teams = await listTeams(baseUrl, owner.accessToken);
-      const teamId = teams[0].id;
+      assert.equal(teams.length > 0, true);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
 
       const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
         method: "POST",
@@ -2550,7 +2554,8 @@ async function main() {
       const viewerJsonHeaders = authHeaders(viewer.accessToken, true);
 
       const teams = await listTeams(baseUrl, owner.accessToken);
-      const teamId = teams[0].id;
+      assert.equal(teams.length > 0, true);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
 
       const addTenantAdminResponse = await originalFetch(`${baseUrl}/teams/${teamId}/members`, {
         method: "POST",

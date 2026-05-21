@@ -137,17 +137,23 @@ test("text provider throws when mock fallback is disabled and provider output is
 
 test("media provider throws when no API key is configured", async () => {
   delete process.env.OPENAI_COMPAT_API_KEY;
+  const prevNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
 
-  const provider = new OpenAiMediaProvider();
-  await assert.rejects(
-    provider.generateImage({
-      shotId: "shot-1-1",
-      style: "Cinematic still",
-      aspectRatio: "16:9",
-      prompt: "A reveal on a rooftop at night",
-    }),
-    /API key is not configured/,
-  );
+  try {
+    const provider = new OpenAiMediaProvider();
+    await assert.rejects(
+      provider.generateImage({
+        shotId: "shot-1-1",
+        style: "Cinematic still",
+        aspectRatio: "16:9",
+        prompt: "A reveal on a rooftop at night",
+      }),
+      /API key is not configured/,
+    );
+  } finally {
+    process.env.NODE_ENV = prevNodeEnv;
+  }
 });
 
 test("google provider sends a text-only generateContent request for text-to-image", async () => {

@@ -1793,6 +1793,9 @@ export class WorkspaceService {
       };
 
       document.draftVersionId = version.id;
+      if (version.status === "approved") {
+        document.currentVersionId = version.id;
+      }
       document.updatedAt = now;
       db.versions.push(version);
 
@@ -2783,6 +2786,7 @@ export class WorkspaceService {
 
     db.versions.push(version);
     wbDoc.draftVersionId = version.id;
+    wbDoc.currentVersionId = version.id;
     wbDoc.updatedAt = now;
 
     const syncEvent = this.syncCharactersToPairedDraft(db, version, wbDoc, userId);

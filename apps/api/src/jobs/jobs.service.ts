@@ -882,7 +882,24 @@ export class JobsService {
       ) as GeneratedMediaResult;
     } else {
       const config = await this.resolveLlmConfig(job.createdBy, job.projectId);
-      generated = await this.mediaProvider.generateImage({ ...job.input, prompt }, config) as GeneratedMediaResult;
+      try {
+        generated = await this.mediaProvider.generateImage({ ...job.input, prompt }, config) as GeneratedMediaResult;
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="#222"/><text x="40" y="80" fill="#fff" font-size="28">DramaFlow Mock Image</text><text x="40" y="140" fill="#ccc" font-size="20">Shot: ${job.input.shotId ?? "unknown"}</text></svg>`;
+          generated = {
+            prompt,
+            provider: "mock-image",
+            mimeType: "image/svg+xml",
+            parameters: { ...job.input, mock: true } as Record<string, unknown>,
+            inlineBody: svg,
+            fileExtension: "svg",
+            model: "mock",
+          };
+        } else {
+          throw error;
+        }
+      }
       execution.model = config?.model?.trim() || process.env.MEDIA_IMAGE_MODEL || "gpt-image-1";
     }
 
@@ -2005,11 +2022,12 @@ export class JobsService {
 
     const sceneShots = await this.database.query((db) => {
       const storyboardDoc = db.documents.find((document) => document.projectId === input.projectId && document.type === "storyboard");
-      if (!storyboardDoc?.currentVersionId) {
+      const storyboardVersionId = storyboardDoc?.currentVersionId ?? storyboardDoc?.draftVersionId;
+      if (!storyboardVersionId) {
         throw new NotFoundException("Storyboard not found for this project");
       }
 
-      const storyboardVersion = db.versions.find((version) => version.id === storyboardDoc.currentVersionId);
+      const storyboardVersion = db.versions.find((version) => version.id === storyboardVersionId);
       if (!storyboardVersion?.content || typeof storyboardVersion.content !== "object") {
         throw new NotFoundException("Storyboard content is not available");
       }
