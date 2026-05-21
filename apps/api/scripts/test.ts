@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { NestFactory } from "@nestjs/core";
 import express from "express";
 
+import { PROJECT_PERMISSIONS } from "@dramaflow/shared";
+
 import { AdminController } from "../src/admin/admin.controller";
 import { AppModule } from "../src/app.module";
 import { AuthController } from "../src/auth/auth.controller";
@@ -2238,12 +2240,25 @@ async function main() {
       const directorTemplate = defaultTemplates.resolvedTemplates.find((item) => item.role === "director");
       assert.equal(directorTemplate?.effectivePermissions.includes("version.review"), true);
 
-      const updateTemplatesResponse = await originalFetch(`${baseUrl}/teams/${teamId}/permission-templates`, {
+      const invalidTemplatesResponse = await readResponse(await originalFetch(`${baseUrl}/teams/${teamId}/permission-templates`, {
         method: "PUT",
         headers: ownerJsonHeaders,
         body: JSON.stringify({
           templates: {
             writer: ["project.view", "version.review", "bad.permission"],
+          },
+        }),
+      }));
+      assert.equal(invalidTemplatesResponse.status, 400);
+      assert.equal(invalidTemplatesResponse.bodyText.includes("bad.permission"), true);
+      assert.equal(invalidTemplatesResponse.bodyText.includes("templates.writer[2]"), true);
+
+      const updateTemplatesResponse = await originalFetch(`${baseUrl}/teams/${teamId}/permission-templates`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          templates: {
+            writer: ["project.view", "version.review"],
           },
         }),
       });
@@ -2273,12 +2288,26 @@ async function main() {
       assert.deepEqual(memberPermissions.inheritedPermissions, ["project.view", "version.review"]);
       assert.deepEqual(memberPermissions.permissionOverride, { allow: [], deny: [] });
 
-      const updateMemberPermissionsResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${writerMember.id}/permissions`, {
+      const invalidMemberPermissionsResponse = await readResponse(await originalFetch(`${baseUrl}/projects/${project.id}/members/${writerMember.id}/permissions`, {
         method: "PUT",
         headers: ownerJsonHeaders,
         body: JSON.stringify({
           permissionOverride: {
             allow: ["job.manage", "bad.permission"],
+            deny: ["version.review"],
+          },
+        }),
+      }));
+      assert.equal(invalidMemberPermissionsResponse.status, 400);
+      assert.equal(invalidMemberPermissionsResponse.bodyText.includes("bad.permission"), true);
+      assert.equal(invalidMemberPermissionsResponse.bodyText.includes("permissionOverride.allow[1]"), true);
+
+      const updateMemberPermissionsResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${writerMember.id}/permissions`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          permissionOverride: {
+            allow: ["job.manage"],
             deny: ["version.review"],
           },
         }),
@@ -2514,6 +2543,7 @@ async function main() {
       const director = await registerUser(baseUrl, { email: "enforce-director@example.com", displayName: "Enforce Director" });
       const writer = await registerUser(baseUrl, { email: "enforce-writer@example.com", displayName: "Enforce Writer" });
       const viewer = await registerUser(baseUrl, { email: "enforce-viewer@example.com", displayName: "Enforce Viewer" });
+      const tenantAdmin = await registerUser(baseUrl, { email: "enforce-tenant-admin@example.com", displayName: "Enforce Tenant Admin" });
       const ownerJsonHeaders = authHeaders(owner.accessToken, true);
       const directorJsonHeaders = authHeaders(director.accessToken, true);
       const writerJsonHeaders = authHeaders(writer.accessToken, true);
@@ -2521,6 +2551,14 @@ async function main() {
 
       const teams = await listTeams(baseUrl, owner.accessToken);
       const teamId = teams[0].id;
+
+      const addTenantAdminResponse = await originalFetch(`${baseUrl}/teams/${teamId}/members`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ email: tenantAdmin.user.email, role: "tenant_admin" }),
+      });
+      assert.equal(addTenantAdminResponse.status, 201);
+
       const projectResponse = await originalFetch(`${baseUrl}/projects`, {
         method: "POST",
         headers: ownerJsonHeaders,
@@ -2551,6 +2589,7 @@ async function main() {
         body: JSON.stringify({ email: viewer.user.email, role: "viewer" }),
       });
       assert.equal(addViewerResponse.status, 201);
+      const viewerMember = await addViewerResponse.json() as { id: string };
 
       const projectPayloadResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
         headers: authHeaders(owner.accessToken),
@@ -2561,6 +2600,60 @@ async function main() {
       };
       const scriptDocument = projectPayload.documents.find((document) => document.type === "script");
       assert.ok(scriptDocument);
+
+      const viewerWorkspaceBeforeDenyResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerWorkspaceBeforeDenyResponse.status, 200);
+
+      const viewerProjectVersionsBeforeDenyResponse = await originalFetch(`${baseUrl}/projects/${project.id}/versions`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerProjectVersionsBeforeDenyResponse.status, 200);
+
+      const viewerDocumentVersionsBeforeDenyResponse = await originalFetch(`${baseUrl}/documents/${scriptDocument.id}/versions`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerDocumentVersionsBeforeDenyResponse.status, 200);
+
+      const viewerJobsBeforeDenyResponse = await originalFetch(`${baseUrl}/projects/${project.id}/jobs`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerJobsBeforeDenyResponse.status, 200);
+
+      const tenantAdminWorkspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: authHeaders(tenantAdmin.accessToken),
+      });
+      assert.equal(tenantAdminWorkspaceResponse.status, 200);
+      const tenantAdminWorkspace = await tenantAdminWorkspaceResponse.json() as { currentUserPermissions: string[] };
+      assert.deepEqual(tenantAdminWorkspace.currentUserPermissions, PROJECT_PERMISSIONS);
+
+      const denyViewerReadResponse = await originalFetch(`${baseUrl}/projects/${project.id}/members/${viewerMember.id}/permissions`, {
+        method: "PUT",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({ permissionOverride: { allow: [], deny: ["project.view"] } }),
+      });
+      assert.equal(denyViewerReadResponse.status, 200);
+
+      const viewerWorkspaceAfterDenyResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerWorkspaceAfterDenyResponse.status, 403);
+
+      const viewerProjectVersionsAfterDenyResponse = await originalFetch(`${baseUrl}/projects/${project.id}/versions`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerProjectVersionsAfterDenyResponse.status, 403);
+
+      const viewerDocumentVersionsAfterDenyResponse = await originalFetch(`${baseUrl}/documents/${scriptDocument.id}/versions`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerDocumentVersionsAfterDenyResponse.status, 403);
+
+      const viewerJobsAfterDenyResponse = await originalFetch(`${baseUrl}/projects/${project.id}/jobs`, {
+        headers: authHeaders(viewer.accessToken),
+      });
+      assert.equal(viewerJobsAfterDenyResponse.status, 403);
 
       const versionResponse = await originalFetch(`${baseUrl}/documents/${scriptDocument.id}/versions`, {
         method: "POST",
