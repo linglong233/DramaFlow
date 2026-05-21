@@ -12,13 +12,14 @@ import { CommonModule } from "../common/common.module";
 import { NotificationModule } from "../notifications/notification.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { AuditService } from "./audit.service";
+import { ImpactController } from "./impact.controller";
 import { ImpactService } from "./impact.service";
 import { WorkspaceController } from "./workspace.controller";
 import { WorkspaceService } from "./workspace.service";
 
 @Module({
   imports: [CommonModule, AuthModule, NotificationModule, RealtimeModule],
-  controllers: [WorkspaceController],
+  controllers: [WorkspaceController, ImpactController],
   providers: [WorkspaceService, AuditService, ImpactService],
   exports: [WorkspaceService, AuditService, ImpactService],
 })
