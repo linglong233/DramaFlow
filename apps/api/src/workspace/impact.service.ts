@@ -15,7 +15,9 @@ import {
 import { createHash } from "node:crypto";
 import {
   canTransitionImpactIssueStatus,
+  isActiveImpactIssueStatus,
   type DependencyType,
+  type DocumentRecord,
   type ImpactIssueDetailResponse,
   type ImpactIssueEventRecord,
   type ImpactIssueRecord,
@@ -26,6 +28,7 @@ import {
   type ProjectImpactIssuesResponse,
   type VersionDependencyRecord,
   type VersionImpactSummary,
+  type VersionRecord,
 } from "@dramaflow/shared";
 
 import { DevDatabaseService } from "../common/dev-database.service";
@@ -279,6 +282,252 @@ export class ImpactService {
       this.appendEvent(db, issue, eventType, actorId, note);
       return this.buildIssueDetail(db, issue);
     });
+  }
+
+  // ─── 依赖记录与影响扫描 ─────────────────────────────────────────
+
+  /** 记录版本的依赖关系：根据 metadata 中的来源版本建立依赖链 */
+  async recordDependenciesForVersion(versionId: string): Promise<VersionDependencyRecord[]> {
+    return this.database.mutate((db) => {
+      const version = db.versions.find((item) => item.id === versionId);
+      if (!version) return [];
+      const document = db.documents.find((item) => item.id === version.documentId);
+      if (!document) return [];
+
+      db.versionDependencies = db.versionDependencies.filter((item) => item.targetVersionId !== versionId);
+
+      const metadata = version.metadata ?? {};
+      const created: VersionDependencyRecord[] = [];
+      const add = (
+        sourceVersionId: string | undefined,
+        dependencyType: DependencyType,
+        targetAnchorType?: VersionDependencyRecord["targetAnchorType"],
+        targetAnchorId?: string,
+        sourceSnapshotHash?: string,
+        targetSnapshotHash?: string,
+      ) => {
+        if (!sourceVersionId) return;
+        const sourceVersion = db.versions.find((item) => item.id === sourceVersionId);
+        const sourceDocument = sourceVersion ? db.documents.find((item) => item.id === sourceVersion.documentId) : undefined;
+        const now = new Date().toISOString();
+        const dependency: VersionDependencyRecord = {
+          id: createId("dependency"),
+          projectId: document.projectId,
+          sourceDocumentId: sourceDocument?.id,
+          sourceVersionId,
+          sourceDocumentType: sourceDocument?.type,
+          targetDocumentId: document.id,
+          targetVersionId: version.id,
+          targetDocumentType: document.type,
+          dependencyType,
+          targetAnchorType,
+          targetAnchorId,
+          sourceSnapshotHash,
+          targetSnapshotHash,
+          promptSnapshot: typeof metadata.promptSnapshot === "string" ? metadata.promptSnapshot : undefined,
+          provider: typeof metadata.provider === "string" ? metadata.provider : undefined,
+          model: typeof metadata.model === "string" ? metadata.model : undefined,
+          configSource: metadata.llmConfigSource === "team" || metadata.llmConfigSource === "personal" ? metadata.llmConfigSource : undefined,
+          createdBy: version.createdBy,
+          createdAt: now,
+        };
+        db.versionDependencies.push(dependency);
+        created.push(dependency);
+      };
+
+      add(metadata.sourceWorldBibleVersionId as string | undefined, document.type === "synopsis" ? "world_bible_to_synopsis" : document.type === "script" ? "world_bible_to_script" : "world_bible_to_storyboard");
+      add(metadata.sourceSynopsisVersionId as string | undefined, "synopsis_to_script");
+      add(metadata.sourceScriptVersionId as string | undefined, "script_to_storyboard");
+      add(
+        metadata.sourceStoryboardVersionId as string | undefined,
+        "storyboard_to_media",
+        "shot",
+        metadata.shotId as string | undefined,
+        metadata.sourceShotHash as string | undefined,
+        metadata.targetSnapshotHash as string | undefined,
+      );
+
+      if (created.length === 0 && metadata.source === "restore" && typeof metadata.restoredFromVersionId === "string") {
+        const inherited = db.versionDependencies.filter((item) => item.targetVersionId === metadata.restoredFromVersionId);
+        for (const dependency of inherited) {
+          const copy: VersionDependencyRecord = {
+            ...dependency,
+            id: createId("dependency"),
+            targetDocumentId: document.id,
+            targetVersionId: version.id,
+            targetDocumentType: document.type,
+            dependencyType: "manual_inherited",
+            createdBy: version.createdBy,
+            createdAt: new Date().toISOString(),
+          };
+          db.versionDependencies.push(copy);
+          created.push(copy);
+        }
+      }
+
+      if (created.length === 0) {
+        const dependency: VersionDependencyRecord = {
+          id: createId("dependency"),
+          projectId: document.projectId,
+          targetDocumentId: document.id,
+          targetVersionId: version.id,
+          targetDocumentType: document.type,
+          dependencyType: "manual_unlinked",
+          createdBy: version.createdBy,
+          createdAt: new Date().toISOString(),
+        };
+        db.versionDependencies.push(dependency);
+        created.push(dependency);
+      }
+
+      return created;
+    });
+  }
+
+  /** 版本采用后扫描下游影响，生成影响议题 */
+  async scanAfterAdoption(input: {
+    projectId: string;
+    sourceDocumentId: string;
+    previousSourceVersionId?: string;
+    changedSourceVersionId: string;
+    actorId: string;
+  }): Promise<ImpactIssueRecord[]> {
+    return this.database.mutate((db) => {
+      const sourceDocument = db.documents.find((item) => item.id === input.sourceDocumentId);
+      if (!sourceDocument) return [];
+
+      const dependencies = db.versionDependencies.filter((dependency) =>
+        dependency.projectId === input.projectId
+        && dependency.sourceVersionId
+        && dependency.sourceVersionId !== input.changedSourceVersionId
+        && dependency.sourceDocumentId === input.sourceDocumentId,
+      );
+
+      const created: ImpactIssueRecord[] = [];
+      for (const dependency of dependencies) {
+        const targetVersion = db.versions.find((version) => version.id === dependency.targetVersionId);
+        const targetDocument = db.documents.find((document) => document.id === dependency.targetDocumentId);
+        if (!targetVersion || !targetDocument) continue;
+
+        const activeTarget =
+          targetDocument.currentVersionId === targetVersion.id
+          || targetDocument.draftVersionId === targetVersion.id
+          || targetDocument.type === "image"
+          || targetDocument.type === "video"
+          || targetDocument.type === "audio"
+          || targetDocument.type === "subtitle";
+        if (!activeTarget) continue;
+
+        const title = this.buildIssueTitle(sourceDocument, targetDocument, targetVersion);
+        const summary = `当前 ${sourceDocument.type} 版本从 ${dependency.sourceVersionId} 变更为 ${input.changedSourceVersionId}。${targetDocument.title} V${targetVersion.versionNumber} 基于旧版来源创建。`;
+        const issue = this.createOrUpdateImpactIssue(db, {
+          projectId: input.projectId,
+          dependencyId: dependency.id,
+          sourceDocumentId: sourceDocument.id,
+          previousSourceVersionId: dependency.sourceVersionId,
+          changedSourceVersionId: input.changedSourceVersionId,
+          targetDocumentId: targetDocument.id,
+          targetVersionId: targetVersion.id,
+          dependencyType: dependency.dependencyType,
+          severity: this.resolveSeverity(dependency, targetDocument, targetVersion),
+          title,
+          summary,
+          targets: [{
+            targetType: dependency.targetAnchorType === "shot" ? "shot" : "version",
+            documentId: targetDocument.id,
+            versionId: targetVersion.id,
+            anchorId: dependency.targetAnchorId,
+            label: dependency.targetAnchorId ? `${targetDocument.title} / ${dependency.targetAnchorId}` : `${targetDocument.title} V${targetVersion.versionNumber}`,
+          }],
+          actorId: input.actorId,
+        });
+        created.push(issue);
+      }
+      return created;
+    });
+  }
+
+  /** 创建或更新影响议题（幂等） */
+  private createOrUpdateImpactIssue(db: DevDatabase, input: CreateImpactInput): ImpactIssueRecord {
+    const target = input.targets[0];
+    const existing = db.impactIssues.find((issue) =>
+      issue.projectId === input.projectId
+      && issue.dependencyId === input.dependencyId
+      && issue.changedSourceVersionId === input.changedSourceVersionId
+      && issue.targetVersionId === input.targetVersionId
+      && db.impactTargets.some((item) =>
+        item.issueId === issue.id
+        && item.targetType === target.targetType
+        && item.anchorId === target.anchorId,
+      ),
+    );
+
+    const now = new Date().toISOString();
+    if (existing) {
+      existing.title = input.title;
+      existing.summary = input.summary;
+      existing.severity = input.severity;
+      existing.updatedAt = now;
+      if (!isActiveImpactIssueStatus(existing.status) && existing.status !== "ignored") {
+        existing.status = "open";
+      }
+      this.appendEvent(db, existing, "created", input.actorId, "来源变更后影响刷新");
+      return existing;
+    }
+
+    const issue: ImpactIssueRecord = {
+      id: createId("impact"),
+      projectId: input.projectId,
+      dependencyId: input.dependencyId,
+      sourceDocumentId: input.sourceDocumentId,
+      previousSourceVersionId: input.previousSourceVersionId,
+      changedSourceVersionId: input.changedSourceVersionId,
+      targetDocumentId: input.targetDocumentId,
+      targetVersionId: input.targetVersionId,
+      dependencyType: input.dependencyType,
+      status: "open",
+      severity: input.severity,
+      title: input.title,
+      summary: input.summary,
+      createdBy: input.actorId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.impactIssues.push(issue);
+
+    for (const targetInput of input.targets) {
+      db.impactTargets.push({
+        id: createId("impact_target"),
+        issueId: issue.id,
+        projectId: input.projectId,
+        targetType: targetInput.targetType,
+        documentId: targetInput.documentId,
+        versionId: targetInput.versionId,
+        anchorId: targetInput.anchorId,
+        label: targetInput.label,
+        createdAt: now,
+      });
+    }
+
+    this.appendEvent(db, issue, "created", input.actorId, input.summary);
+    return issue;
+  }
+
+  /** 根据依赖类型和目标状态判断严重等级 */
+  private resolveSeverity(
+    dependency: VersionDependencyRecord,
+    targetDocument: DocumentRecord,
+    targetVersion: VersionRecord,
+  ): ImpactSeverity {
+    if (targetDocument.currentVersionId === targetVersion.id) return "high";
+    if (dependency.dependencyType === "synopsis_to_script" || dependency.dependencyType === "script_to_storyboard") return "high";
+    if (dependency.dependencyType === "manual_unlinked") return "low";
+    return "medium";
+  }
+
+  /** 构建影响议题标题 */
+  private buildIssueTitle(sourceDocument: DocumentRecord, targetDocument: DocumentRecord, targetVersion: VersionRecord): string {
+    return `${targetDocument.title} V${targetVersion.versionNumber} 可能受更新的 ${sourceDocument.type} 影响`;
   }
 
   // ─── 摘要与辅助方法 ──────────────────────────────────────────

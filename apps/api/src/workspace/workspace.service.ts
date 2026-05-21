@@ -93,6 +93,7 @@ import { createId } from "../common/id";
 import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { AuditService } from "./audit.service";
+import { ImpactService } from "./impact.service";
 
 /** 操作者上下文，封装用户在团队和项目中的角色 */
 interface ActorContext extends AccessContext {}
@@ -112,6 +113,7 @@ export class WorkspaceService {
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(NotificationService) private readonly notificationService: NotificationService,
     @Inject(RealtimeEventsService) private readonly realtimeEvents: RealtimeEventsService,
+    @Inject(ImpactService) private readonly impactService: ImpactService,
   ) {}
 
   async listTeams(userId: string): Promise<TeamSummary[]> {
@@ -994,8 +996,12 @@ export class WorkspaceService {
       const all = db.versions
         .filter((version) => version.documentId === documentId)
         .sort((left, right) => right.versionNumber - left.versionNumber);
+      const versionsWithImpact = all.map((version) => ({
+        ...version,
+        impactSummary: this.impactService.buildVersionImpactSummary(db, version.id),
+      }));
       return {
-        versions: applyPagination(all, limit, offset),
+        versions: applyPagination(versionsWithImpact, limit, offset),
         total: all.length,
       };
     });
@@ -1017,8 +1023,13 @@ export class WorkspaceService {
           return right.createdAt.localeCompare(left.createdAt);
         });
 
+      const versionsWithImpact = all.map((version) => ({
+        ...version,
+        impactSummary: this.impactService.buildVersionImpactSummary(db, version.id),
+      }));
+
       return {
-        versions: applyPagination(all, limit, offset),
+        versions: applyPagination(versionsWithImpact, limit, offset),
         total: all.length,
       };
     });
@@ -1038,9 +1049,10 @@ export class WorkspaceService {
         throw new BadRequestException("Version does not belong to the target document");
       }
 
+      const previousCurrentVersionId = liveDocument.currentVersionId;
       liveDocument.currentVersionId = liveVersion.id;
       liveDocument.updatedAt = new Date().toISOString();
-      return liveDocument;
+      return { document: liveDocument, previousCurrentVersionId };
     });
 
     if (this.getAuditContentType(document.type)) {
@@ -1054,7 +1066,15 @@ export class WorkspaceService {
       });
     }
 
-    return result;
+    await this.impactService.scanAfterAdoption({
+      projectId: document.projectId,
+      sourceDocumentId: documentId,
+      previousSourceVersionId: result.previousCurrentVersionId,
+      changedSourceVersionId: versionId,
+      actorId: userId,
+    });
+
+    return result.document;
   }
 
   async createVersion(
@@ -1827,6 +1847,8 @@ export class WorkspaceService {
     if (result.syncEvent) {
       this.realtimeEvents.emitCharacterSynced(result.syncEvent);
     }
+
+    await this.impactService.recordDependenciesForVersion(result.version.id);
 
     return result.version;
   }
