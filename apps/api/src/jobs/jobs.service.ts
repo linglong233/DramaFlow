@@ -41,6 +41,7 @@ import type {
   WorldBibleReferenceImageGenerateResponse,
   WorldBibleContent,
   EnhanceReferencePromptResponse,
+  DocumentType,
 } from "@dramaflow/shared";
 
 import { DevDatabaseService } from "../common/dev-database.service";
@@ -598,6 +599,7 @@ export class JobsService {
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
     const resolvedModel = this.resolveTextModel(config);
     const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
+    const worldBibleRef = await this.getCurrentVersionReference(job.projectId, "world_bible");
     const enrichedInput = { ...job.input };
     if (worldBible) {
       const wbPrompt = this.formatWorldBiblePrompt(worldBible);
@@ -620,6 +622,9 @@ export class JobsService {
         provider: resolvedModel,
         model: resolvedModel,
         ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
+        ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
+        ...(job.input.sourceSynopsisVersionId ? { sourceSynopsisVersionId: job.input.sourceSynopsisVersionId } : {}),
+        promptSnapshot: JSON.stringify(enrichedInput),
       },
       createdBy: job.createdBy,
       status: "approved",
@@ -638,6 +643,7 @@ export class JobsService {
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
     const resolvedModel = this.resolveTextModel(config);
     const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
+    const worldBibleRef = await this.getCurrentVersionReference(job.projectId, "world_bible");
     const enrichedInput = { ...job.input };
     if (worldBible) {
       const wbPrompt = this.formatWorldBiblePrompt(worldBible);
@@ -661,6 +667,8 @@ export class JobsService {
         provider: resolvedModel,
         model: resolvedModel,
         ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
+        ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
+        promptSnapshot: JSON.stringify(enrichedInput),
       },
       createdBy: job.createdBy,
       status: "approved",
@@ -844,6 +852,7 @@ export class JobsService {
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
     const resolvedModel = this.resolveTextModel(config);
     const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
+    const worldBibleRef = await this.getCurrentVersionReference(job.projectId, "world_bible");
     const enrichedStoryboardInput = { ...job.input };
     if (worldBible && (worldBible.characters.length > 0 || worldBible.locations.length > 0 || worldBible.styleGuide?.visualStyle)) {
       const wbParts: string[] = [job.input.cinematicStyle, "", "## 项目世界观"];
@@ -881,6 +890,8 @@ export class JobsService {
         provider: resolvedModel,
         model: resolvedModel,
         ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
+        ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
+        promptSnapshot: JSON.stringify({ ...enrichedStoryboardInput, script }),
       },
       createdBy: job.createdBy,
       status: "approved",
@@ -1399,6 +1410,20 @@ export class JobsService {
     prompt: string,
     generated: GeneratedMediaResult,
   ) {
+    // 查找当前分镜版本和对应镜头信息，用于记录依赖元数据
+    const storyboardRef = await this.database.query((db) => {
+      const storyboardDocument = db.documents.find((item) => item.projectId === job.projectId && item.type === "storyboard");
+      const storyboardVersion = storyboardDocument?.currentVersionId
+        ? db.versions.find((item) => item.id === storyboardDocument.currentVersionId)
+        : undefined;
+      const storyboardContent = storyboardVersion?.content as StoryboardContent | undefined;
+      const sourceShot = storyboardContent?.shots?.find((shot) => shot.id === job.shotId);
+      return {
+        versionId: storyboardVersion?.id,
+        shotHash: sourceShot ? this.impactService.stableHash(sourceShot) : undefined,
+      };
+    });
+
     const assetReference = await this.persistMediaArtifact(job, generated, mediaType);
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
@@ -1436,6 +1461,9 @@ export class JobsService {
         progress: generated.progress,
         mode: generated.mode,
         note: generated.note,
+        ...(storyboardRef.versionId ? { sourceStoryboardVersionId: storyboardRef.versionId } : {}),
+        ...(storyboardRef.shotHash ? { sourceShotHash: storyboardRef.shotHash, targetSnapshotHash: storyboardRef.shotHash } : {}),
+        promptSnapshot: prompt,
       },
       createdBy: job.createdBy,
       status: "approved",
@@ -2216,6 +2244,17 @@ export class JobsService {
     });
   }
 
+  /** 根据项目ID和文档类型查找当前版本引用 */
+  private async getCurrentVersionReference(projectId: string, type: DocumentType) {
+    return this.database.query((db) => {
+      const document = db.documents.find((item) => item.projectId === projectId && item.type === type);
+      const version = document?.currentVersionId
+        ? db.versions.find((item) => item.id === document.currentVersionId)
+        : undefined;
+      return document && version ? { document, version } : null;
+    });
+  }
+
   private async resolveTTSVoice(
     projectId: string,
     characterId: string,
@@ -2367,6 +2406,7 @@ export class JobsService {
 
       // Inject world bible context
       const worldBible = await this.getWorldBible(userId, projectId);
+      const worldBibleRef = await this.getCurrentVersionReference(projectId, "world_bible");
       if (worldBible) {
         const wbPrompt = this.formatWorldBiblePrompt(worldBible);
         enrichedInput.premise = `${enrichedInput.premise}\n${wbPrompt}`;
@@ -2396,6 +2436,9 @@ export class JobsService {
             provider: resolvedModel,
             model: resolvedModel,
             ...(llmConfigSource ? { llmConfigSource } : {}),
+            ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
+            ...(input.sourceSynopsisVersionId ? { sourceSynopsisVersionId: input.sourceSynopsisVersionId } : {}),
+            promptSnapshot: JSON.stringify(enrichedInput),
           },
           createdBy: userId,
           status: "approved",
@@ -2447,6 +2490,7 @@ export class JobsService {
       const config = await this.resolveTextLlmConfig(userId, projectId, llmConfigSource);
       const resolvedModel = this.resolveTextModel(config);
       const worldBible = await this.getWorldBible(userId, projectId);
+      const worldBibleRef = await this.getCurrentVersionReference(projectId, "world_bible");
       const enrichedInput = { ...input };
       if (worldBible) {
         const wbPrompt = this.formatWorldBiblePrompt(worldBible);
@@ -2478,6 +2522,8 @@ export class JobsService {
             provider: resolvedModel,
             model: resolvedModel,
             ...(llmConfigSource ? { llmConfigSource } : {}),
+            ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
+            promptSnapshot: JSON.stringify(enrichedInput),
           },
           createdBy: userId,
           status: "approved",
@@ -2537,6 +2583,7 @@ export class JobsService {
       const config = await this.resolveTextLlmConfig(userId, projectId, llmConfigSource);
       const resolvedModel = this.resolveTextModel(config);
       const worldBible = await this.getWorldBible(userId, projectId);
+      const worldBibleRef = await this.getCurrentVersionReference(projectId, "world_bible");
       const enrichedStoryboardInput = { ...input };
       if (worldBible && (worldBible.characters.length > 0 || worldBible.locations.length > 0 || worldBible.styleGuide?.visualStyle)) {
         const wbParts: string[] = [input.cinematicStyle, "", "## 项目世界观"];
@@ -2580,6 +2627,8 @@ export class JobsService {
             provider: resolvedModel,
             model: resolvedModel,
             ...(llmConfigSource ? { llmConfigSource } : {}),
+            ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
+            promptSnapshot: JSON.stringify({ ...enrichedStoryboardInput, script }),
           },
           createdBy: userId,
           status: "approved",
