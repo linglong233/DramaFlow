@@ -5294,6 +5294,44 @@ textarea.input {
   margin-bottom: var(--space-4);
 }
 
+/* 权限模板矩阵 */
+.permission-matrix {
+  display: grid;
+  gap: var(--space-2);
+  overflow-x: auto;
+}
+
+.permission-matrix__header,
+.permission-matrix__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) repeat(8, minmax(92px, 1fr));
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 900px;
+}
+
+.permission-matrix__header {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.permission-matrix__row {
+  min-height: 44px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.permission-matrix__cell {
+  display: flex;
+  justify-content: center;
+}
+
+.permission-matrix__locked {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* Member list */
 .team-member {
   display: flex;

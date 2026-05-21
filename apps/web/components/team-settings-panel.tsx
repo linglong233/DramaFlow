@@ -16,8 +16,16 @@ import type {
   LlmModelListResponse,
   LlmModelSummary,
   ProviderEntry,
+  ProjectRolePermissionTemplates,
   TeamSettingsResponse,
   TeamSummary,
+  TeamPermissionTemplatesResponse,
+  UpdateTeamPermissionTemplatesPayload,
+} from "@dramaflow/shared";
+import {
+  PROJECT_PERMISSIONS,
+  type ProjectPermission,
+  type ProjectRole,
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../lib/api";
@@ -34,7 +42,16 @@ import {
   toProviderEntryDraft,
 } from "../lib/image-config";
 import type { ProviderEntryDraft } from "../lib/image-config";
-import { getReviewPolicyLabel, useI18n } from "../lib/i18n";
+import {
+  EDITABLE_PROJECT_ROLES,
+  getProjectPermissionHelp,
+  getProjectPermissionLabel,
+} from "../lib/project-permissions";
+import {
+  getProjectRoleLabel,
+  getReviewPolicyLabel,
+  useI18n,
+} from "../lib/i18n";
 import { buildLlmConfigPayload, toLlmConfigDraft } from "../lib/llm-config";
 import { queryKeys } from "../lib/query-keys";
 import { ConfirmAction } from "./confirm-action";
@@ -95,6 +112,9 @@ export function TeamSettingsPanel() {
   const [modelListError, setModelListError] = useState<string | null>(null);
   const { feedback, setFeedback } = useFeedback();
 
+  // --- 权限模板状态 ---
+  const [permissionTemplates, setPermissionTemplates] = useState<ProjectRolePermissionTemplates>({});
+
   const teamsQuery = useQuery({
     queryKey: queryKeys.teams,
     queryFn: () => apiFetch<TeamSummary[]>("/teams"),
@@ -114,6 +134,13 @@ export function TeamSettingsPanel() {
   const teamQuery = useQuery({
     queryKey: queryKeys.teamSettings(selectedTeamId),
     queryFn: () => apiFetch<TeamSettingsResponse>(`/admin/teams/${selectedTeamId}/settings`),
+    enabled: Boolean(selectedTeamId),
+  });
+
+  // --- 权限模板查询 ---
+  const permissionTemplatesQuery = useQuery({
+    queryKey: queryKeys.teamPermissionTemplates(selectedTeamId),
+    queryFn: () => apiFetch<TeamPermissionTemplatesResponse>(`/teams/${selectedTeamId}/permission-templates`),
     enabled: Boolean(selectedTeamId),
   });
 
@@ -171,6 +198,13 @@ export function TeamSettingsPanel() {
     setGrokVideoLength(data.imageGenerationConfig?.grokConfig?.videoLength ?? 6);
     setGrokResolution(data.imageGenerationConfig?.grokConfig?.resolution ?? "HD");
   }, [teamQuery.data]);
+
+  // 同步权限模板数据到本地状态
+  useEffect(() => {
+    if (permissionTemplatesQuery.data) {
+      setPermissionTemplates(permissionTemplatesQuery.data.templates);
+    }
+  }, [permissionTemplatesQuery.data]);
 
   useEffect(() => {
     setAvailableModels([]);
@@ -260,6 +294,23 @@ export function TeamSettingsPanel() {
     onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "settingsPages.teamSettings.saveError") }),
   });
 
+  // --- 保存权限模板 ---
+  const updatePermissionTemplatesMutation = useMutation({
+    mutationFn: () => apiFetch<TeamPermissionTemplatesResponse>(`/teams/${selectedTeamId}/permission-templates`, {
+      method: "PUT",
+      body: { templates: permissionTemplates } satisfies UpdateTeamPermissionTemplatesPayload,
+    }),
+    onSuccess: async () => {
+      setFeedback({ message: t("settingsPages.teamSettings.permissionTemplatesSaved"), error: null });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.teamPermissionTemplates(selectedTeamId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.teamSettings(selectedTeamId) });
+    },
+    onError: (error) => setFeedback({
+      message: null,
+      error: formatApiError(error, t, "settingsPages.teamSettings.permissionTemplatesSaveFailed"),
+    }),
+  });
+
   const deleteTeamMutation = useMutation({
     mutationFn: () => apiFetch(`/teams/${selectedTeamId}`, {
       method: "DELETE",
@@ -338,6 +389,32 @@ export function TeamSettingsPanel() {
     const imageLabel = IMAGE_PROVIDER_LABELS[draft.provider as ImageGenerationProvider];
     const videoLabel = VIDEO_PROVIDER_LABELS[draft.provider as keyof typeof VIDEO_PROVIDER_LABELS];
     return imageLabel ?? videoLabel ?? String(draft.provider);
+  }
+
+  // --- 权限模板矩阵辅助函数 ---
+  function isTemplatePermissionEnabled(role: ProjectRole, permission: ProjectPermission) {
+    const template = permissionTemplates[role]
+      ?? permissionTemplatesQuery.data?.resolvedTemplates.find((item) => item.role === role)?.effectivePermissions
+      ?? [];
+    return template.includes(permission);
+  }
+
+  function toggleTemplatePermission(role: ProjectRole, permission: ProjectPermission) {
+    setPermissionTemplates((current) => {
+      const currentPermissions = current[role]
+        ?? permissionTemplatesQuery.data?.resolvedTemplates.find((item) => item.role === role)?.effectivePermissions
+        ?? [];
+      const nextSet = new Set(currentPermissions);
+      if (nextSet.has(permission)) {
+        nextSet.delete(permission);
+      } else {
+        nextSet.add(permission);
+      }
+      return {
+        ...current,
+        [role]: PROJECT_PERMISSIONS.filter((item) => nextSet.has(item)),
+      };
+    });
   }
 
   if (teamsQuery.isPending) {
@@ -444,6 +521,67 @@ export function TeamSettingsPanel() {
                   </select>
                 </div>
               </div>
+            </div>
+          </section>
+
+          {/* --- 权限模板矩阵 --- */}
+          <section className="team-section">
+            <div className="team-section-header">
+              <h2 className="team-section-title">
+                {t("settingsPages.teamSettings.permissionTemplatesTitle")}
+              </h2>
+              <p className="team-section-desc">
+                {t("settingsPages.teamSettings.permissionTemplatesDescription")}
+              </p>
+            </div>
+
+            <div className="team-form-card">
+              {permissionTemplatesQuery.isPending ? (
+                <LoadingSkeleton rows={4} />
+              ) : permissionTemplatesQuery.error ? (
+                <InlineFeedback message={null} error={formatApiError(permissionTemplatesQuery.error, t, "settingsPages.teamSettings.permissionTemplatesSaveFailed")} />
+              ) : (
+                <div className="permission-matrix">
+                  <div className="permission-matrix__header">
+                    <span />
+                    {PROJECT_PERMISSIONS.map((permission) => (
+                      <span key={permission} title={getProjectPermissionHelp(t, permission)}>
+                        {getProjectPermissionLabel(t, permission)}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="permission-matrix__row permission-matrix__row--locked">
+                    <strong>{getProjectRoleLabel(t, "project_admin")}</strong>
+                    {PROJECT_PERMISSIONS.map((permission) => (
+                      <span key={permission} className="permission-matrix__locked">{t("settingsPages.teamSettings.permissionLocked")}</span>
+                    ))}
+                  </div>
+                  {EDITABLE_PROJECT_ROLES.map((role) => (
+                    <div key={role} className="permission-matrix__row">
+                      <strong>{getProjectRoleLabel(t, role)}</strong>
+                      {PROJECT_PERMISSIONS.map((permission) => (
+                        <label key={permission} className="permission-matrix__cell" title={getProjectPermissionHelp(t, permission)}>
+                          <input
+                            type="checkbox"
+                            checked={isTemplatePermissionEnabled(role, permission)}
+                            onChange={() => toggleTemplatePermission(role, permission)}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                  <div className="form-actions">
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={() => updatePermissionTemplatesMutation.mutate()}
+                      disabled={updatePermissionTemplatesMutation.isPending}
+                    >
+                      {updatePermissionTemplatesMutation.isPending ? t("common.submitting") : t("settingsPages.teamSettings.permissionTemplatesSave")}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
