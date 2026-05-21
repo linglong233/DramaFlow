@@ -43,9 +43,12 @@ import type {
   NotificationType,
   NovelImportSession,
   NovelImportWriteResult,
-  ProjectRole,
+  PermissionOverride,
   ProjectMemberRecord,
+  ProjectPermission,
   ProjectRecord,
+  ProjectRole,
+  ProjectRolePermissionTemplates,
   ProjectStatus,
   ReviewPolicyMode,
   TeamInviteLinkRecord,
@@ -91,10 +94,13 @@ export interface TeamMemberSummary extends Pick<TeamMemberRecord, "id" | "userId
   email: string;
 }
 
-/** 项目成员摘要（包含用户显示信息） */
+/** 项目成员摘要（包含用户显示信息和权限信息） */
 export interface ProjectMemberSummary extends Pick<ProjectMemberRecord, "id" | "userId" | "role" | "createdAt"> {
   displayName: string;
   email: string;
+  inheritedPermissions: ProjectPermission[];
+  permissionOverride: PermissionOverride;
+  effectivePermissions: ProjectPermission[];
 }
 
 /** 审核队列中的版本摘要 */
@@ -174,6 +180,7 @@ export interface TeamSettingsResponse extends TeamSummary {
   videoProviders?: import("./domain").ProviderEntry[];
   defaultImageProvider?: string;
   defaultVideoProvider?: string;
+  permissionTemplates?: TeamPermissionTemplatesResponse;
 }
 
 /** 团队管理后台概览响应 */
@@ -188,6 +195,46 @@ export interface TeamAdminOverviewResponse {
   projectInvites: ProjectInviteSummary[];
   /** 待审核版本列表 */
   pendingReviews: ReviewQueueVersionSummary[];
+}
+
+// =============================================
+// 项目权限模板与成员权限覆盖
+// =============================================
+
+/** 项目角色权限模板摘要（含系统默认、团队自定义和最终生效） */
+export interface ProjectRolePermissionTemplateSummary {
+  role: ProjectRole;
+  systemPermissions: ProjectPermission[];
+  teamPermissions?: ProjectPermission[];
+  effectivePermissions: ProjectPermission[];
+  locked: boolean;
+}
+
+/** 团队权限模板响应 */
+export interface TeamPermissionTemplatesResponse {
+  systemDefaults: Record<ProjectRole, ProjectPermission[]>;
+  templates: ProjectRolePermissionTemplates;
+  resolvedTemplates: ProjectRolePermissionTemplateSummary[];
+}
+
+/** 更新团队权限模板请求体 */
+export interface UpdateTeamPermissionTemplatesPayload {
+  templates: ProjectRolePermissionTemplates;
+}
+
+/** 项目成员权限响应 */
+export interface ProjectMemberPermissionsResponse {
+  memberId: string;
+  userId: string;
+  role: ProjectRole;
+  inheritedPermissions: ProjectPermission[];
+  permissionOverride: PermissionOverride;
+  effectivePermissions: ProjectPermission[];
+}
+
+/** 更新项目成员权限覆盖请求体 */
+export interface UpdateProjectMemberPermissionsPayload {
+  permissionOverride: PermissionOverride;
 }
 
 // =============================================
@@ -212,6 +259,8 @@ export interface ProjectWorkspacePayload {
   timeline?: TimelineRecord;
   /** 导出记录列表 */
   exports?: ExportRecord[];
+  /** 当前用户的有效权限列表 */
+  currentUserPermissions: ProjectPermission[];
 }
 
 /** 项目工作区简要负载（不含版本、任务、时间线、导出） */

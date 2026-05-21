@@ -11,7 +11,12 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import type { ImageGenerationConfig, ProviderEntry } from "@dramaflow/shared";
+import {
+  normalizePermissionOverride,
+  normalizeProjectRolePermissionTemplates,
+  type ImageGenerationConfig,
+  type ProviderEntry,
+} from "@dramaflow/shared";
 
 import { createEmptyDatabase, type DevDatabase } from "./database.types";
 
@@ -132,6 +137,29 @@ export class DevDatabaseService implements OnModuleInit {
         team.videoProviders = migrated.videoProviders;
         team.defaultImageProvider = migrated.defaultImageProvider;
         team.defaultVideoProvider = migrated.defaultVideoProvider;
+        changed = true;
+      }
+    }
+
+    // 归一化团队级项目角色权限模板
+    for (const team of db.teams) {
+      const normalizedTemplates = normalizeProjectRolePermissionTemplates(team.projectRolePermissionTemplates);
+      if (JSON.stringify(normalizedTemplates) !== JSON.stringify(team.projectRolePermissionTemplates ?? {})) {
+        team.projectRolePermissionTemplates = Object.keys(normalizedTemplates).length > 0 ? normalizedTemplates : undefined;
+        team.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    }
+
+    // 归一化项目成员权限覆盖
+    for (const member of db.projectMembers) {
+      if (member.permissionOverride === undefined) {
+        continue;
+      }
+
+      const normalizedOverride = normalizePermissionOverride(member.permissionOverride);
+      if (JSON.stringify(normalizedOverride) !== JSON.stringify(member.permissionOverride)) {
+        member.permissionOverride = normalizedOverride;
         changed = true;
       }
     }

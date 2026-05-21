@@ -22,3 +22,10 @@ test("createEmptyDatabase starts with every collection empty", () => {
   assert.equal(db.novelImportSessions.length, 0);
   assert.ok(db.updatedAt.length > 10);
 });
+
+test("createEmptyDatabase is compatible with permission fields being absent", () => {
+  const db = createEmptyDatabase();
+
+  assert.deepEqual(db.teams.map((team) => team.projectRolePermissionTemplates), []);
+  assert.deepEqual(db.projectMembers.map((member) => member.permissionOverride), []);
+});

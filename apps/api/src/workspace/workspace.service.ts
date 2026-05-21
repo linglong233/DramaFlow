@@ -29,6 +29,9 @@ import {
   normalizeStoryboardContent,
   ensureMediaBindings,
   resolveReviewRequired,
+  getProjectRoleTemplatePermissions,
+  normalizePermissionOverride,
+  resolveProjectPermissions,
   type AnchorType,
   type AuditContentType,
   type CharacterProfile,
@@ -44,6 +47,7 @@ import {
   type ProjectInviteSummary,
   type ProjectMemberRecord,
   type ProjectMemberSummary,
+  type ProjectPermission,
   type ProjectRole,
   type ProjectStatus,
   type ProjectWorkspaceSummaryPayload,
@@ -613,6 +617,26 @@ export class WorkspaceService {
           autoApproveRoles: c.autoApproveRoles,
         }));
 
+      const currentUserPermissions: ProjectPermission[] = (() => {
+        const user = this.mustFindUser(db, userId);
+        const projectMember = db.projectMembers.find(
+          (m) => m.projectId === projectId && m.userId === userId,
+        );
+        const teamMembers = db.teamMembers.filter(
+          (m) => m.teamId === project.teamId && m.userId === userId,
+        );
+        return resolveProjectPermissions({
+          userId,
+          globalRole: user.globalRole,
+          teamRoles: teamMembers.map((m) => m.role),
+          projectRoles: projectMember ? [projectMember.role] : [],
+          projectMembers: projectMember
+            ? [{ role: projectMember.role, permissionOverride: projectMember.permissionOverride }]
+            : undefined,
+          projectRolePermissionTemplates: team.projectRolePermissionTemplates,
+        });
+      })();
+
       return {
         team: {
           id: team.id,
@@ -626,6 +650,7 @@ export class WorkspaceService {
         documents,
         worldBible: this.extractWorldBible(db, projectId),
         auditConfigs,
+        currentUserPermissions,
       };
     });
   }
@@ -1976,6 +2001,16 @@ export class WorkspaceService {
 
   private buildProjectMemberSummary(db: DevDatabase, member: ProjectMemberRecord): ProjectMemberSummary {
     const user = this.mustFindUser(db, member.userId);
+    const project = this.mustFindProject(db, member.projectId);
+    const team = this.mustFindTeam(db, project.teamId);
+    const inheritedPermissions = getProjectRoleTemplatePermissions(member.role, team.projectRolePermissionTemplates);
+    const permissionOverride = normalizePermissionOverride(member.permissionOverride);
+    const overrideAllow = new Set(permissionOverride.allow);
+    const overrideDeny = new Set(permissionOverride.deny);
+    const effectivePermissions = inheritedPermissions
+      .filter((p: ProjectPermission) => !overrideDeny.has(p))
+      .concat(Array.from(overrideAllow).filter((p: ProjectPermission) => !inheritedPermissions.includes(p)));
+
     return {
       id: member.id,
       userId: member.userId,
@@ -1983,6 +2018,9 @@ export class WorkspaceService {
       createdAt: member.createdAt,
       displayName: user.displayName,
       email: user.email,
+      inheritedPermissions,
+      permissionOverride,
+      effectivePermissions,
     };
   }
 

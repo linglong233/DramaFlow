@@ -168,15 +168,16 @@ model RefreshToken {
 }
 
 model Team {
-  id                    String           @id
-  name                  String
-  slug                  String           @unique
-  defaultReviewPolicy   ReviewPolicyMode
-  createdBy             String
-  llmConfig             Json?
-  imageGenerationConfig Json?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  id                            String           @id
+  name                          String
+  slug                          String           @unique
+  defaultReviewPolicy           ReviewPolicyMode
+  createdBy                     String
+  llmConfig                     Json?
+  imageGenerationConfig         Json?
+  projectRolePermissionTemplates Json?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
 
   members     TeamMember[]
   inviteLinks TeamInviteLink[]
@@ -259,11 +260,12 @@ model ProjectInvite {
 }
 
 model ProjectMember {
-  id        String      @id
-  createdAt DateTime    @default(now())
-  role      ProjectRole
-  projectId String
-  userId    String
+  id                String      @id
+  createdAt         DateTime    @default(now())
+  role              ProjectRole
+  projectId         String
+  userId            String
+  permissionOverride Json?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)

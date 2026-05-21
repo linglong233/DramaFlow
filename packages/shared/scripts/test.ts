@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 
-import type { NovelImportSession, NovelImportJobInput } from "../src";
+import type {
+  NovelImportSession,
+  NovelImportJobInput,
+  ProjectMemberPermissionsResponse,
+  ProjectMemberSummary,
+  TeamPermissionTemplatesResponse,
+  UpdateProjectMemberPermissionsPayload,
+  UpdateTeamPermissionTemplatesPayload,
+} from "../src";
 import {
   canTransitionVersionStatus,
   getSubmittedStatus,
@@ -208,5 +216,65 @@ assert.equal(hasProjectPermission({
   teamRoles: [],
   projectRoles: ["director"],
 }, "version.review"), true);
+
+// --- 权限契约类型断言 ---
+
+const sampleMemberSummary: ProjectMemberSummary = {
+  id: "pm_1",
+  userId: "user_1",
+  role: "writer",
+  createdAt: "2026-05-21T00:00:00.000Z",
+  displayName: "Writer",
+  email: "writer@example.com",
+  inheritedPermissions: ["project.view", "project.edit"],
+  permissionOverride: { allow: ["version.review"], deny: [] },
+  effectivePermissions: ["project.view", "project.edit", "version.review"],
+};
+assert.equal(sampleMemberSummary.effectivePermissions.includes("version.review"), true);
+
+const sampleTemplatesPayload: UpdateTeamPermissionTemplatesPayload = {
+  templates: {
+    director: ["project.view", "version.review"],
+    writer: ["project.view"],
+  },
+};
+assert.equal(sampleTemplatesPayload.templates.writer?.[0], "project.view");
+
+const sampleTemplatesResponse: TeamPermissionTemplatesResponse = {
+  systemDefaults: {
+    project_admin: PROJECT_PERMISSIONS,
+    director: ["project.view", "project.edit", "version.review", "job.manage", "timeline.edit", "export.create"],
+    writer: ["project.view", "project.edit"],
+    artist: ["project.view", "project.edit"],
+    reviewer: ["project.view", "version.review"],
+    viewer: ["project.view"],
+  },
+  templates: sampleTemplatesPayload.templates,
+  resolvedTemplates: [
+    {
+      role: "director",
+      systemPermissions: ["project.view", "project.edit", "version.review", "job.manage", "timeline.edit", "export.create"],
+      teamPermissions: ["project.view", "version.review"],
+      effectivePermissions: ["project.view", "version.review"],
+      locked: false,
+    },
+  ],
+};
+assert.equal(sampleTemplatesResponse.resolvedTemplates[0]?.role, "director");
+
+const sampleOverridePayload: UpdateProjectMemberPermissionsPayload = {
+  permissionOverride: { allow: ["job.manage"], deny: ["project.edit"] },
+};
+assert.equal(sampleOverridePayload.permissionOverride.deny[0], "project.edit");
+
+const sampleMemberPermissions: ProjectMemberPermissionsResponse = {
+  memberId: "pm_1",
+  userId: "user_1",
+  role: "writer",
+  inheritedPermissions: ["project.view"],
+  permissionOverride: sampleOverridePayload.permissionOverride,
+  effectivePermissions: ["project.view", "job.manage"],
+};
+assert.equal(sampleMemberPermissions.memberId, "pm_1");
 
 console.log("shared tests passed");
