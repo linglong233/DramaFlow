@@ -26,6 +26,7 @@ import type { GeneratorConfig } from "./generator-registry";
 import { SourcePicker } from "./source-picker";
 import { useGenerationStream } from "./use-generation-stream";
 import { WorldBibleIndicator } from "./world-bible-indicator";
+import { GenerationImpactHealth } from "./generation-impact-health";
 
 interface Props {
   config: GeneratorConfig;
@@ -282,6 +283,9 @@ export function QuickGenerator({ config, projectId, project, llmConfigSource }: 
 
             {/* World bible indicator */}
             <WorldBibleIndicator project={project} />
+
+            {/* 影响健康度 */}
+            <GenerationImpactHealth project={project} sourceVersionId={sourceVersionId} />
 
             {/* Source picker */}
             {config.sourcePicker && (

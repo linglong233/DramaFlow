@@ -9,13 +9,14 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ProjectJobSummary, JobStatus, JobType } from "@dramaflow/shared";
+import type { ImpactIssueStatus, ProjectJobSummary, JobStatus, JobType } from "@dramaflow/shared";
 
 import { useI18n, type TranslateFn } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
-import { useFeedback, useActiveJobs } from "../../lib/hooks";
+import { useFeedback, useActiveJobs, useImpactMutations, useProjectImpactIssues } from "../../lib/hooks";
 import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
+import { ImpactIssueList } from "./impact-issue-list";
 
 type FilterTab = "all" | JobStatus;
 
@@ -104,12 +105,18 @@ interface TaskPanelProps {
   canManageJobs?: boolean;
 }
 
+type PanelView = "jobs" | "impacts";
+
 export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImageProvider, selectedVideoProvider, canManageJobs = false }: TaskPanelProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
   const { feedback, setFeedback } = useFeedback();
   const [confirmBatch, setConfirmBatch] = useState<"images" | "videos" | null>(null);
+  const [panelView, setPanelView] = useState<PanelView>("jobs");
+  const [impactStatus, setImpactStatus] = useState<ImpactIssueStatus | undefined>(undefined);
+  const impactQuery = useProjectImpactIssues(projectId, impactStatus, panelView === "impacts");
+  const impactMutations = useImpactMutations(projectId);
 
   const jobsQuery = useActiveJobs({ projectId, limit: 50, pollWhenActive: true });
 
@@ -225,6 +232,27 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
 
       <InlineFeedback message={feedback.message} error={feedback.error} />
 
+      {/* 面板视图切换 */}
+      <div className="task-panel__filters">
+        <button
+          className={`task-panel__filter${panelView === "jobs" ? " task-panel__filter--active" : ""}`}
+          type="button"
+          onClick={() => setPanelView("jobs")}
+        >
+          {t("taskPanel.jobsView" as any)}
+        </button>
+        <button
+          className={`task-panel__filter${panelView === "impacts" ? " task-panel__filter--active" : ""}`}
+          type="button"
+          onClick={() => setPanelView("impacts")}
+        >
+          {t("impact.title" as any)}
+        </button>
+      </div>
+
+      {/* 任务视图 */}
+      {panelView === "jobs" && (
+      <>
       {/* Filter tabs */}
       <div className="task-panel__filters">
         {FILTER_TABS.map((tab) => (
@@ -286,6 +314,43 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
           />
         ))}
       </div>
+      </>
+      )}
+
+      {/* 影响视图 */}
+      {panelView === "impacts" && (
+        <div className="task-panel__list">
+          <div className="task-panel__filters">
+            {([undefined, "open", "suggested", "accepted", "ignored", "resolved"] as Array<ImpactIssueStatus | undefined>).map((status) => (
+              <button
+                key={status ?? "all"}
+                className={`task-panel__filter${impactStatus === status ? " task-panel__filter--active" : ""}`}
+                type="button"
+                onClick={() => setImpactStatus(status)}
+              >
+                {status ? t(`impact.status.${status}` as any) : t("taskPanel.filterAll")}
+              </button>
+            ))}
+          </div>
+          {impactQuery.isPending ? (
+            <div className="task-panel__empty">{t("taskPanel.loading")}</div>
+          ) : (
+            <ImpactIssueList
+              issues={impactQuery.data?.issues ?? []}
+              onIgnore={(issueId) => impactMutations.ignore.mutate({ issueId })}
+              onReopen={(issueId) => impactMutations.reopen.mutate(issueId)}
+              onResolve={(issueId) => impactMutations.resolve.mutate({ issueId })}
+              onSuggest={(issueId) => impactMutations.createSuggestion.mutate({ issueId })}
+              isMutating={
+                impactMutations.ignore.isPending
+                || impactMutations.reopen.isPending
+                || impactMutations.resolve.isPending
+                || impactMutations.createSuggestion.isPending
+              }
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

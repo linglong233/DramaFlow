@@ -29,6 +29,7 @@ import {
 } from "@dramaflow/shared";
 import { useI18n, getVersionStatusLabel } from "../../lib/i18n";
 import { StoryboardWorkbench } from "./storyboard-workbench";
+import { VersionLineageStrip } from "./version-lineage-strip";
 
 interface Version {
   id: string;
@@ -36,6 +37,8 @@ interface Version {
   versionNumber: number;
   status: string;
   content: unknown;
+  metadata?: Record<string, unknown>;
+  impactSummary?: ProjectWorkspacePayload["versions"][number]["impactSummary"];
   createdAt: string;
 }
 
@@ -689,6 +692,9 @@ export function VersionView({
           </>
         )}
       </div>
+
+      {/* 影响链路条 */}
+      <VersionLineageStrip summary={currentVersion.impactSummary} />
 
       <div style={{ marginTop: "var(--space-4)" }}>
         {renderContent()}

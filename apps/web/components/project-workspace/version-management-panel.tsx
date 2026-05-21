@@ -9,7 +9,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
-import type { VersionRecord } from "@dramaflow/shared";
+import type { VersionImpactSummary, VersionRecord } from "@dramaflow/shared";
 import {
   diffContents,
   type DiffEntry,
@@ -28,6 +28,8 @@ import {
   isStoryboardContent,
   isWorldBibleContent,
 } from "./version-view";
+import { ImpactIssueList } from "./impact-issue-list";
+import { VersionLineageStrip } from "./version-lineage-strip";
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
@@ -39,7 +41,7 @@ interface Props {
     Pick<
       VersionRecord,
       "id" | "title" | "versionNumber" | "status" | "content" | "createdAt"
-    > & Partial<Pick<VersionRecord, "documentId" | "parentVersionId" | "createdBy">>
+    > & Partial<Pick<VersionRecord, "documentId" | "parentVersionId" | "createdBy">> & { impactSummary?: VersionImpactSummary }
   >;
   currentVersionId?: string;
   projectId: string;
@@ -47,7 +49,7 @@ interface Props {
     Pick<
       VersionRecord,
       "id" | "documentId" | "title" | "versionNumber" | "status" | "content" | "createdAt"
-    > & Partial<Pick<VersionRecord, "parentVersionId" | "createdBy">>
+    > & Partial<Pick<VersionRecord, "parentVersionId" | "createdBy">> & { impactSummary?: VersionImpactSummary }
   >;
   allDocuments?: Array<{ id: string; title: string }>;
 }
@@ -105,6 +107,17 @@ function getStatusBadgeStyle(
         backgroundColor: "var(--color-neutral-1)",
       };
   }
+}
+
+/* ─── 影响徽章 ──────────────────────────────────────────────── */
+
+function getImpactBadge(summary?: VersionImpactSummary): { labelKey: string; tone: string } | null {
+  if (!summary) return null;
+  if (summary.openCount > 0) return { labelKey: "impact.status.open", tone: "warning" };
+  if (summary.suggestedCount > 0) return { labelKey: "impact.status.suggested", tone: "info" };
+  if (summary.acceptedCount > 0) return { labelKey: "impact.status.accepted", tone: "success" };
+  if (summary.ignoredCount > 0) return { labelKey: "impact.status.ignored", tone: "neutral" };
+  return null;
 }
 
 /* ─── Content renderer (single version) ──────────────────────── */
@@ -491,6 +504,15 @@ export function VersionManagementPanel({
           </div>
           {renderVersionActions(selectedVersion)}
         </div>
+        {/* 影响面板 */}
+        {selectedVersion.impactSummary ? (
+          <div className="vmp-impact-panel">
+            <VersionLineageStrip summary={selectedVersion.impactSummary} />
+            {selectedVersion.impactSummary.latestIssues.length > 0 ? (
+              <ImpactIssueList issues={selectedVersion.impactSummary.latestIssues} />
+            ) : null}
+          </div>
+        ) : null}
         <div className="vmp-preview__body">
           <VersionContentRenderer content={selectedVersion.content} />
         </div>
@@ -675,6 +697,11 @@ export function VersionManagementPanel({
                   >
                     {getVersionStatusLabel(t, version.status as never)}
                   </span>
+                  {getImpactBadge(version.impactSummary) ? (
+                    <span className={`vmp-impact-badge vmp-impact-badge--${getImpactBadge(version.impactSummary)!.tone}`}>
+                      {t(getImpactBadge(version.impactSummary)!.labelKey as any)}
+                    </span>
+                  ) : null}
                   {version.status === "draft" && !compareMode && (
                     <button
                       type="button"
