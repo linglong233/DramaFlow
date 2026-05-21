@@ -29,4 +29,7 @@ export const queryKeys = {
   novelImportSession: (sessionId: string) => ["novel-import-session", sessionId] as const,
   teamPermissionTemplates: (teamId: string) => ["team-permission-templates", teamId] as const,
   projectMemberPermissions: (projectId: string, memberId: string) => ["project-member-permissions", projectId, memberId] as const,
+  projectImpactIssues: (projectId: string, status?: string) => ["project-impact-issues", projectId, status ?? "all"] as const,
+  impactIssue: (issueId: string) => ["impact-issue", issueId] as const,
+  versionImpactSummary: (versionId: string) => ["version-impact-summary", versionId] as const,
 };

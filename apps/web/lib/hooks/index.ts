@@ -5,3 +5,4 @@ export { useVersionMutations } from "./use-version-mutations";
 export { useActiveJobs } from "./use-active-jobs";
 export { useWorkspaceRealtime } from "./use-workspace-realtime";
 export { useDebouncedField } from "./use-debounced-field";
+export { useImpactIssue, useImpactMutations, useProjectImpactIssues, useVersionImpactSummary } from "./use-impact-issues";
