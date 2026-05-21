@@ -615,7 +615,16 @@ export const zhCNMessages = {
       invitesTitle: "邀请记录",
       invitesDescription: "邀请仍然保留为记录轨迹，方便回看协作路径。",
       invitesEmptyTitle: "还没有邀请记录",
-      invitesEmptyDescription: "当前项目访问主要通过直接分配成员完成。"
+      invitesEmptyDescription: "当前项目访问主要通过直接分配成员完成。",
+      permissionsAction: "权限",
+      permissionsDialogTitle: "项目成员权限",
+      permissionsInherited: "继承权限",
+      permissionsAllow: "允许",
+      permissionsDeny: "拒绝",
+      permissionsEffective: "最终权限",
+      permissionsSaved: "项目成员权限已保存。",
+      permissionsSaveFailed: "项目成员权限保存失败。",
+      permissionsNoAccess: "你没有管理项目权限的权限。",
     }
   },
   errors: {
@@ -695,6 +704,16 @@ export const zhCNMessages = {
     storageDriver: {
       local: "本地磁盘",
       s3: "S3 兼容对象存储"
+    },
+    projectPermission: {
+      "project.view": { label: "查看项目", help: "进入项目工作区并查看项目内容。" },
+      "project.edit": { label: "编辑项目", help: "编辑项目信息、文档、版本和世界观内容。" },
+      "version.review": { label: "审核版本", help: "批准或拒绝已提交的版本。" },
+      "job.manage": { label: "管理任务", help: "启动批量任务、取消排队任务并重试失败任务。" },
+      "timeline.edit": { label: "编辑时间线", help: "保存时间线修改并自动组装成片。" },
+      "export.create": { label: "创建导出", help: "基于时间线创建渲染导出任务。" },
+      "member.manage": { label: "管理成员", help: "邀请或分配项目协作者。" },
+      "permission.manage": { label: "管理权限", help: "编辑项目成员的权限覆盖规则。" },
     }
   },
   authRecovery: {
@@ -819,7 +838,13 @@ export const zhCNMessages = {
       deleteTeamConfirm: "确认删除团队",
       deleteTeamDescription: "删除团队后，团队成员关系会被清理，项目的成员分配和邀请也会被移除。项目和版本数据会保留。",
       deleteTeamSuccess: "团队已删除。",
-      deleteTeamError: "删除团队失败。"
+      deleteTeamError: "删除团队失败。",
+      permissionTemplatesTitle: "项目角色权限模板",
+      permissionTemplatesDescription: "设置该团队内各项目角色的默认权限。",
+      permissionTemplatesSave: "保存权限模板",
+      permissionTemplatesSaved: "权限模板已保存。",
+      permissionTemplatesSaveFailed: "权限模板保存失败。",
+      permissionLocked: "已锁定",
     },
     profileSettings: {
       kicker: "个人设置",
@@ -2140,7 +2165,16 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       invitesTitle: "Invite Records",
       invitesDescription: "Invites still exist as a record trail so the collaboration path remains visible over time.",
       invitesEmptyTitle: "No invite records yet",
-      invitesEmptyDescription: "Project access is currently being granted mostly through direct assignment."
+      invitesEmptyDescription: "Project access is currently being granted mostly through direct assignment.",
+      permissionsAction: "Permissions",
+      permissionsDialogTitle: "Project member permissions",
+      permissionsInherited: "Inherited",
+      permissionsAllow: "Allow",
+      permissionsDeny: "Deny",
+      permissionsEffective: "Effective",
+      permissionsSaved: "Project member permissions saved.",
+      permissionsSaveFailed: "Failed to save project member permissions.",
+      permissionsNoAccess: "You do not have permission to manage project permissions.",
     }
   },
   errors: {
@@ -2220,6 +2254,16 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     storageDriver: {
       local: "Local disk",
       s3: "S3-compatible object storage"
+    },
+    projectPermission: {
+      "project.view": { label: "View project", help: "Open the project workspace and read project content." },
+      "project.edit": { label: "Edit project", help: "Edit project details, documents, versions, and world bible content." },
+      "version.review": { label: "Review versions", help: "Approve or reject submitted versions." },
+      "job.manage": { label: "Manage jobs", help: "Start batch jobs, cancel queued jobs, and retry failed jobs." },
+      "timeline.edit": { label: "Edit timeline", help: "Save timeline edits and auto-assemble a cut." },
+      "export.create": { label: "Create exports", help: "Create rendered export jobs from the timeline." },
+      "member.manage": { label: "Manage members", help: "Invite or assign project collaborators." },
+      "permission.manage": { label: "Manage permissions", help: "Edit project member permission overrides." },
     }
   },
   authRecovery: {
@@ -2344,7 +2388,13 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       deleteTeamConfirm: "Confirm Delete Team",
       deleteTeamDescription: "Deleting the team will remove all member associations, project member assignments, and invites. Projects and version data will be preserved.",
       deleteTeamSuccess: "Team deleted.",
-      deleteTeamError: "Failed to delete the team."
+      deleteTeamError: "Failed to delete the team.",
+      permissionTemplatesTitle: "Project role permission templates",
+      permissionTemplatesDescription: "Set default permissions for each project role in this team.",
+      permissionTemplatesSave: "Save permission templates",
+      permissionTemplatesSaved: "Permission templates saved.",
+      permissionTemplatesSaveFailed: "Failed to save permission templates.",
+      permissionLocked: "Locked",
     },
     profileSettings: {
       kicker: "Profile Settings",

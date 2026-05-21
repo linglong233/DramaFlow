@@ -10,6 +10,7 @@ import type {
   DocumentType,
   JobStatus,
   JobType,
+  ProjectPermission,
   ProjectRole,
   ReviewPolicyMode,
   TeamRole,
@@ -56,4 +57,8 @@ export function getAnchorTypeLabel(t: TranslateFn, value: AnchorType) {
 
 export function getStorageDriverLabel(t: TranslateFn, value: "local" | "s3") {
   return t(`enums.storageDriver.${value}` as TranslationKey);
+}
+
+export function getProjectPermissionLabel(t: TranslateFn, value: ProjectPermission) {
+  return t(`enums.projectPermission.${value}.label` as TranslationKey);
 }

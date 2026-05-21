@@ -27,4 +27,6 @@ export const queryKeys = {
   exports: (projectId: string) => ["exports", projectId] as const,
   novelImportLatest: (projectId: string) => ["novel-import-latest", projectId] as const,
   novelImportSession: (sessionId: string) => ["novel-import-session", sessionId] as const,
+  teamPermissionTemplates: (teamId: string) => ["team-permission-templates", teamId] as const,
+  projectMemberPermissions: (projectId: string, memberId: string) => ["project-member-permissions", projectId, memberId] as const,
 };
