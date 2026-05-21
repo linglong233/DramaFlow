@@ -19,6 +19,10 @@ import {
   resolveReviewRequired,
 } from "../src";
 import {
+  canTransitionImpactIssueStatus,
+  isActiveImpactIssueStatus,
+} from "../src";
+import {
   PROJECT_PERMISSIONS,
   getDefaultProjectRolePermissions,
   hasProjectPermission,
@@ -31,6 +35,19 @@ assert.equal(getSubmittedStatus(true), "submitted");
 assert.equal(getSubmittedStatus(false), "approved");
 assert.equal(canTransitionVersionStatus("pending_review", "approved"), true);
 assert.equal(canTransitionVersionStatus("approved", "draft"), false);
+
+// --- 影响依赖状态规则断言 ---
+
+assert.equal(canTransitionImpactIssueStatus("open", "suggested"), true);
+assert.equal(canTransitionImpactIssueStatus("ignored", "open"), true);
+assert.equal(canTransitionImpactIssueStatus("resolved", "open"), true);
+assert.equal(canTransitionImpactIssueStatus("ignored", "resolved"), false);
+assert.equal(canTransitionImpactIssueStatus("accepted", "suggested"), true);
+assert.equal(isActiveImpactIssueStatus("open"), true);
+assert.equal(isActiveImpactIssueStatus("suggested"), true);
+assert.equal(isActiveImpactIssueStatus("accepted"), true);
+assert.equal(isActiveImpactIssueStatus("ignored"), false);
+assert.equal(isActiveImpactIssueStatus("resolved"), false);
 
 const normalizedLegacyShot = normalizeStoryboardShot({
   id: "shot-1",

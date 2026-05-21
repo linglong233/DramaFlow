@@ -24,6 +24,7 @@ import type {
   ConversationDimensionStatus,
   ConversationMessage,
   ConversationSession,
+  DependencyType,
   DocumentRecord,
   DocumentType,
   ExportFormat,
@@ -34,6 +35,13 @@ import type {
   GlobalRole,
   ImageConfigSource,
   ImageGenerationConfig,
+  ImpactIssueEventRecord,
+  ImpactIssueRecord,
+  ImpactIssueStatus,
+  ImpactSeverity,
+  ImpactSuggestionRecord,
+  ImpactTargetRecord,
+  ImpactTargetType,
   JobRecord,
   JobStatus,
   JobType,
@@ -58,6 +66,7 @@ import type {
   TimelineRecord,
   TimelineTrackRecord,
   UploadTarget,
+  VersionDependencyRecord,
   VersionRecord,
   VersionStatus,
   WorldBibleContent,
@@ -249,7 +258,7 @@ export interface ProjectWorkspacePayload {
   invites: ProjectInviteSummary[];
   pendingReviews: ReviewQueueVersionSummary[];
   documents: Array<Pick<DocumentRecord, "id" | "projectId" | "type" | "title" | "shotId" | "currentVersionId" | "draftVersionId">>;
-  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt">>;
+  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt"> & { impactSummary?: VersionImpactSummary }>;
   jobs: ProjectJobSummary[];
   /** 世界观设定内容 */
   worldBible?: WorldBibleContent;
@@ -268,8 +277,100 @@ export interface ProjectWorkspaceSummaryPayload extends Omit<ProjectWorkspacePay
 
 /** 项目版本列表响应 */
 export interface ProjectVersionsResponse {
-  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt">>;
+  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt"> & { impactSummary?: VersionImpactSummary }>;
   total: number;
+}
+
+/** 版本影响摘要 */
+export interface VersionImpactSummary {
+  versionId: string;
+  dependencies: VersionDependencyRecord[];
+  openCount: number;
+  suggestedCount: number;
+  acceptedCount: number;
+  ignoredCount: number;
+  resolvedCount: number;
+  latestIssues: ImpactIssueSummary[];
+}
+
+/** 影响问题摘要 */
+export interface ImpactIssueSummary extends Pick<
+  ImpactIssueRecord,
+  | "id"
+  | "projectId"
+  | "dependencyType"
+  | "status"
+  | "severity"
+  | "title"
+  | "summary"
+  | "assignedTo"
+  | "changedSourceVersionId"
+  | "targetDocumentId"
+  | "targetVersionId"
+  | "latestSuggestionId"
+  | "acceptedSuggestionId"
+  | "createdAt"
+  | "updatedAt"
+> {
+  targets: ImpactTargetRecord[];
+}
+
+/** 影响问题详情响应 */
+export interface ImpactIssueDetailResponse {
+  issue: ImpactIssueRecord;
+  targets: ImpactTargetRecord[];
+  suggestions: ImpactSuggestionRecord[];
+  events: ImpactIssueEventRecord[];
+  dependencies: VersionDependencyRecord[];
+}
+
+/** 项目影响问题列表响应 */
+export interface ProjectImpactIssuesResponse {
+  issues: ImpactIssueSummary[];
+  total: number;
+}
+
+/** 项目影响问题查询参数 */
+export interface ProjectImpactIssuesQuery {
+  status?: ImpactIssueStatus;
+  severity?: ImpactSeverity;
+  targetType?: ImpactTargetType;
+  targetDocumentType?: string;
+  assignedTo?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** 忽略影响问题请求体 */
+export interface IgnoreImpactIssuePayload {
+  reason?: string;
+}
+
+/** 解决影响问题请求体 */
+export interface ResolveImpactIssuePayload {
+  note?: string;
+}
+
+/** 分配影响问题请求体 */
+export interface AssignImpactIssuePayload {
+  assignedTo?: string;
+}
+
+/** 创建影响建议请求体 */
+export interface CreateImpactSuggestionPayload {
+  instruction?: string;
+}
+
+/** 影响建议任务响应 */
+export interface ImpactSuggestionJobResponse {
+  job: Pick<JobRecord, "id" | "type" | "status" | "projectId" | "createdAt" | "updatedAt">;
+}
+
+/** 接受影响建议响应 */
+export interface AcceptImpactSuggestionResponse {
+  issue: ImpactIssueRecord;
+  suggestion: ImpactSuggestionRecord;
+  createdVersion?: Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "createdAt">;
 }
 
 /** 创建版本请求体 */
@@ -296,7 +397,7 @@ export interface AdvanceToReviewPayload {
 
 /** 版本列表分页响应 */
 export interface VersionListResponse {
-  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt">>;
+  versions: Array<Pick<VersionRecord, "id" | "documentId" | "versionNumber" | "status" | "title" | "content" | "metadata" | "parentVersionId" | "createdBy" | "createdAt"> & { impactSummary?: VersionImpactSummary }>;
   total: number;
 }
 

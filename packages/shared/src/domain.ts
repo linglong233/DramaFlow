@@ -96,7 +96,8 @@ export type JobType =
   | "tts_generation"
   | "export_video"
   | "shot_regenerate"
-  | "novel_import";
+  | "novel_import"
+  | "impact_suggestion";
 
 /** 任务执行状态 */
 export type JobStatus = "queued" | "running" | "completed" | "failed";
@@ -1018,6 +1019,158 @@ export interface NotificationRecord {
   referenceType?: "job" | "version" | "comment";
   /** 是否已读 */
   isRead: boolean;
+  createdAt: string;
+}
+
+// =============================================
+// 影响依赖（Impact Dependency）
+// =============================================
+
+/** 依赖类型：文档之间的级联依赖关系 */
+export type DependencyType =
+  | "world_bible_to_synopsis"
+  | "world_bible_to_script"
+  | "world_bible_to_storyboard"
+  | "synopsis_to_script"
+  | "script_to_storyboard"
+  | "storyboard_to_media"
+  | "manual_inherited"
+  | "manual_unlinked";
+
+/** 依赖锚点类型：依赖关系的锚定粒度 */
+export type DependencyAnchorType = "document" | "scene" | "shot" | "asset";
+
+/** 版本依赖记录：追踪文档版本之间的生成依赖关系 */
+export interface VersionDependencyRecord {
+  id: string;
+  projectId: string;
+  sourceDocumentId?: string;
+  sourceVersionId?: string;
+  sourceDocumentType?: DocumentType;
+  targetDocumentId: string;
+  targetVersionId: string;
+  targetDocumentType: DocumentType;
+  dependencyType: DependencyType;
+  targetAnchorType?: DependencyAnchorType;
+  targetAnchorId?: string;
+  sourceSnapshotHash?: string;
+  targetSnapshotHash?: string;
+  promptSnapshot?: string;
+  provider?: string;
+  model?: string;
+  configSource?: LlmConfigSource;
+  createdBy: string;
+  createdAt: string;
+}
+
+/** 影响问题状态 */
+export type ImpactIssueStatus =
+  | "open"
+  | "suggested"
+  | "accepted"
+  | "ignored"
+  | "resolved";
+
+/** 影响严重程度 */
+export type ImpactSeverity = "low" | "medium" | "high";
+
+/** 影响问题记录：当上游文档变更时产生的下游影响问题 */
+export interface ImpactIssueRecord {
+  id: string;
+  projectId: string;
+  dependencyId?: string;
+  sourceDocumentId?: string;
+  previousSourceVersionId?: string;
+  changedSourceVersionId: string;
+  targetDocumentId: string;
+  targetVersionId: string;
+  dependencyType: DependencyType;
+  status: ImpactIssueStatus;
+  severity: ImpactSeverity;
+  title: string;
+  summary: string;
+  assignedTo?: string;
+  latestSuggestionId?: string;
+  acceptedSuggestionId?: string;
+  ignoredBy?: string;
+  ignoredAt?: string;
+  ignoreReason?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  resolveNote?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 影响目标类型：受影响的下游目标粒度 */
+export type ImpactTargetType =
+  | "version"
+  | "scene"
+  | "shot"
+  | "media_candidate"
+  | "timeline_clip";
+
+/** 影响目标记录：受影响的具体下游目标 */
+export interface ImpactTargetRecord {
+  id: string;
+  issueId: string;
+  projectId: string;
+  targetType: ImpactTargetType;
+  documentId?: string;
+  versionId?: string;
+  anchorId?: string;
+  label?: string;
+  createdAt: string;
+}
+
+/** 影响建议状态 */
+export type ImpactSuggestionStatus =
+  | "generated"
+  | "accepted"
+  | "acceptance_reverted";
+
+/** 影响建议记录：AI 生成的修复建议 */
+export interface ImpactSuggestionRecord {
+  id: string;
+  issueId: string;
+  projectId: string;
+  status: ImpactSuggestionStatus;
+  summary: string;
+  suggestedContent?: unknown;
+  promptSnapshot?: string;
+  provider?: string;
+  model?: string;
+  createdVersionId?: string;
+  createdDocumentId?: string;
+  createdJobId?: string;
+  acceptedBy?: string;
+  acceptedAt?: string;
+  revertedBy?: string;
+  revertedAt?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+/** 影响问题事件类型 */
+export type ImpactIssueEventType =
+  | "created"
+  | "ignored"
+  | "reopened"
+  | "suggestion_created"
+  | "suggestion_accepted"
+  | "acceptance_reverted"
+  | "resolved"
+  | "assigned";
+
+/** 影响问题事件记录：问题生命周期中的操作日志 */
+export interface ImpactIssueEventRecord {
+  id: string;
+  issueId: string;
+  projectId: string;
+  type: ImpactIssueEventType;
+  actorId: string;
+  note?: string;
   createdAt: string;
 }
 

@@ -9,6 +9,7 @@
 export * from "./api-contracts";
 export * from "./business-rules";
 export * from "./domain";
+export * from "./impact-rules";
 export * from "./project-permissions";
 export * from "./providers";
 export * from "./storyboard";
