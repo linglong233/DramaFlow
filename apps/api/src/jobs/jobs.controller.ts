@@ -27,6 +27,7 @@ import type {
   CreateScriptJobPayload,
   CreateStoryboardJobPayload,
   CreateSynopsisJobPayload,
+  ConversationDimension,
   ConversationGeneratePayload,
   ConversationMessagePayload,
   EnhanceReferencePromptRequest,
@@ -550,7 +551,7 @@ export class JobsController {
     @Body() body: ConversationMessagePayload,
     @Res() res: Response,
   ) {
-    const { llmConfigSource, ...rest } = body;
+    const { llmConfigSource } = body;
 
     const session = await this.conversationService.getOrCreateSession(
       user.id, projectId, body.sessionId, body.targetDocType,
@@ -562,10 +563,13 @@ export class JobsController {
       await this.conversationService.appendMessage(session.id, greeting);
       this.initSseResponse(res);
       this.writeSseEvent(res, {
-        sessionId: session.id,
-        message: greeting,
-        brief: session.brief,
-        dimensionStatus: session.dimensionStatus,
+        type: "done",
+        result: {
+          sessionId: session.id,
+          message: greeting,
+          brief: session.brief,
+          dimensionStatus: session.dimensionStatus,
+        },
       });
       this.endSseResponse(res);
       return;
@@ -573,7 +577,7 @@ export class JobsController {
 
     // Append user message
     const userMessage = { role: "user" as const, content: body.content };
-    await this.conversationService.appendMessage(session.id, userMessage);
+    const sessionWithUserMessage = await this.conversationService.appendMessage(session.id, userMessage);
 
     // Resolve LLM config
     const config = await this.conversationService.resolveTextLlmConfig(
@@ -586,40 +590,69 @@ export class JobsController {
     this.initSseResponse(res);
 
     let accumulated = "";
-    for await (const chunk of this.conversationService.streamQaResponse(session, config, worldBible)) {
+    for await (const chunk of this.conversationService.streamQaResponse(
+      sessionWithUserMessage,
+      config,
+      worldBible,
+      body.focusDimension,
+    )) {
       if (chunk.type === "chunk" && chunk.content) {
         accumulated += chunk.content;
+        this.writeSseEvent(res, chunk);
+      } else if (chunk.type === "error") {
+        this.writeSseEvent(res, chunk);
       }
-      this.writeSseEvent(res, chunk);
     }
 
     // Parse AI response to extract brief updates
     const parsed = this.parseQaResponse(accumulated);
     if (parsed) {
-      const newStatus = { ...session.dimensionStatus };
+      const newStatus = { ...sessionWithUserMessage.dimensionStatus };
+      const briefUpdates = parsed.briefUpdates as Partial<Record<ConversationDimension, string>>;
 
-      // Update brief
-      if (Object.keys(parsed.briefUpdates).length > 0) {
-        await this.conversationService.updateSessionBrief(session.id, parsed.briefUpdates);
-        for (const key of Object.keys(parsed.briefUpdates) as Array<keyof typeof parsed.briefUpdates>) {
-          if (parsed.briefUpdates[key]?.trim() && newStatus[key as keyof typeof newStatus] === "pending") {
-            newStatus[key as keyof typeof newStatus] = "confirmed";
-          }
+      for (const key of Object.keys(briefUpdates) as ConversationDimension[]) {
+        if (briefUpdates[key]?.trim()) {
+          newStatus[key] = "confirmed";
         }
-        await this.conversationService.updateDimensionStatus(session.id, newStatus);
       }
 
-      // Append AI message
-      await this.conversationService.appendMessage(session.id, {
+      const updatedSession = await this.conversationService.updateSessionState(
+        session.id,
+        briefUpdates,
+        newStatus,
+      );
+      const aiMessage = await this.conversationService.appendMessage(session.id, {
         role: "ai",
         content: parsed.reply || accumulated,
       });
 
-      // Send final state update
       this.writeSseEvent(res, {
-        sessionId: session.id,
-        brief: { ...session.brief, ...parsed.briefUpdates },
-        dimensionStatus: newStatus,
+        type: "done",
+        result: {
+          sessionId: session.id,
+          message: aiMessage.messages.at(-1),
+          brief: updatedSession.brief,
+          dimensionStatus: updatedSession.dimensionStatus,
+        },
+      });
+    } else if (accumulated.trim()) {
+      const aiMessage = await this.conversationService.appendMessage(session.id, {
+        role: "ai",
+        content: accumulated,
+      });
+      this.writeSseEvent(res, {
+        type: "done",
+        result: {
+          sessionId: session.id,
+          message: aiMessage.messages.at(-1),
+          brief: aiMessage.brief,
+          dimensionStatus: aiMessage.dimensionStatus,
+        },
+      });
+    } else {
+      this.writeSseEvent(res, {
+        type: "error",
+        error: "AI returned an empty response",
       });
     }
 
@@ -633,7 +666,13 @@ export class JobsController {
     @Body() body: ConversationGeneratePayload,
     @Res() res: Response,
   ) {
-    const session = await this.conversationService.getSession(user.id, body.sessionId);
+    const existingSession = await this.conversationService.getSessionForProject(
+      user.id,
+      projectId,
+      body.sessionId,
+      "project.edit",
+    );
+    const session = await this.conversationService.mergeBrief(existingSession.id, body.brief);
     const config = await this.conversationService.resolveTextLlmConfig(
       user.id, projectId, body.llmConfigSource as LlmConfigSource | undefined,
     );
@@ -642,23 +681,42 @@ export class JobsController {
     this.initSseResponse(res);
 
     let accumulated = "";
-    for await (const chunk of this.conversationService.streamGeneration(session, config, worldBible)) {
+    let providerResult: unknown;
+    let providerErrored = false;
+    for await (const chunk of this.conversationService.streamGeneration(session, config, worldBible, body.targetDocType)) {
       if (chunk.type === "chunk" && chunk.content) {
         accumulated += chunk.content;
+        this.writeSseEvent(res, chunk);
+      } else if (chunk.type === "done") {
+        providerResult = chunk.result;
+      } else if (chunk.type === "error") {
+        providerErrored = true;
+        this.writeSseEvent(res, chunk);
       }
-      this.writeSseEvent(res, chunk);
+    }
+
+    if (providerErrored) {
+      this.endSseResponse(res);
+      return;
     }
 
     // Save generated content as document version
-    const { normalizeScriptContent, normalizeStoryboardContent } = await import("@dramaflow/shared");
-    let content: unknown = accumulated;
-    if (session.targetDocType === "script") {
-      try {
-        content = normalizeScriptContent(JSON.parse(accumulated));
-      } catch { /* keep raw */ }
+    const { normalizeScriptContent } = await import("@dramaflow/shared");
+    const docType = body.targetDocType === "script" ? "script" : "synopsis";
+    let content: unknown = providerResult ?? accumulated;
+    if (docType === "script") {
+      if (typeof content === "string") {
+        try {
+          content = normalizeScriptContent(JSON.parse(content));
+        } catch {
+          // keep raw string if not valid JSON
+        }
+      } else {
+        content = normalizeScriptContent(content);
+      }
+    } else {
+      content = typeof content === "string" ? content : accumulated;
     }
-
-    const docType = session.targetDocType === "script" ? "script" : "synopsis";
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId,
       type: docType,
@@ -692,7 +750,7 @@ export class JobsController {
     @Param("id") projectId: string,
     @Param("sessionId") sessionId: string,
   ) {
-    return this.conversationService.getSession(user.id, sessionId);
+    return this.conversationService.getSessionForProject(user.id, projectId, sessionId, "project.view");
   }
 
   @Post("projects/:id/conversation-jobs/:sessionId/delete")
@@ -701,27 +759,39 @@ export class JobsController {
     @Param("id") projectId: string,
     @Param("sessionId") sessionId: string,
   ) {
-    await this.conversationService.deleteSession(sessionId);
+    await this.conversationService.deleteSession(user.id, projectId, sessionId);
     return { ok: true };
   }
 
   private parseQaResponse(raw: string): { reply: string; briefUpdates: Record<string, string> } | null {
-    try {
-      const cleaned = raw.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
-      const parsed = JSON.parse(cleaned);
-      if (typeof parsed === "object" && parsed !== null) {
-        return {
-          reply: typeof parsed.reply === "string" ? parsed.reply : raw,
-          briefUpdates: typeof parsed.briefUpdates === "object" && parsed.briefUpdates !== null
-            ? Object.fromEntries(
-                Object.entries(parsed.briefUpdates as Record<string, unknown>)
-                  .filter(([, v]) => typeof v === "string" && v.trim())
-                  .map(([k, v]) => [k, v as string]),
-              )
-            : {},
-        };
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+    const candidates = [cleaned];
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      candidates.push(cleaned.slice(start, end + 1));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        if (typeof parsed === "object" && parsed !== null) {
+          return {
+            reply: typeof parsed.reply === "string" ? parsed.reply : raw,
+            briefUpdates: typeof parsed.briefUpdates === "object" && parsed.briefUpdates !== null
+              ? Object.fromEntries(
+                  Object.entries(parsed.briefUpdates as Record<string, unknown>)
+                    .filter(([, v]) => typeof v === "string" && v.trim())
+                    .map(([k, v]) => [k, String(v).trim()]),
+                )
+              : {},
+          };
+        }
+      } catch {
+        continue;
       }
-    } catch { /* not JSON, return null */ }
+    }
+
     return null;
   }
 

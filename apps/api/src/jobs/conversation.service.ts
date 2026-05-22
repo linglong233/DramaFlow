@@ -80,11 +80,15 @@ export class ConversationService {
     sessionId: string | undefined,
     targetDocType: "synopsis" | "script",
   ): Promise<ConversationSession> {
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "project.view",
+      "You do not have permission to view this project",
+    );
+
     if (sessionId) {
-      const existing = await this.database.query((db) =>
-        db.conversationSessions.find((s) => s.id === sessionId && s.projectId === projectId),
-      );
-      if (existing) return existing;
+      return this.getSessionForProject(userId, projectId, sessionId, "project.view");
     }
 
     const now = new Date().toISOString();
@@ -107,9 +111,23 @@ export class ConversationService {
     return session;
   }
 
-  async getSession(userId: string, sessionId: string): Promise<ConversationSession> {
+  async getSessionForProject(
+    userId: string,
+    projectId: string,
+    sessionId: string,
+    permission: "project.view" | "project.edit" = "project.view",
+  ): Promise<ConversationSession> {
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      permission,
+      permission === "project.edit"
+        ? "You do not have permission to edit this project"
+        : "You do not have permission to view this project",
+    );
+
     const session = await this.database.query((db) =>
-      db.conversationSessions.find((s) => s.id === sessionId),
+      db.conversationSessions.find((s) => s.id === sessionId && s.projectId === projectId),
     );
     if (!session) {
       throw new NotFoundException("Conversation session not found");
@@ -117,52 +135,100 @@ export class ConversationService {
     return session;
   }
 
-  async deleteSession(sessionId: string): Promise<void> {
+  async getSession(userId: string, sessionId: string): Promise<ConversationSession> {
+    const session = await this.database.query((db) =>
+      db.conversationSessions.find((s) => s.id === sessionId),
+    );
+    if (!session) {
+      throw new NotFoundException("Conversation session not found");
+    }
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      session.projectId,
+      "project.view",
+      "You do not have permission to view this project",
+    );
+    return session;
+  }
+
+  async deleteSession(userId: string, projectId: string, sessionId: string): Promise<void> {
+    await this.getSessionForProject(userId, projectId, sessionId, "project.edit");
     await this.database.mutate((db) => {
-      const idx = db.conversationSessions.findIndex((s) => s.id === sessionId);
+      const idx = db.conversationSessions.findIndex((s) => s.id === sessionId && s.projectId === projectId);
       if (idx >= 0) db.conversationSessions.splice(idx, 1);
     });
   }
 
-  async appendMessage(sessionId: string, message: ConversationMessage): Promise<void> {
-    await this.database.mutate((db) => {
+  async appendMessage(sessionId: string, message: ConversationMessage): Promise<ConversationSession> {
+    return this.database.mutate((db) => {
       const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) return;
+      if (!session) throw new NotFoundException("Conversation session not found");
       session.messages.push(message);
       session.updatedAt = new Date().toISOString();
+      return { ...session, messages: [...session.messages] };
     });
   }
 
-  async updateSessionBrief(sessionId: string, brief: ConversationBrief): Promise<void> {
-    await this.database.mutate((db) => {
-      const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) return;
-      session.brief = { ...session.brief, ...brief };
-      session.updatedAt = new Date().toISOString();
-    });
-  }
-
-  async updateDimensionStatus(
+  async mergeBrief(
     sessionId: string,
-    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
-  ): Promise<void> {
-    await this.database.mutate((db) => {
+    brief: ConversationBrief | undefined,
+  ): Promise<ConversationSession> {
+    const filtered = this.filterBrief(brief);
+    return this.database.mutate((db) => {
       const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) return;
+      if (!session) throw new NotFoundException("Conversation session not found");
+      session.brief = { ...session.brief, ...filtered };
+      session.dimensionStatus = this.confirmDimensionsForBrief(session.dimensionStatus, filtered);
+      session.updatedAt = new Date().toISOString();
+      return {
+        ...session,
+        brief: { ...session.brief },
+        dimensionStatus: { ...session.dimensionStatus },
+        messages: [...session.messages],
+      };
+    });
+  }
+
+  async updateSessionState(
+    sessionId: string,
+    briefUpdates: ConversationBrief,
+    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
+  ): Promise<ConversationSession> {
+    return this.database.mutate((db) => {
+      const session = db.conversationSessions.find((s) => s.id === sessionId);
+      if (!session) throw new NotFoundException("Conversation session not found");
+      session.brief = { ...session.brief, ...briefUpdates };
       session.dimensionStatus = { ...dimensionStatus };
       session.updatedAt = new Date().toISOString();
+      return {
+        ...session,
+        brief: { ...session.brief },
+        dimensionStatus: { ...session.dimensionStatus },
+        messages: [...session.messages],
+      };
     });
   }
 
-  async updateSession(sessionId: string, patch: Partial<Pick<ConversationSession, "brief" | "dimensionStatus" | "messages">>): Promise<void> {
-    await this.database.mutate((db) => {
-      const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) return;
-      if (patch.brief) session.brief = { ...session.brief, ...patch.brief };
-      if (patch.dimensionStatus) session.dimensionStatus = { ...patch.dimensionStatus };
-      if (patch.messages) session.messages = [...patch.messages];
-      session.updatedAt = new Date().toISOString();
-    });
+  private filterBrief(brief?: ConversationBrief): ConversationBrief {
+    if (!brief) return {};
+    return Object.fromEntries(
+      Object.entries(brief)
+        .filter(([, value]) => typeof value === "string" && value.trim())
+        .map(([key, value]) => [key, String(value).trim()]),
+    ) as ConversationBrief;
+  }
+
+  private confirmDimensionsForBrief(
+    current: Record<ConversationDimension, ConversationDimensionStatus>,
+    brief: ConversationBrief,
+  ): Record<ConversationDimension, ConversationDimensionStatus> {
+    const next = { ...current };
+    for (const key of Object.keys(brief) as ConversationDimension[]) {
+      if (brief[key]?.trim()) {
+        next[key] = "confirmed";
+      }
+    }
+    return next;
   }
 
   /** Get the next dimension that needs discussion */
@@ -203,9 +269,12 @@ export class ConversationService {
     dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
     brief: ConversationBrief,
     worldBible?: WorldBibleContent | null,
+    focusDimension?: ConversationDimension,
   ): string {
     const confirmedDims = DIMENSIONS.filter((d) => dimensionStatus[d] === "confirmed");
     const pendingDims = DIMENSIONS.filter((d) => dimensionStatus[d] !== "confirmed");
+
+    const focus = this.getNextDimension(dimensionStatus, focusDimension);
 
     const briefSummary = Object.entries(brief)
       .filter(([, v]) => v?.trim())
@@ -254,6 +323,7 @@ export class ConversationService {
       "```",
       "只填写你从用户回复中明确获知的字段，不要猜测。",
       "",
+      focus ? `## 当前优先讨论维度\n${DIMENSION_LABELS[focus]}：${INITIAL_QUESTIONS[focus]}` : "",
       "## 当前状态",
       `已确认维度：${confirmedDims.map((d) => DIMENSION_LABELS[d]).join("、") || "无"}`,
       `待讨论维度：${pendingDims.map((d) => DIMENSION_LABELS[d]).join("、") || "全部已确认"}`,
@@ -272,6 +342,10 @@ export class ConversationService {
     const briefSection = Object.entries(brief)
       .filter(([, v]) => v?.trim())
       .map(([k, v]) => `${DIMENSION_LABELS[k as ConversationDimension]}：${v}`)
+      .join("\n");
+
+    const conversationSection = messages
+      .map((message) => `${message.role === "ai" ? "AI" : "用户"}：${message.content}`)
       .join("\n");
 
     const wbSection = worldBible
@@ -295,6 +369,9 @@ export class ConversationService {
         "",
         "## 创作简报",
         briefSection,
+        "",
+        "## 对话历史",
+        conversationSection,
         wbSection,
       ].filter(Boolean).join("\n");
     }
@@ -308,6 +385,9 @@ export class ConversationService {
       "",
       "## 创作简报",
       briefSection,
+      "",
+      "## 对话历史",
+      conversationSection,
       wbSection,
     ].filter(Boolean).join("\n");
   }
@@ -317,8 +397,9 @@ export class ConversationService {
     session: ConversationSession,
     config: LlmProviderConfig | undefined,
     worldBible?: WorldBibleContent | null,
+    focusDimension?: ConversationDimension,
   ): AsyncGenerator<StreamChunk> {
-    const systemPrompt = this.buildQaSystemPrompt(session.dimensionStatus, session.brief, worldBible);
+    const systemPrompt = this.buildQaSystemPrompt(session.dimensionStatus, session.brief, worldBible, focusDimension);
     const chatMessages = session.messages.map((m) => ({
       role: m.role === "ai" ? "assistant" : "user",
       content: m.content,
@@ -332,10 +413,11 @@ export class ConversationService {
     session: ConversationSession,
     config: LlmProviderConfig | undefined,
     worldBible?: WorldBibleContent | null,
+    targetDocType: "synopsis" | "script" = session.targetDocType,
   ): AsyncGenerator<StreamChunk> {
-    const prompt = this.buildGenerationPrompt(session.brief, session.messages, session.targetDocType, worldBible);
+    const prompt = this.buildGenerationPrompt(session.brief, session.messages, targetDocType, worldBible);
 
-    if (session.targetDocType === "synopsis") {
+    if (targetDocType === "synopsis") {
       yield* this.textProvider.streamPlainText({
         operation: "conversational synopsis generation",
         prompt,
