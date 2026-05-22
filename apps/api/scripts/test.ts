@@ -114,6 +114,27 @@ async function readResponse(response: Response) {
   };
 }
 
+function parseSseEvents<T = Record<string, unknown>>(bodyText: string): T[] {
+  return bodyText
+    .split(/\n\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .flatMap((block) => {
+      const line = block.split(/\r?\n/).find((item) => item.trim().startsWith("data:"));
+      if (!line) return [];
+      const payload = line.trim().slice(5).trim();
+      if (!payload || payload === "[DONE]") return [];
+      return [JSON.parse(payload) as T];
+    });
+}
+
+function lastDoneResult<T extends Record<string, unknown>>(bodyText: string): T {
+  const events = parseSseEvents<{ type?: string; result?: T }>(bodyText);
+  const done = events.filter((event) => event.type === "done").at(-1);
+  assert.ok(done?.result, `Expected final done event in SSE body: ${bodyText}`);
+  return done.result;
+}
+
 async function registerUser(baseUrl: string, input: { email: string; displayName: string; password?: string }) {
   const response = await originalFetch(`${baseUrl}/auth/register`, {
     method: "POST",
@@ -1958,6 +1979,298 @@ async function main() {
       assert.equal(providerRequests.length, 2);
     });
   });
+  await runCase("conversation message stream preserves session state and latest user message", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "conversation-owner@example.com",
+        displayName: "Conversation Owner",
+      });
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams[0].id;
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+
+      const teamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(teamResponse.status, 200);
+      const team = await teamResponse.json() as { name: string; defaultReviewPolicy: "required" | "bypass" };
+
+      const updateTeamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          name: team.name,
+          defaultReviewPolicy: team.defaultReviewPolicy,
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "conversation-key",
+            baseUrl: "https://example.test/v1",
+            model: "conversation-model",
+            stream: false,
+          },
+        }),
+      });
+      assert.equal(updateTeamResponse.status, 200);
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          teamId,
+          name: "Conversation Project",
+          genre: "都市悬疑",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const project = await createProjectResponse.json() as { id: string };
+
+      const providerRequests: Array<{
+        messages: Array<{ role: string; content: string }>;
+        systemPrompt: string;
+      }> = [];
+
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) !== "https://example.test/v1/chat/completions") {
+          return originalFetch(input, init ? { ...init, headers: new Headers(init.headers ?? {}) } : init);
+        }
+
+        const body = JSON.parse(String(init?.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        providerRequests.push({
+          messages: body.messages,
+          systemPrompt: body.messages.find((message) => message.role === "system")?.content ?? "",
+        });
+
+        const latestUser = body.messages.filter((message) => message.role === "user").at(-1)?.content ?? "";
+        const content = latestUser.includes("主角是被停职的女导演")
+          ? JSON.stringify({
+              reply: "这个主角有清晰的职业压力。她和谁形成最强冲突？",
+              briefUpdates: { protagonist: "被停职的女导演，想在一夜内证明自己" },
+            })
+          : JSON.stringify({
+              reply: "核心冲突很明确。主角是谁？",
+              briefUpdates: { coreConflict: "停职导演必须在一夜内救回失控项目" },
+            });
+
+        return new Response(JSON.stringify({
+          choices: [{ message: { content } }],
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+
+      const firstResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          content: "一个停职导演必须在一夜内救回失控项目。",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(firstResponse.status, 201);
+      const firstBody = await firstResponse.text();
+      const firstResult = lastDoneResult<{
+        sessionId: string;
+        message: { role: string; content: string };
+        brief: { coreConflict?: string };
+        dimensionStatus: { coreConflict?: string };
+      }>(firstBody);
+
+      assert.equal(typeof firstResult.sessionId, "string");
+      assert.equal(firstResult.message.content, "核心冲突很明确。主角是谁？");
+      assert.equal(firstResult.brief.coreConflict, "停职导演必须在一夜内救回失控项目");
+      assert.equal(firstResult.dimensionStatus.coreConflict, "confirmed");
+      assert.equal(providerRequests[0].messages.some((message) => message.content.includes("停职导演必须")), true);
+
+      const secondResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          content: "主角是被停职的女导演，想证明自己。",
+          targetDocType: "synopsis",
+          focusDimension: "protagonist",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(secondResponse.status, 201);
+      const secondBody = await secondResponse.text();
+      const secondResult = lastDoneResult<{
+        sessionId: string;
+        brief: { coreConflict?: string; protagonist?: string };
+        dimensionStatus: { protagonist?: string };
+      }>(secondBody);
+
+      assert.equal(secondResult.sessionId, firstResult.sessionId);
+      assert.equal(secondResult.brief.coreConflict, "停职导演必须在一夜内救回失控项目");
+      assert.equal(secondResult.brief.protagonist, "被停职的女导演，想在一夜内证明自己");
+      assert.equal(secondResult.dimensionStatus.protagonist, "confirmed");
+      assert.equal(providerRequests[1].messages.some((message) => message.content.includes("主角是被停职的女导演")), true);
+      assert.equal(providerRequests[1].systemPrompt.includes("主角设定"), true);
+    });
+  });
+
+  await runCase("conversation generation merges brief saves provider result and enforces permissions", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "conversation-generate-owner@example.com",
+        displayName: "Conversation Generate Owner",
+      });
+      const outsider = await registerUser(baseUrl, {
+        email: "conversation-outsider@example.com",
+        displayName: "Conversation Outsider",
+      });
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams[0].id;
+      const ownerJsonHeaders = authHeaders(owner.accessToken, true);
+      const outsiderJsonHeaders = authHeaders(outsider.accessToken, true);
+
+      const teamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(teamResponse.status, 200);
+      const team = await teamResponse.json() as { name: string; defaultReviewPolicy: "required" | "bypass" };
+
+      const updateTeamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        method: "PATCH",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          name: team.name,
+          defaultReviewPolicy: team.defaultReviewPolicy,
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "conversation-generate-key",
+            baseUrl: "https://example.test/v1",
+            model: "conversation-generate-model",
+            stream: false,
+          },
+        }),
+      });
+      assert.equal(updateTeamResponse.status, 200);
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          teamId,
+          name: "Conversation Generate Project",
+          genre: "都市悬疑",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const project = await createProjectResponse.json() as { id: string };
+
+      const providerPrompts: string[] = [];
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) !== "https://example.test/v1/chat/completions") {
+          return originalFetch(input, init ? { ...init, headers: new Headers(init.headers ?? {}) } : init);
+        }
+
+        const body = JSON.parse(String(init?.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const prompt = body.messages.find((message) => message.role === "user")?.content ?? "";
+        providerPrompts.push(prompt);
+
+        const content = prompt.includes("短剧剧本 payload")
+          ? JSON.stringify({
+              logline: "Manual brief script",
+              premise: "Manual brief premise",
+              characters: [{ name: "林夏", profile: "被停职的女导演" }],
+              scenes: [
+                {
+                  id: "scene-1",
+                  heading: "内景 / 剪辑室 / 夜",
+                  synopsis: "林夏决定反击。",
+                  characters: ["林夏"],
+                  dialogue: [{ speaker: "林夏", line: "我会把这一夜拍完。" }],
+                },
+              ],
+            })
+          : JSON.stringify({
+              reply: "先记录核心冲突。",
+              briefUpdates: { coreConflict: "停职导演一夜救项目" },
+            });
+
+        return new Response(JSON.stringify({
+          choices: [{ message: { content } }],
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+
+      const messageResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          content: "停职导演一夜救项目。",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(messageResponse.status, 201);
+      const messageResult = lastDoneResult<{ sessionId: string }>(await messageResponse.text());
+
+      const outsiderGetResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/${messageResult.sessionId}`, {
+        headers: authHeaders(outsider.accessToken),
+      });
+      assert.equal(outsiderGetResponse.status, 403);
+
+      const generateResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/generate`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: messageResult.sessionId,
+          targetDocType: "script",
+          brief: {
+            protagonist: "林夏，手握关键素材的女导演",
+            tone: "冷峻、快节奏",
+            pacing: "12集，每集2分钟",
+          },
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(generateResponse.status, 201);
+      const generateResult = lastDoneResult<{
+        documentId: string;
+        versionId: string;
+        content: {
+          logline?: string;
+          characters?: Array<{ name: string; profile: string }>;
+          scenes?: Array<{ dialogue?: Array<{ speaker: string; line: string }> }>;
+        };
+      }>(await generateResponse.text());
+
+      assert.equal(generateResult.content.logline, "Manual brief script");
+      assert.equal(generateResult.content.characters?.[0]?.name, "林夏");
+      assert.equal(generateResult.content.scenes?.[0]?.dialogue?.[0]?.line, "我会把这一夜拍完。");
+      assert.equal(providerPrompts.some((prompt) => prompt.includes("林夏，手握关键素材的女导演")), true);
+      assert.equal(providerPrompts.some((prompt) => prompt.includes("停职导演一夜救项目")), true);
+
+      const projectVersions = await listProjectVersions<{
+        id: string;
+        metadata?: Record<string, unknown>;
+        content?: { logline?: string };
+      }>(baseUrl, owner.accessToken, project.id);
+      const savedVersion = projectVersions.find((version) => version.id === generateResult.versionId);
+      assert.equal(savedVersion?.metadata?.source, "conversational");
+      assert.equal(savedVersion?.metadata?.conversationSessionId, messageResult.sessionId);
+      assert.equal(savedVersion?.content?.logline, "Manual brief script");
+
+      const outsiderDeleteResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/${messageResult.sessionId}/delete`, {
+        method: "POST",
+        headers: outsiderJsonHeaders,
+      });
+      assert.equal(outsiderDeleteResponse.status, 403);
+    });
+  });
+
   await runCase("project invites support acceptance and threaded comments", async () => {
     await withHttpApp(async (baseUrl) => {
       const owner = await registerUser(baseUrl, {
