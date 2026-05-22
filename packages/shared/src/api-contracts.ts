@@ -916,6 +916,7 @@ export interface ConversationAiResponse {
 export interface ConversationGeneratePayload {
   sessionId: string;
   targetDocType: "synopsis" | "script";
+  brief?: ConversationBrief;
   llmConfigSource?: LlmConfigSource;
 }
 

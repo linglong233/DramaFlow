@@ -104,6 +104,7 @@ export class DevDatabaseService implements OnModuleInit {
       "batchJobs",
       "timelines", "exports",
       "novelImportSessions",
+      "conversationSessions",
     ];
 
     for (const field of arrayFields) {
