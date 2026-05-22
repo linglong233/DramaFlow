@@ -17,11 +17,12 @@ import type {
   LlmConfigSource,
   ProjectWorkspacePayload,
 } from "@dramaflow/shared";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiStreamFetch, formatApiError } from "../../../lib/api";
 import { useFeedback } from "../../../lib/hooks";
 import { useI18n } from "../../../lib/i18n";
+import { queryKeys } from "../../../lib/query-keys";
 import { ConversationChat } from "../conversation-chat";
 import { ConversationBrief as ConversationBriefPanel } from "../conversation-brief";
 import type { GeneratorConfig } from "./generator-registry";
@@ -50,6 +51,7 @@ function countConfirmed(status: Record<ConversationDimension, ConversationDimens
 export function ConversationalGenerator({ config, projectId, project, llmConfigSource }: Props) {
   const { t } = useI18n();
   const { feedback, setFeedback } = useFeedback();
+  const queryClient = useQueryClient();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
@@ -57,7 +59,16 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
   const [dimensionStatus, setDimensionStatus] = useState(DEFAULT_DIMENSION_STATUS);
   const [streamingText, setStreamingText] = useState("");
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
+  const [pendingFocusDimension, setPendingFocusDimension] = useState<ConversationDimension | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  async function invalidateWorkspace() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectJobs(projectId) }),
+    ]);
+  }
 
   // Derive target doc type from generator config
   const targetDocType = config.id === "script" ? "script" : "synopsis";
@@ -85,11 +96,11 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
           content,
           targetDocType,
           llmConfigSource,
+          ...(pendingFocusDimension ? { focusDimension: pendingFocusDimension } : {}),
         },
       })) {
         if (chunk.type === "chunk" && chunk.content) {
           accumulated += chunk.content;
-          setStreamingText(accumulated);
         } else if (chunk.type === "done" && chunk.result) {
           const result = chunk.result as Record<string, unknown>;
 
@@ -98,7 +109,7 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
             setSessionId(result.sessionId);
           }
           if (result.brief && typeof result.brief === "object") {
-            latestBrief = { ...latestBrief, ...(result.brief as ConversationBrief) };
+            latestBrief = result.brief as ConversationBrief;
             setBrief(latestBrief);
           }
           if (result.dimensionStatus && typeof result.dimensionStatus === "object") {
@@ -117,31 +128,11 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
       abortRef.current = null;
       setStreamingText("");
 
-      try {
-        const parsed = JSON.parse(accumulated);
-        if (parsed.briefUpdates && typeof parsed.briefUpdates === "object") {
-          const updates = Object.fromEntries(
-            Object.entries(parsed.briefUpdates).filter(([, v]) => typeof v === "string" && v.trim()),
-          );
-          if (Object.keys(updates).length > 0) {
-            latestBrief = { ...latestBrief, ...updates };
-            setBrief(latestBrief);
-
-            const newStatus = { ...latestStatus };
-            for (const key of Object.keys(updates)) {
-              if (newStatus[key as ConversationDimension] === "pending") {
-                newStatus[key as ConversationDimension] = "confirmed";
-              }
-            }
-            setDimensionStatus(newStatus);
-          }
-        }
-        if (parsed.reply && typeof parsed.reply === "string") {
-          setMessages((prev) => [...prev, { role: "ai", content: parsed.reply }]);
-        }
-      } catch {
+      if (!latestSessionId && accumulated.trim()) {
         setMessages((prev) => [...prev, { role: "ai", content: accumulated }]);
       }
+
+      setPendingFocusDimension(null);
     },
     onError: (error) => {
       setStreamingText("");
@@ -152,7 +143,7 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
 
   // Generate mutation
   const generateMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (overrideTargetDocType?: "synopsis" | "script") => {
       if (!sessionId) return;
 
       setStreamingText("");
@@ -162,13 +153,15 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
       abortRef.current = controller;
 
       let accumulated = "";
+      const requestedTargetDocType = overrideTargetDocType ?? targetDocType;
 
       for await (const chunk of apiStreamFetch(`/projects/${projectId}/conversation-jobs/generate`, {
         method: "POST",
         signal: controller.signal,
         body: {
           sessionId,
-          targetDocType,
+          targetDocType: requestedTargetDocType,
+          brief,
           llmConfigSource,
         },
       })) {
@@ -179,6 +172,8 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
           const result = chunk.result as Record<string, unknown>;
           if (typeof result.content === "string") {
             accumulated = result.content;
+          } else if (result.content) {
+            accumulated = JSON.stringify(result.content, null, 2);
           }
         } else if (chunk.type === "error") {
           throw new Error(chunk.error);
@@ -189,6 +184,7 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
       setStreamingText("");
       setGeneratedContent(accumulated);
       setFeedback({ message: t("conversation.generateSuccess"), error: null });
+      await invalidateWorkspace();
     },
     onError: (error) => {
       setStreamingText("");
@@ -214,13 +210,16 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
   }, []);
 
   const handleDimensionClick = useCallback((dim: ConversationDimension) => {
-    const question = t(`conversation.focusDimension_${dim}`);
-    setMessages((prev) => [...prev, { role: "ai", content: question }]);
-  }, [t]);
+    setPendingFocusDimension(dim);
+    setDimensionStatus((prev) => ({
+      ...prev,
+      [dim]: prev[dim] === "confirmed" ? "confirmed" : "discussing",
+    }));
+  }, []);
 
   const handleGenerate = useCallback(() => {
-    generateMutation.mutate();
-  }, [generateMutation]);
+    generateMutation.mutate(targetDocType);
+  }, [generateMutation, targetDocType]);
 
   return (
     <div className="conv-root">
@@ -249,7 +248,7 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
             targetDocType={targetDocType}
             generatedContent={generatedContent}
             onContinueConversation={() => {
-              setGeneratedContent(null);
+              generateMutation.mutate("script");
             }}
           />
         </div>
