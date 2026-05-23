@@ -744,6 +744,15 @@ export class JobsController {
     this.endSseResponse(res);
   }
 
+  @Get("projects/:id/conversation-jobs")
+  async listConversationSessions(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+  ) {
+    const sessions = await this.conversationService.listSessions(user.id, projectId);
+    return { sessions };
+  }
+
   @Get("projects/:id/conversation-jobs/:sessionId")
   async getConversationSession(
     @CurrentUser() user: { id: string },

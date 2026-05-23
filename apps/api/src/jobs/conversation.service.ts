@@ -12,6 +12,7 @@ import type {
   ConversationDimensionStatus,
   ConversationMessage,
   ConversationSession,
+  ConversationSessionSummary,
   LlmConfigSource,
   LlmProviderConfig,
   WorldBibleContent,
@@ -149,6 +150,29 @@ export class ConversationService {
       "You do not have permission to view this project",
     );
     return session;
+  }
+
+  async listSessions(userId: string, projectId: string): Promise<ConversationSessionSummary[]> {
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "project.view",
+      "You do not have permission to view this project",
+    );
+
+    const db = await this.database.query((d) => d);
+    return db.conversationSessions
+      .filter((s) => s.projectId === projectId)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .map((s) => ({
+        id: s.id,
+        firstUserMessage: s.messages.find((m) => m.role === "user")?.content?.slice(0, 20) ?? "新会话",
+        messageCount: s.messages.length,
+        dimensionStatus: s.dimensionStatus,
+        targetDocType: s.targetDocType,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      }));
   }
 
   async deleteSession(userId: string, projectId: string, sessionId: string): Promise<void> {

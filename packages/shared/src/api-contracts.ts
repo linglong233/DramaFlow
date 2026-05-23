@@ -922,3 +922,19 @@ export interface ConversationGeneratePayload {
 
 /** 对话会话响应 */
 export interface ConversationSessionResponse extends ConversationSession {}
+
+/** 会话列表项摘要 */
+export interface ConversationSessionSummary {
+  id: string;
+  firstUserMessage: string;
+  messageCount: number;
+  dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+  targetDocType: "synopsis" | "script";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 会话列表响应 */
+export interface ConversationSessionListResponse {
+  sessions: ConversationSessionSummary[];
+}
