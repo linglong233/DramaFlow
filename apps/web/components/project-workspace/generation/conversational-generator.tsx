@@ -14,18 +14,21 @@ import type {
   ConversationDimension,
   ConversationDimensionStatus,
   ConversationMessage,
+  ConversationSession,
+  ConversationSessionSummary,
   LlmConfigSource,
   ProjectWorkspacePayload,
 } from "@dramaflow/shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiStreamFetch, formatApiError } from "../../../lib/api";
+import { apiFetch, apiStreamFetch, formatApiError } from "../../../lib/api";
 import { useFeedback } from "../../../lib/hooks";
 import { useI18n } from "../../../lib/i18n";
 import { queryKeys } from "../../../lib/query-keys";
 import { ConversationChat } from "../conversation-chat";
 import { ConversationBrief as ConversationBriefPanel } from "../conversation-brief";
 import type { GeneratorConfig } from "./generator-registry";
+import { ConversationHistory } from "./conversation-history";
 import { WorldBibleIndicator } from "./world-bible-indicator";
 
 interface Props {
@@ -62,11 +65,20 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
   const [pendingFocusDimension, setPendingFocusDimension] = useState<ConversationDimension | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const { data: sessionList } = useQuery({
+    queryKey: queryKeys.conversationSessions(projectId),
+    queryFn: () =>
+      apiFetch<{ sessions: ConversationSessionSummary[] }>(
+        `/projects/${projectId}/conversation-jobs`,
+      ).then((r) => r.sessions),
+  });
+
   async function invalidateWorkspace() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.projectVersions(projectId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.projectJobs(projectId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversationSessions(projectId) }),
     ]);
   }
 
@@ -193,6 +205,34 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
     },
   });
 
+  const loadSessionMutation = useMutation({
+    mutationFn: async (targetSessionId: string) => {
+      const session = await apiFetch<ConversationSession>(
+        `/projects/${projectId}/conversation-jobs/${targetSessionId}`,
+      );
+      return session;
+    },
+    onSuccess: (session) => {
+      setSessionId(session.id);
+      setMessages(session.messages);
+      setBrief(session.brief);
+      setDimensionStatus(session.dimensionStatus);
+      setGeneratedContent(null);
+      hasInitialized.current = true;
+    },
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async (targetSessionId: string) => {
+      await apiFetch(`/projects/${projectId}/conversation-jobs/${targetSessionId}/delete`, {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversationSessions(projectId) });
+    },
+  });
+
   const isStreaming = messageMutation.isPending || generateMutation.isPending;
 
   const hasInitialized = useRef(false);
@@ -202,8 +242,12 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
       setMessages([{ role: "ai", content: t("conversation.greeting") }]);
     }
     setMessages((prev) => [...prev, { role: "user", content }]);
-    messageMutation.mutate(content);
-  }, [messageMutation, messages.length, t]);
+    messageMutation.mutate(content, {
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversationSessions(projectId) });
+      },
+    });
+  }, [messageMutation, messages.length, t, projectId, queryClient]);
 
   const handleBriefFieldChange = useCallback((field: keyof ConversationBrief, value: string) => {
     setBrief((prev) => ({ ...prev, [field]: value }));
@@ -221,12 +265,40 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
     generateMutation.mutate(targetDocType);
   }, [generateMutation, targetDocType]);
 
+  const handleNewSession = useCallback(() => {
+    setSessionId(null);
+    setMessages([]);
+    setBrief({});
+    setDimensionStatus(DEFAULT_DIMENSION_STATUS);
+    setStreamingText("");
+    setGeneratedContent(null);
+    hasInitialized.current = false;
+  }, []);
+
+  const handleDeleteSession = useCallback(
+    (targetSessionId: string) => {
+      if (targetSessionId === sessionId) {
+        handleNewSession();
+      }
+      deleteSessionMutation.mutate(targetSessionId);
+    },
+    [deleteSessionMutation, sessionId, handleNewSession],
+  );
+
   return (
     <div className="conv-root">
       {feedback.message && <div className="gen-notice gen-notice--ok" role="status">{feedback.message}</div>}
       {feedback.error && <div className="gen-notice gen-notice--err" role="alert">{feedback.error}</div>}
       <WorldBibleIndicator project={project} />
-
+      <div className="conv-mode-bar">
+        <ConversationHistory
+          sessions={sessionList ?? []}
+          activeSessionId={sessionId}
+          onSelectSession={(id) => loadSessionMutation.mutate(id)}
+          onNewSession={handleNewSession}
+          onDeleteSession={handleDeleteSession}
+        />
+      </div>
       <div className="conv-layout">
         <div className="conv-layout__chat">
           <ConversationChat

@@ -10382,6 +10382,12 @@ textarea.input {
   flex-shrink: 0;
 }
 
+.conv-mode-bar {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
 /* Generate tab: fill center column height */
 .uw-center-scroll--fill {
   display: flex;
