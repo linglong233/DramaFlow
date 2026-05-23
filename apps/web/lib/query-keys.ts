@@ -32,4 +32,5 @@ export const queryKeys = {
   projectImpactIssues: (projectId: string, status?: string) => ["project-impact-issues", projectId, status ?? "all"] as const,
   impactIssue: (issueId: string) => ["impact-issue", issueId] as const,
   versionImpactSummary: (versionId: string) => ["version-impact-summary", versionId] as const,
+  conversationSessions: (projectId: string) => ["conversation-sessions", projectId] as const,
 };

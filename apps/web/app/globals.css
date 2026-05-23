@@ -10655,6 +10655,144 @@ textarea.input {
   opacity: 0.6;
 }
 
+/* Conversation history dropdown */
+.conv-history {
+  position: relative;
+}
+
+.conv-history__trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.conv-history__trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.conv-history__badge {
+  font-size: 9px;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.15);
+  padding: 0 5px;
+  border-radius: 7px;
+  line-height: 16px;
+}
+
+.conv-history__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 280px;
+  background: rgba(18, 18, 24, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.conv-history__header {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.conv-history__header-title {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.conv-history__new {
+  font-size: 10px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.conv-history__new:hover {
+  text-decoration: underline;
+}
+
+.conv-history__list {
+  padding: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.conv-history__empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.conv-history__item {
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.conv-history__item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.conv-history__item--active {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.conv-history__item-title {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 20px;
+}
+
+.conv-history__item-meta {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+}
+
+.conv-history__item-delete {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px;
+}
+
+.conv-history__item:hover .conv-history__item-delete {
+  opacity: 1;
+}
+
+.conv-history__item-delete:hover {
+  color: #ef4444;
+}
+
 .conv-brief__actions {
   display: flex;
   gap: var(--space-2);
