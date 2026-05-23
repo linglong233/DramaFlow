@@ -10381,17 +10381,44 @@ textarea.input {
   justify-content: space-between;
 }
 
+/* Generate tab: fill center column height */
+.uw-center-scroll--fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.uw-center-scroll--fill > .uw-center-inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-5);
+  overflow: hidden;
+}
+
+.uw-center-scroll--fill .gen-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .conv-root {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
 }
 
 .conv-layout {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: 1fr 320px;
   gap: var(--space-5);
-  min-height: 500px;
+  flex: 1;
+  min-height: 0;
 }
 
 .conv-layout__chat {
@@ -10402,6 +10429,7 @@ textarea.input {
   background: rgba(20, 20, 24, 0.55);
   backdrop-filter: blur(20px);
   overflow: hidden;
+  min-height: 0;
 }
 
 .conv-layout__brief {
@@ -10417,7 +10445,6 @@ textarea.input {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 500px;
 }
 
 .conv-chat__messages {
@@ -10691,6 +10718,7 @@ textarea.input {
 @media (max-width: 900px) {
   .conv-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
   }
 
   .conv-layout__chat {

@@ -758,7 +758,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
           {/* Center: Content area */}
           <div className="uw-center">
-            <div className="uw-center-scroll">
+            <div className={`uw-center-scroll${mode === "document" && docSubTab === "generate" ? " uw-center-scroll--fill" : ""}`}>
               <div className="uw-center-inner">
                 {/* Document sub-tab bar */}
                 {mode === "document" && (
