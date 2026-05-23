@@ -80,6 +80,7 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
         baseUrl: effectiveBaseUrl,
         apiKey: effectiveApiKey,
         model: effectiveModel,
+        stream: config?.stream,
         extraMessages: messages.slice(0, -1),
       })) {
         accumulated += chunk;
@@ -696,13 +697,15 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
     baseUrl: string;
     apiKey: string;
     model: string;
+    stream?: boolean;
     responseFormat?: { type: string };
     extraMessages?: Array<{ role: string; content: string }>;
   }): AsyncGenerator<string> {
+    const useStreaming = options.stream ?? true;
     const body: Record<string, unknown> = {
       model: options.model,
       temperature: options.temperature,
-      stream: true,
+      stream: useStreaming,
       messages: [
         { role: "system", content: options.systemPrompt },
         ...(options.extraMessages ?? []),

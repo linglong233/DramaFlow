@@ -112,6 +112,10 @@ html {
   scroll-behavior: smooth;
 }
 
+html:has(.uw-root) body {
+  overflow: hidden;
+}
+
 body {
   font-family: var(--font-sans), var(--font-cjk), "Segoe UI", sans-serif;
   font-size: 14px;
@@ -7364,8 +7368,7 @@ textarea.input {
 .uw-root {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  height: 100%;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -10385,7 +10388,27 @@ textarea.input {
 .conv-mode-bar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.conv-mode-bar__new {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.conv-mode-bar__new:hover {
+  background: rgba(56, 189, 248, 0.2);
 }
 
 /* Generate tab: fill center column height */
@@ -10423,9 +10446,11 @@ textarea.input {
 .conv-layout {
   display: grid;
   grid-template-columns: 1fr 320px;
+  grid-template-rows: 1fr;
   gap: var(--space-5);
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .conv-layout__chat {
@@ -10457,6 +10482,7 @@ textarea.input {
 
 .conv-chat__messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-4);
   display: flex;
