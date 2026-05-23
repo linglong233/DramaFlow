@@ -10379,6 +10379,7 @@ textarea.input {
   gap: var(--space-3);
   margin-bottom: var(--space-2);
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 /* Generate tab: fill center column height */
@@ -10438,6 +10439,7 @@ textarea.input {
   background: rgba(20, 20, 24, 0.55);
   backdrop-filter: blur(20px);
   overflow-y: auto;
+  min-height: 0;
 }
 
 /* Chat */
