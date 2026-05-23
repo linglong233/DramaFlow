@@ -218,6 +218,8 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
       setBrief(session.brief);
       setDimensionStatus(session.dimensionStatus);
       setGeneratedContent(null);
+      setStreamingText("");
+      setPendingFocusDimension(null);
       hasInitialized.current = true;
     },
   });
