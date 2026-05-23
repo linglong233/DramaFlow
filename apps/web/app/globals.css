@@ -10618,6 +10618,14 @@ textarea.input {
   overflow-y: auto;
 }
 
+.conv-brief__empty {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: var(--space-4) 0;
+  opacity: 0.6;
+}
+
 .conv-brief__actions {
   display: flex;
   gap: var(--space-2);

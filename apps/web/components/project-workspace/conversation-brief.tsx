@@ -74,18 +74,25 @@ export function ConversationBrief({
       />
 
       <div className="conv-brief__fields">
-        {fields.map(({ key, label }) => (
-          <div key={key} className="conv-brief__field">
-            <label className="conv-brief__label">{label}</label>
-            <textarea
-              className="input conv-brief__textarea"
-              rows={2}
-              value={brief[key] ?? ""}
-              onChange={(e) => onBriefFieldChange(key, e.target.value)}
-              placeholder={label}
-            />
+        {fields
+          .filter(({ key }) => (brief[key] ?? "").trim() !== "")
+          .map(({ key, label }) => (
+            <div key={key} className="conv-brief__field">
+              <label className="conv-brief__label">{label}</label>
+              <textarea
+                className="input conv-brief__textarea"
+                rows={2}
+                value={brief[key] ?? ""}
+                onChange={(e) => onBriefFieldChange(key, e.target.value)}
+                placeholder={label}
+              />
+            </div>
+          ))}
+        {fields.every(({ key }) => (brief[key] ?? "").trim() === "") && (
+          <div className="conv-brief__empty">
+            {t("conversation.briefEmpty")}
           </div>
-        ))}
+        )}
       </div>
 
       <button
