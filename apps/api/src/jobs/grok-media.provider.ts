@@ -151,23 +151,35 @@ export class GrokMediaProvider implements MediaGenerationProvider {
       preset: "normal",
     };
 
-    // 构建 messages：支持图生视频
+    // 构建 messages：支持图生视频（多参考图模式）
     const messages: Array<Record<string, unknown>> = [];
 
-    if (input.referenceImageAssetId) {
-      const imageUrl = (input as unknown as Record<string, unknown>).referenceImageUrl as string | undefined;
-      if (imageUrl) {
-        messages.push({
-          role: "user",
-          content: [
-            { type: "image_url", image_url: { url: imageUrl } },
-            { type: "text", text: input.prompt },
-          ],
-        });
-      }
+    const record = input as GenerateMediaInput & {
+      referenceImageUrl?: string;
+      firstFrameUrl?: string;
+      lastFrameUrl?: string;
+      referenceImageUrls?: string[];
+    };
+    const contentParts: Array<Record<string, unknown>> = [];
+    if (record.referenceImageUrl) {
+      contentParts.push({ type: "image_url", image_url: { url: record.referenceImageUrl } });
     }
-
-    if (messages.length === 0) {
+    if (record.firstFrameUrl) {
+      contentParts.push({ type: "text", text: "First frame reference:" });
+      contentParts.push({ type: "image_url", image_url: { url: record.firstFrameUrl } });
+    }
+    if (record.lastFrameUrl) {
+      contentParts.push({ type: "text", text: "Last frame reference:" });
+      contentParts.push({ type: "image_url", image_url: { url: record.lastFrameUrl } });
+    }
+    for (const [index, url] of (record.referenceImageUrls ?? []).entries()) {
+      contentParts.push({ type: "text", text: `Reference image ${index + 1}:` });
+      contentParts.push({ type: "image_url", image_url: { url } });
+    }
+    if (contentParts.length > 0) {
+      contentParts.push({ type: "text", text: input.prompt });
+      messages.push({ role: "user", content: contentParts });
+    } else {
       messages.push({ role: "user", content: input.prompt });
     }
 

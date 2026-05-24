@@ -42,6 +42,8 @@ import type {
   WorldBibleContent,
   EnhanceReferencePromptResponse,
   DocumentType,
+  VideoGenerationProvider,
+  VideoReferenceMode,
 } from "@dramaflow/shared";
 
 import { DevDatabaseService } from "../common/dev-database.service";
@@ -61,6 +63,9 @@ import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provide
 import { TTSProviderService } from "./tts.provider";
 import { ExportService } from "./export.service";
 import { NovelImportService } from "./novel-import.service";
+import { buildResolvedVideoReferences, type ResolvedVideoReferences } from "./video-reference.utils";
+import { getVideoProviderAdapter } from "./video-providers/registry";
+import type { VideoProviderConfig, VideoProviderJobState } from "./video-providers/types";
 
 export type { StreamChunk };
 
@@ -420,6 +425,7 @@ export class JobsService {
     shotIds: string[],
     configSource?: ImageConfigSource,
     providerId?: string,
+    videoReferenceMode?: VideoReferenceMode,
   ): Promise<BatchJobGroupRecord> {
     await this.workspaceService.assertProjectPermission(
       userId,
@@ -439,7 +445,7 @@ export class JobsService {
         type: "video_generation",
         projectId,
         shotId,
-        input: { projectId, shotId, style: "cinematic", aspectRatio: "16:9", configSource, providerId },
+        input: { projectId, shotId, style: "cinematic", aspectRatio: "16:9", configSource, providerId, videoReferenceMode },
       });
       jobIds.push(job.id);
     }
@@ -1259,6 +1265,43 @@ export class JobsService {
       const videoEntry = await this.resolveProviderEntry("video", job.input.providerId, job.createdBy, job.projectId, job.input.configSource);
       if (videoEntry) {
         const videoConfig = this.providerEntryToConfig(videoEntry);
+
+        // 适配器路由：minimax / volcengine / vidu / ali
+        if (videoEntry.provider === "minimax" || videoEntry.provider === "volcengine" || videoEntry.provider === "vidu" || videoEntry.provider === "ali") {
+          const adapter = getVideoProviderAdapter(videoEntry.provider as VideoGenerationProvider);
+          const config = this.providerEntryToVideoProviderConfig(videoEntry);
+          const references = await this.resolveVideoReferences(job);
+          const currentState = await this.database.query((db) => {
+            const liveJob = db.jobs.find((item) => item.id === job.id);
+            return liveJob ? this.toVideoJobState(liveJob.result, prompt, job.input) : null;
+          });
+          const adapterState = currentState?.providerVideoId && adapter.pollJob
+            ? await adapter.pollJob(currentState.providerVideoId, {
+                prompt,
+                shotId: job.input.shotId,
+                aspectRatio: job.input.aspectRatio,
+                durationSeconds: job.input.durationSeconds,
+                config,
+                references,
+              })
+            : await adapter.createJob({
+                prompt,
+                shotId: job.input.shotId,
+                aspectRatio: job.input.aspectRatio,
+                durationSeconds: job.input.durationSeconds,
+                config,
+                references,
+              });
+          const state = this.toVideoJobStateFromAdapter(adapterState, prompt, job.input);
+          if (adapterState.providerStatus !== "completed") {
+            if (adapterState.providerStatus === "failed") {
+              throw new Error(adapterState.note ?? `${adapterState.provider} video generation failed`);
+            }
+            return this.updateVideoJobProgress(job.id, state);
+          }
+          return this.finalizeProviderVideo(job, state);
+        }
+
         if (videoEntry.provider === "grok") {
           const grokLlmConfig = this.toGrokLlmConfig(videoConfig);
           const inputWithConfig = {
@@ -1768,6 +1811,29 @@ export class JobsService {
     };
   }
 
+  /** 将适配器返回的 VideoProviderJobState 转换为内部 VideoJobState */
+  private toVideoJobStateFromAdapter(
+    state: VideoProviderJobState,
+    prompt: string,
+    input: MediaJobInput,
+  ): VideoJobState {
+    return {
+      prompt,
+      provider: state.provider,
+      providerVideoId: state.providerVideoId,
+      providerStatus: state.providerStatus,
+      progress: state.progress,
+      parameters: {
+        ...input,
+        ...state.parameters,
+      },
+      mode: "provider",
+      note: state.note,
+      assetUrl: state.assetUrl,
+      mimeType: state.mimeType,
+    };
+  }
+
   private async assertProjectReadable(userId: string, projectId: string) {
     await this.workspaceService.assertProjectPermission(
       userId,
@@ -1970,6 +2036,16 @@ export class JobsService {
     };
   }
 
+  /** 将 ProviderEntry 转换为 VideoProviderConfig（适配器路由用） */
+  private providerEntryToVideoProviderConfig(entry: ProviderEntry): VideoProviderConfig {
+    return {
+      provider: entry.provider as VideoGenerationProvider,
+      apiKey: entry.apiKey,
+      baseUrl: entry.baseUrl,
+      model: entry.model,
+    };
+  }
+
   private async resolveImageExecution(job: JobRecord<MediaJobInput>): Promise<ResolvedImageExecution> {
     if (!job.input.configSource) {
       if (job.input.referenceImageAssetId) {
@@ -2069,6 +2145,34 @@ export class JobsService {
     } catch {
       return undefined;
     }
+  }
+
+  /** 解析资产 URL，不存在时抛出异常 */
+  private async resolveReferenceImageUrlStrict(userId: string, assetId: string, label: string): Promise<string> {
+    const result = await this.storageService.getAssetUrl(userId, assetId);
+    if (!result.url) {
+      throw new BadRequestException(`Video reference ${label} could not be resolved to a URL.`);
+    }
+    return result.url;
+  }
+
+  /** 解析视频参考图资产 ID 为完整结构 */
+  private resolveVideoReferences(job: JobRecord<MediaJobInput>): Promise<ResolvedVideoReferences> {
+    return buildResolvedVideoReferences({
+      input: {
+        shotId: job.input.shotId,
+        style: job.input.style,
+        aspectRatio: job.input.aspectRatio,
+        durationSeconds: job.input.durationSeconds,
+        referenceImageAssetId: job.input.referenceImageAssetId,
+        providerId: job.input.providerId,
+        videoReferenceMode: job.input.videoReferenceMode,
+        firstFrameAssetId: job.input.firstFrameAssetId,
+        lastFrameAssetId: job.input.lastFrameAssetId,
+        referenceImageAssetIds: job.input.referenceImageAssetIds,
+      },
+      resolveAssetUrl: (assetId, label) => this.resolveReferenceImageUrlStrict(job.createdBy, assetId, label),
+    });
   }
 
   // ===== TTS Jobs =====

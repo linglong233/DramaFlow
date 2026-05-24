@@ -27,6 +27,8 @@ import type {
   CreateScriptJobPayload,
   CreateStoryboardJobPayload,
   CreateSynopsisJobPayload,
+  CreateVideoJobPayload,
+  CreateBatchVideoJobsPayload,
   ConversationDimension,
   ConversationGeneratePayload,
   ConversationMessagePayload,
@@ -160,7 +162,7 @@ export class JobsController {
   createVideoJob(
     @CurrentUser() user: { id: string },
     @Param("id") shotId: string,
-    @Body() body: { projectId: string; style: string; aspectRatio: string; prompt?: string; durationSeconds?: number; referenceImageAssetId?: string; configSource?: ImageConfigSource; providerId?: string },
+    @Body() body: CreateVideoJobPayload,
   ) {
     return this.jobsService.createVideoJob(user.id, shotId, body);
   }
@@ -478,9 +480,16 @@ export class JobsController {
   createBatchVideoJobs(
     @CurrentUser() user: { id: string },
     @Param("id") projectId: string,
-    @Body() body: { shotIds: string[]; configSource?: string; providerId?: string },
+    @Body() body: CreateBatchVideoJobsPayload,
   ) {
-    return this.jobsService.createBatchVideoJobs(user.id, projectId, body.shotIds, body.configSource as any, body.providerId);
+    return this.jobsService.createBatchVideoJobs(
+      user.id,
+      projectId,
+      body.shotIds,
+      body.configSource,
+      body.providerId,
+      body.videoReferenceMode,
+    );
   }
 
   @Get("batch-jobs/:batchId")

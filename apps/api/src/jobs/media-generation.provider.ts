@@ -94,6 +94,14 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
       throw new Error("OpenAI video generation skipped: API key is not configured");
     }
 
+    const record = input as GenerateMediaInput & {
+      prompt: string;
+      referenceImageUrl?: string;
+      firstFrameUrl?: string;
+      lastFrameUrl?: string;
+      referenceImageUrls?: string[];
+    };
+
     const effectiveBaseUrl = (config?.baseUrl || this.baseUrl).replace(/\/$/, "");
     try {
       const response = await fetch(`${effectiveBaseUrl}/videos`, {
@@ -107,7 +115,11 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
           prompt: input.prompt,
           size: input.aspectRatio === "16:9" ? "1920x1080" : "1080x1080",
           duration: input.durationSeconds ?? 5,
-          ...(input.referenceImageAssetId ? { image_url: (input as unknown as Record<string, unknown>).referenceImageUrl } : {}),
+          reference_mode: input.videoReferenceMode,
+          ...(record.referenceImageUrl ? { image_url: record.referenceImageUrl } : {}),
+          ...(record.firstFrameUrl ? { first_frame_url: record.firstFrameUrl } : {}),
+          ...(record.lastFrameUrl ? { last_frame_url: record.lastFrameUrl } : {}),
+          ...(record.referenceImageUrls?.length ? { reference_image_urls: record.referenceImageUrls } : {}),
         }),
       });
 
