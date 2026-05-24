@@ -11,6 +11,10 @@ import assert from "node:assert/strict";
 import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { OpenAiCompatTextProvider } from "./text-generation.provider";
+import {
+  normalizeVideoReferenceMode,
+  buildResolvedVideoReferences,
+} from "./video-reference.utils";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -304,5 +308,56 @@ test("google provider throws when the response does not contain inline image dat
       prompt: "A crowded control room",
     }),
     /did not include image data/,
+  );
+});
+
+// =============================================
+// 视频参考图工具函数测试
+// =============================================
+
+test("video reference mode defaults legacy referenceImageAssetId to single", async () => {
+  assert.equal(normalizeVideoReferenceMode({ referenceImageAssetId: "asset-current" }), "single");
+});
+
+test("video reference mode defaults no references to none", async () => {
+  assert.equal(normalizeVideoReferenceMode({}), "none");
+});
+
+test("resolved video references truncates multiple references to six urls", async () => {
+  const resolved = await buildResolvedVideoReferences({
+    input: {
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      videoReferenceMode: "multiple",
+      referenceImageAssetIds: ["a1", "a2", "a3", "a4", "a5", "a6", "a7"],
+    },
+    resolveAssetUrl: async (assetId) => `https://cdn.test/${assetId}.png`,
+  });
+
+  assert.equal(resolved.mode, "multiple");
+  assert.deepEqual(resolved.referenceImageUrls, [
+    "https://cdn.test/a1.png",
+    "https://cdn.test/a2.png",
+    "https://cdn.test/a3.png",
+    "https://cdn.test/a4.png",
+    "https://cdn.test/a5.png",
+    "https://cdn.test/a6.png",
+  ]);
+});
+
+test("resolved first_last references requires both frame assets", async () => {
+  await assert.rejects(
+    buildResolvedVideoReferences({
+      input: {
+        shotId: "shot-2",
+        style: "cinematic",
+        aspectRatio: "16:9",
+        videoReferenceMode: "first_last",
+        firstFrameAssetId: "first",
+      },
+      resolveAssetUrl: async (assetId) => `https://cdn.test/${assetId}.png`,
+    }),
+    /first_last video reference mode requires both firstFrameAssetId and lastFrameAssetId/,
   );
 });
