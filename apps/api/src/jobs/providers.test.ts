@@ -381,3 +381,109 @@ test("video provider registry rejects unsupported provider ids", () => {
     /Unsupported video provider/,
   );
 });
+
+// =============================================
+// 视频 Provider 适配器请求与轮询测试
+// =============================================
+
+import { MiniMaxVideoProviderAdapter } from "./video-providers/minimax-video.provider";
+import { VolcEngineVideoProviderAdapter } from "./video-providers/volcengine-video.provider";
+import { ViduVideoProviderAdapter } from "./video-providers/vidu-video.provider";
+import { AliVideoProviderAdapter } from "./video-providers/ali-video.provider";
+
+function videoAdapterInput(overrides: Partial<import("./video-providers/types").VideoProviderCreateInput> = {}) {
+  return {
+    prompt: "A character walks into the rain",
+    shotId: "shot-1",
+    aspectRatio: "16:9",
+    durationSeconds: 5,
+    config: {
+      provider: "minimax" as const,
+      apiKey: "key",
+      baseUrl: "https://provider.test",
+      model: "model-a",
+    },
+    references: {
+      mode: "single" as const,
+      imageUrl: "https://cdn.test/frame.png",
+      referenceImageUrls: [],
+    },
+    ...overrides,
+  };
+}
+
+test("minimax video adapter sends content array with reference image", async () => {
+  let capturedUrl = "";
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    capturedUrl = String(input);
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ task_id: "mini-task-1", status: "processing" }), { status: 200 });
+  }) as typeof fetch;
+
+  const adapter = new MiniMaxVideoProviderAdapter();
+  const state = await adapter.createJob(videoAdapterInput());
+
+  assert.equal(capturedUrl, "https://provider.test/v1/video_generation");
+  assert.equal(state.providerVideoId, "mini-task-1");
+  const body = capturedBody as { content: Array<{ type: string; role?: string; image_url?: { url: string } }> };
+  assert.equal(body.content[0].type, "text");
+  assert.equal(body.content[1].role, "reference_image");
+  assert.equal(body.content[1].image_url?.url, "https://cdn.test/frame.png");
+});
+
+test("volcengine video adapter sends first and last frame roles", async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ id: "volc-task-1", status: "queued" }), { status: 200 });
+  }) as typeof fetch;
+
+  const adapter = new VolcEngineVideoProviderAdapter();
+  await adapter.createJob(videoAdapterInput({
+    config: { provider: "volcengine", apiKey: "key", baseUrl: "https://volc.test", model: "seedance" },
+    references: {
+      mode: "first_last",
+      firstFrameUrl: "https://cdn.test/first.png",
+      lastFrameUrl: "https://cdn.test/last.png",
+      referenceImageUrls: [],
+    },
+  }));
+
+  const body = capturedBody as { content: Array<{ role?: string; image_url?: { url: string } }> };
+  assert.equal(body.content[1].role, "first_frame");
+  assert.equal(body.content[2].role, "last_frame");
+});
+
+test("vidu video adapter returns running note when poll is unavailable", async () => {
+  const adapter = new ViduVideoProviderAdapter();
+  const state = await adapter.pollJob!("vidu-task-1", videoAdapterInput({
+    config: { provider: "vidu", apiKey: "key", baseUrl: "https://vidu.test", model: "viduq3-turbo" },
+  }));
+
+  assert.equal(state.providerStatus, "running");
+  assert.match(state.note ?? "", /webhook is not enabled/);
+});
+
+test("ali video adapter maps last frame to last_img_url", async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ output: { task_status: "PENDING", task_id: "ali-task-1" } }), { status: 200 });
+  }) as typeof fetch;
+
+  const adapter = new AliVideoProviderAdapter();
+  await adapter.createJob(videoAdapterInput({
+    config: { provider: "ali", apiKey: "key", baseUrl: "https://dashscope.test", model: "wan2.6-i2v-flash" },
+    references: {
+      mode: "first_last",
+      firstFrameUrl: "https://cdn.test/first.png",
+      lastFrameUrl: "https://cdn.test/last.png",
+      referenceImageUrls: [],
+    },
+  }));
+
+  const body = capturedBody as { input: { img_url?: string; last_img_url?: string } };
+  assert.equal(body.input.img_url, "https://cdn.test/first.png");
+  assert.equal(body.input.last_img_url, "https://cdn.test/last.png");
+});

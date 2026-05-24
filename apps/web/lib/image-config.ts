@@ -262,6 +262,10 @@ export const IMAGE_PROVIDER_LABELS: Record<ImageGenerationProvider, string> = {
 export const VIDEO_PROVIDER_LABELS: Record<VideoGenerationProvider, string> = {
   "grok": "Grok (grok2api)",
   "openai-compatible": "OpenAI Compatible",
+  "minimax": "MiniMax",
+  "volcengine": "火山引擎 (VolcEngine)",
+  "vidu": "Vidu",
+  "ali": "阿里 (Ali DashScope)",
 };
 
 // =============================================
