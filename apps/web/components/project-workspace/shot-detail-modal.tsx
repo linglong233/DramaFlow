@@ -88,7 +88,7 @@ interface Props {
   onGenerateVideo: (shotId: string, prompt?: string, referenceImageAssetId?: string) => void;
   onGenerateTts: (shotId: string, characterId: string, text: string) => void;
   onAdoptVersion: (documentId: string, versionId: string) => void;
-  onSelectMediaVersion?: (shotId: string, mediaType: "image" | "video" | "audio", versionId: string) => void;
+  onUseMediaVersionForShot?: (shotId: string, mediaType: "image" | "video" | "audio", versionId: string) => void;
   onSubtitleChange?: (shotId: string, subtitle: string) => void;
   currentSubtitle?: string;
   onMoveShot: (shotId: string, direction: -1 | 1) => void;
@@ -97,6 +97,7 @@ interface Props {
   isVideoPending: boolean;
   isTtsPending: boolean;
   isAdoptPending: boolean;
+  isSetCurrentUsePending: boolean;
   hasPrev: boolean;
   hasNext: boolean;
   onPrev: () => void;
@@ -273,7 +274,7 @@ export function ShotDetailModal({
   onGenerateVideo,
   onGenerateTts,
   onAdoptVersion,
-  onSelectMediaVersion,
+  onUseMediaVersionForShot,
   onSubtitleChange,
   currentSubtitle,
   onMoveShot,
@@ -282,6 +283,7 @@ export function ShotDetailModal({
   isVideoPending,
   isTtsPending,
   isAdoptPending,
+  isSetCurrentUsePending,
   hasPrev,
   hasNext,
   onPrev,
@@ -485,7 +487,8 @@ export function ShotDetailModal({
 
   const currentCandidates = mediaTab === "image" ? (state?.imageCandidates ?? []) : (state?.videoCandidates ?? []);
   const currentDocumentId = mediaTab === "image" ? state?.imageDocument?.id : state?.videoDocument?.id;
-  const currentVersionId = mediaTab === "image" ? state?.imageDocument?.currentVersionId : state?.videoDocument?.currentVersionId;
+  const currentUseVersionId = mediaTab === "image" ? state?.currentImage?.id : state?.currentVideo?.id;
+  const baselineVersionId = mediaTab === "image" ? state?.imageDocument?.currentVersionId : state?.videoDocument?.currentVersionId;
   const currentJob = mediaTab === "image" ? state?.jobs.image : state?.jobs.video;
 
   const promptValue = mediaTab === "image"
@@ -800,20 +803,22 @@ export function ShotDetailModal({
             {currentCandidates.length > 0 && (
               <CandidateThumbnailGrid
                 candidates={currentCandidates}
-                currentVersionId={currentVersionId}
+                currentUseVersionId={currentUseVersionId}
+                baselineVersionId={baselineVersionId}
                 mediaType={mediaTab}
                 canMutateProject={canMutateProject}
+                isSetCurrentUsePending={isSetCurrentUsePending}
                 isAdoptPending={isAdoptPending}
-                canSelect={Boolean(canMutateProject && onSelectMediaVersion)}
+                canUseForShot={Boolean(canMutateProject && onUseMediaVersionForShot)}
                 onThumbnailClick={(candidate) => {
                   const idx = currentCandidates.findIndex((c) => c.id === candidate.id);
                   if (idx >= 0) setLightboxIndex(idx);
                 }}
-                onAdopt={(candidate) => {
+                onAdoptAsBaseline={(candidate) => {
                   if (currentDocumentId) onAdoptVersion(currentDocumentId, candidate.id);
                 }}
-                onSelect={onSelectMediaVersion ? (candidate) => {
-                  onSelectMediaVersion(shot.id, mediaTab, candidate.id);
+                onUseForShot={onUseMediaVersionForShot ? (candidate) => {
+                  onUseMediaVersionForShot(shot.id, mediaTab, candidate.id);
                 } : undefined}
               />
             )}
@@ -981,10 +986,12 @@ export function ShotDetailModal({
           isAdoptPending={isAdoptPending}
           mediaType={mediaTab}
           documentId={currentDocumentId}
-          currentVersionId={currentVersionId}
-          onAdopt={(docId, versionId) => onAdoptVersion(docId, versionId)}
-          onSelect={onSelectMediaVersion ? (versionId) => {
-            onSelectMediaVersion(shot.id, mediaTab, versionId);
+          isSetCurrentUsePending={isSetCurrentUsePending}
+          currentUseVersionId={currentUseVersionId}
+          baselineVersionId={baselineVersionId}
+          onAdoptAsBaseline={(docId, versionId) => onAdoptVersion(docId, versionId)}
+          onUseForShot={onUseMediaVersionForShot ? (versionId) => {
+            onUseMediaVersionForShot(shot.id, mediaTab, versionId);
           } : undefined}
           onClose={() => setLightboxIndex(null)}
           onNavigate={(idx) => setLightboxIndex(idx)}
