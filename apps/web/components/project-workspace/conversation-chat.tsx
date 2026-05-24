@@ -11,26 +11,6 @@ interface Props {
   onSendMessage: (content: string) => void;
 }
 
-/**
- * 尝试从流式 JSON 中提取 reply 字段。
- * 完整 JSON → 直接解析；部分 JSON → 正则提取。
- */
-function extractReply(raw: string): string | null {
-  if (!raw.trim()) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.reply === "string") return parsed.reply;
-  } catch {}
-  const m = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
-  if (m) {
-    return m[1]
-      .replace(/\\n/g, "\n")
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, "\\");
-  }
-  return null;
-}
-
 export function ConversationChat({ messages, streamingText, isStreaming, onSendMessage }: Props) {
   const { t } = useI18n();
   const [input, setInput] = useState("");
@@ -55,8 +35,6 @@ export function ConversationChat({ messages, streamingText, isStreaming, onSendM
     }
   }
 
-  const displayText = extractReply(streamingText);
-
   return (
     <div className="conv-chat">
       <div className="conv-chat__messages">
@@ -70,11 +48,11 @@ export function ConversationChat({ messages, streamingText, isStreaming, onSendM
             </div>
           </div>
         ))}
-        {isStreaming && (
+        {isStreaming && streamingText && (
           <div className="conv-msg conv-msg--ai">
             <div className="conv-msg__avatar">AI</div>
             <div className="conv-msg__content">
-              {displayText ?? ""}
+              {streamingText}
               <span className="conv-msg__cursor" />
             </div>
           </div>
