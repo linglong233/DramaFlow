@@ -47,6 +47,7 @@ import type {
 } from "@dramaflow/shared";
 
 import { DevDatabaseService } from "../common/dev-database.service";
+import type { DevDatabase } from "../common/database.types";
 import { createId } from "../common/id";
 import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
@@ -419,6 +420,32 @@ export class JobsService {
     return batchResult.group;
   }
 
+  /**
+   * 查找分镜当前采用的图片资产 ID
+   * 通过查找该分镜关联的 image 类型文档的当前版本获取 assetId
+   */
+  private findCurrentImageAssetIdForShot(
+    db: DevDatabase,
+    projectId: string,
+    shotId: string,
+  ): string | undefined {
+    const imageDoc = db.documents.find(
+      (doc) =>
+        doc.projectId === projectId &&
+        doc.type === "image" &&
+        doc.shotId === shotId,
+    );
+    const versionId = imageDoc?.currentVersionId;
+    if (!versionId) return undefined;
+    const version = db.versions.find((item) => item.id === versionId);
+    if (!version?.content || typeof version.content !== "object")
+      return undefined;
+    const content = version.content as { assetId?: unknown };
+    return typeof content.assetId === "string" && content.assetId.trim()
+      ? content.assetId
+      : undefined;
+  }
+
   async createBatchVideoJobs(
     userId: string,
     projectId: string,
@@ -439,13 +466,37 @@ export class JobsService {
       throw new BadRequestException("At least one storyboard shot is required to create a batch video job");
     }
 
+    // 查找每个分镜当前采用的图片资产，用于视频参考图推断
+    const imageAssetByShot = await this.database.query((db) => {
+      const map = new Map<string, string>();
+      for (const shotId of uniqueShotIds) {
+        const assetId = this.findCurrentImageAssetIdForShot(db, projectId, shotId);
+        if (assetId) map.set(shotId, assetId);
+      }
+      return map;
+    });
+
     const jobIds: string[] = [];
     for (const shotId of uniqueShotIds) {
+      const referenceImageAssetId = imageAssetByShot.get(shotId);
+      const effectiveMode: VideoReferenceMode =
+        videoReferenceMode === "single" && referenceImageAssetId ? "single" : "none";
       const job = await this.enqueueJob(userId, {
         type: "video_generation",
         projectId,
         shotId,
-        input: { projectId, shotId, style: "cinematic", aspectRatio: "16:9", configSource, providerId, videoReferenceMode },
+        input: {
+          projectId,
+          shotId,
+          style: "cinematic",
+          aspectRatio: "16:9",
+          configSource,
+          providerId,
+          videoReferenceMode: effectiveMode,
+          ...(referenceImageAssetId && effectiveMode === "single"
+            ? { referenceImageAssetId }
+            : {}),
+        },
       });
       jobIds.push(job.id);
     }
