@@ -55,6 +55,10 @@ function defaultImageModel(provider: ImageGenerationProvider): string {
 function defaultVideoModel(provider: VideoGenerationProvider): string {
   switch (provider) {
     case "grok": return "grok-imagine-1.0-video";
+    case "minimax": return "video-01";
+    case "volcengine": return "doubao-seedance-1-5-pro-251215";
+    case "vidu": return "viduq3-turbo";
+    case "ali": return "wan2.6-i2v-flash";
     default: return "";
   }
 }
@@ -263,9 +267,9 @@ export const VIDEO_PROVIDER_LABELS: Record<VideoGenerationProvider, string> = {
   "grok": "Grok (grok2api)",
   "openai-compatible": "OpenAI Compatible",
   "minimax": "MiniMax",
-  "volcengine": "火山引擎 (VolcEngine)",
+  "volcengine": "VolcEngine / Seedance",
   "vidu": "Vidu",
-  "ali": "阿里 (Ali DashScope)",
+  "ali": "Ali DashScope",
 };
 
 // =============================================
