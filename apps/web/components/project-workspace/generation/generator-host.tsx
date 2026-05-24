@@ -33,7 +33,7 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
   const showModeToggle = availableModes.length > 1;
 
   return (
-    <div className="gen-root">
+    <div className={`gen-root gen-root--${mode}`}>
       <div className="gen-mode-bar">
         {showModeToggle && (
           <div className="gen-toggle-group">

@@ -910,7 +910,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 </div>
 
                 {/* Generate sub-tab */}
-                <div style={{ display: mode === "document" && docSubTab === "generate" ? "flex" : "none", flex: 1, minHeight: 0, flexDirection: "column", overflow: "hidden" }}>
+                <div
+                  className="uw-generate-panel"
+                  style={{ display: mode === "document" && docSubTab === "generate" ? undefined : "none" }}
+                >
                   {mode === "document" && docSubTab === "generate" && (() => {
                     if (isWorldBibleDoc) {
                       return (
