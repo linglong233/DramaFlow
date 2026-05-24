@@ -20,12 +20,14 @@ interface Props {
   allCandidates: VersionItem[];
   currentIndex: number;
   canMutateProject: boolean;
+  isSetCurrentUsePending: boolean;
   isAdoptPending: boolean;
   mediaType: "image" | "video";
   documentId: string | undefined;
-  currentVersionId: string | undefined;
-  onAdopt: (documentId: string, versionId: string) => void;
-  onSelect?: (versionId: string) => void;
+  currentUseVersionId: string | undefined;
+  baselineVersionId: string | undefined;
+  onAdoptAsBaseline: (documentId: string, versionId: string) => void;
+  onUseForShot?: (versionId: string) => void;
   onClose: () => void;
   onNavigate: (index: number) => void;
 }
@@ -54,12 +56,14 @@ export function CandidateLightbox({
   allCandidates,
   currentIndex,
   canMutateProject,
+  isSetCurrentUsePending,
   isAdoptPending,
   mediaType,
   documentId,
-  currentVersionId,
-  onAdopt,
-  onSelect,
+  currentUseVersionId,
+  baselineVersionId,
+  onAdoptAsBaseline,
+  onUseForShot,
   onClose,
   onNavigate,
 }: Props) {
@@ -71,7 +75,8 @@ export function CandidateLightbox({
   const assetUrl = content.assetUrl;
   const mimeType = content.mimeType ?? (mediaType === "image" ? "image/png" : "video/mp4");
   const isVideo = mimeType.startsWith("video/") || mediaType === "video";
-  const isAdopted = candidate.id === currentVersionId;
+  const isInUse = candidate.id === currentUseVersionId;
+  const isBaseline = candidate.id === baselineVersionId;
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < allCandidates.length - 1;
 
@@ -160,24 +165,30 @@ export function CandidateLightbox({
             <span className="sm-lightbox__position">{currentIndex + 1}/{allCandidates.length}</span>
           </div>
           <div className="sm-lightbox__actions">
-            {canMutateProject && onSelect && !isAdopted && documentId && (
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                disabled={isAdoptPending}
-                onClick={(e) => { e.stopPropagation(); onSelect(candidate.id); }}
-              >
-                {t("shotDetailDrawer.select")}
-              </button>
+            {canMutateProject && onUseForShot && documentId && (
+              isInUse ? (
+                <button className="btn btn-primary btn-sm" type="button" disabled aria-current="true">
+                  {t("shotDetailDrawer.inUse")}
+                </button>
+              ) : (
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="button"
+                  disabled={isSetCurrentUsePending}
+                  onClick={(e) => { e.stopPropagation(); onUseForShot(candidate.id); }}
+                >
+                  {t("shotDetailDrawer.useForShot")}
+                </button>
+              )
             )}
             {canMutateProject && documentId && (
               <button
                 className="btn btn-secondary btn-sm"
                 type="button"
-                disabled={isAdoptPending || isAdopted}
-                onClick={(e) => { e.stopPropagation(); onAdopt(documentId, candidate.id); }}
+                disabled={isAdoptPending || isBaseline}
+                onClick={(e) => { e.stopPropagation(); onAdoptAsBaseline(documentId, candidate.id); }}
               >
-                {isAdopted ? t("shotDetailDrawer.adopted") : t("shotDetailDrawer.adopt")}
+                {isBaseline ? t("shotDetailDrawer.baselineAdopted") : t("shotDetailDrawer.adoptAsBaseline")}
               </button>
             )}
           </div>
