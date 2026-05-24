@@ -89,6 +89,7 @@ export function VideoPanel({
           aspectRatio: "16:9",
           durationSeconds: 5,
           referenceImageAssetId,
+          videoReferenceMode: referenceImageAssetId ? "single" : "none",
         },
       });
     },
