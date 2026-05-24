@@ -29,6 +29,7 @@ import type {
   DocumentType,
   ExportFormat,
   ExportRecord,
+  GenerateMediaInput,
   GenerateScriptInput,
   GenerateStoryboardInput,
   GenerateSynopsisInput,
@@ -69,6 +70,7 @@ import type {
   VersionDependencyRecord,
   VersionRecord,
   VersionStatus,
+  VideoReferenceMode,
   WorldBibleContent,
 } from "./domain";
 
@@ -480,6 +482,22 @@ export interface CreateImageJobPayload {
   prompt?: string;
   referenceImageAssetId?: string;
   configSource?: ImageConfigSource;
+  providerId?: string;
+}
+
+/** 创建视频生成任务请求体 */
+export interface CreateVideoJobPayload extends Omit<GenerateMediaInput, "shotId"> {
+  projectId: string;
+  prompt?: string;
+  configSource?: ImageConfigSource;
+}
+
+/** 创建批量视频生成任务请求体 */
+export interface CreateBatchVideoJobsPayload {
+  shotIds: string[];
+  configSource?: ImageConfigSource;
+  providerId?: string;
+  videoReferenceMode?: VideoReferenceMode;
 }
 
 /** 创建剧本生成任务请求体 */

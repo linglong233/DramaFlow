@@ -138,7 +138,16 @@ export type LlmConfigSource = "team" | "personal";
 export type ImageGenerationProvider = "google-gemini" | "openai-compatible" | "stable-diffusion" | "comfyui" | "grok";
 
 /** 视频生成 Provider 类型 */
-export type VideoGenerationProvider = "grok" | "openai-compatible";
+export type VideoGenerationProvider =
+  | "grok"
+  | "openai-compatible"
+  | "minimax"
+  | "volcengine"
+  | "vidu"
+  | "ali";
+
+/** 视频生成参考图模式 */
+export type VideoReferenceMode = "none" | "single" | "first_last" | "multiple";
 
 /** 图片配置来源（与 LLM 配置来源一致） */
 export type ImageConfigSource = LlmConfigSource;
@@ -825,10 +834,18 @@ export interface GenerateMediaInput {
   aspectRatio: string;
   /** 视频时长（秒） */
   durationSeconds?: number;
-  /** 参考图片资产 ID */
+  /** 参考图片资产 ID；视频 single 模式也兼容此字段 */
   referenceImageAssetId?: string;
   /** 指定使用的 Provider ID（可选，未传则使用默认） */
   providerId?: string;
+  /** 视频参考图模式 */
+  videoReferenceMode?: VideoReferenceMode;
+  /** 首帧参考图资产 ID */
+  firstFrameAssetId?: string;
+  /** 尾帧参考图资产 ID */
+  lastFrameAssetId?: string;
+  /** 多参考图资产 ID 列表 */
+  referenceImageAssetIds?: string[];
 }
 
 // =============================================
