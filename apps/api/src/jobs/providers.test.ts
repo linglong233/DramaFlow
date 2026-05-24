@@ -361,3 +361,23 @@ test("resolved first_last references requires both frame assets", async () => {
     /first_last video reference mode requires both firstFrameAssetId and lastFrameAssetId/,
   );
 });
+
+// =============================================
+// 视频 Provider 适配器注册表测试
+// =============================================
+
+import { getVideoProviderAdapter } from "./video-providers/registry";
+
+test("video provider registry resolves new provider adapters", () => {
+  assert.equal(getVideoProviderAdapter("minimax").provider, "minimax");
+  assert.equal(getVideoProviderAdapter("volcengine").provider, "volcengine");
+  assert.equal(getVideoProviderAdapter("vidu").provider, "vidu");
+  assert.equal(getVideoProviderAdapter("ali").provider, "ali");
+});
+
+test("video provider registry rejects unsupported provider ids", () => {
+  assert.throws(
+    () => getVideoProviderAdapter("not-a-provider" as never),
+    /Unsupported video provider/,
+  );
+});
