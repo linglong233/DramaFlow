@@ -1520,7 +1520,13 @@ export const zhCNMessages = {
     regenKeepAll: "全部保留原内容",
     regenAdoptAll: "全部采用新内容",
     regenFailed: "重新生成失败，请重试。",
-    regenRetry: "重试"
+    regenRetry: "重试",
+    videoReferenceNone: "无参考",
+    videoReferenceCurrent: "当前图片",
+    videoReferenceFirstLast: "首帧 + 尾帧",
+    videoReferenceMultiple: "多参考图",
+    videoReferenceLastFrame: "选择尾帧",
+    videoReferenceAdd: "添加参考图"
   },
   shotCard: {
     statusDone: "已完成",
@@ -3132,7 +3138,13 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     regenKeepAll: "Keep All Current",
     regenAdoptAll: "Adopt All New",
     regenFailed: "Regeneration failed. Please try again.",
-    regenRetry: "Retry"
+    regenRetry: "Retry",
+    videoReferenceNone: "No reference",
+    videoReferenceCurrent: "Current image",
+    videoReferenceFirstLast: "First + last",
+    videoReferenceMultiple: "Multiple refs",
+    videoReferenceLastFrame: "Select last frame",
+    videoReferenceAdd: "Add reference"
   },
   shotCard: {
     statusDone: "Done",

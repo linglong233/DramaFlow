@@ -16,6 +16,7 @@ import type {
   ProjectWorkspacePayload,
   ProviderEntry,
   StoryboardShot,
+  VideoReferenceMode,
 } from "@dramaflow/shared";
 import {
   STORYBOARD_CAMERA_MOVE_OPTIONS,
@@ -68,6 +69,16 @@ interface ShotProjectState {
   isFinished: boolean;
 }
 
+interface GenerateVideoRequest {
+  shotId: string;
+  prompt?: string;
+  videoReferenceMode?: VideoReferenceMode;
+  referenceImageAssetId?: string;
+  firstFrameAssetId?: string;
+  lastFrameAssetId?: string;
+  referenceImageAssetIds?: string[];
+}
+
 interface Props {
   visible: boolean;
   shot: StoryboardShot;
@@ -85,7 +96,7 @@ interface Props {
   onNavigateToShot: (shotId: string) => void;
   onShotUpdate: (shotId: string, patch: Partial<StoryboardShot>) => void;
   onGenerateImage: (shotId: string, prompt?: string) => void;
-  onGenerateVideo: (shotId: string, prompt?: string, referenceImageAssetId?: string) => void;
+  onGenerateVideo: (request: GenerateVideoRequest) => void;
   onGenerateTts: (shotId: string, characterId: string, text: string) => void;
   onAdoptVersion: (documentId: string, versionId: string) => void;
   onUseMediaVersionForShot?: (shotId: string, mediaType: "image" | "video" | "audio", versionId: string) => void;
@@ -316,6 +327,25 @@ export function ShotDetailModal({
   const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
   const [videoPromptPreview, setVideoPromptPreview] = useState<string | null>(null);
   const [regenFields, setRegenFields] = useState<RegenFieldEntry[] | null>(null);
+
+  // 视频参考模式状态
+  const currentImageAssetId = (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId;
+  const imageCandidateOptions = (state?.imageCandidates ?? [])
+    .map((version) => {
+      const content = version.content as MediaVersionContent | undefined;
+      return content?.assetId ? { versionId: version.id, assetId: content.assetId, label: version.title || `v${version.versionNumber}` } : null;
+    })
+    .filter((item): item is { versionId: string; assetId: string; label: string } => Boolean(item));
+
+  const [videoReferenceMode, setVideoReferenceMode] = useState<VideoReferenceMode>(currentImageAssetId ? "single" : "none");
+  const [lastFrameAssetId, setLastFrameAssetId] = useState("");
+  const [multiReferenceAssetIds, setMultiReferenceAssetIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setVideoReferenceMode(currentImageAssetId ? "single" : "none");
+    setLastFrameAssetId("");
+    setMultiReferenceAssetIds([]);
+  }, [shot.id, currentImageAssetId]);
 
   useEffect(() => {
     if (visible) {
@@ -753,9 +783,70 @@ export function ShotDetailModal({
                   </>
                 ) : (
                   <>
-                    <button className="btn btn-primary btn-sm" type="button" disabled={!canMutateProject || isVideoPending} onClick={() => onGenerateVideo(shot.id, shot.videoPrompt, (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId)}>
+                    <button className="btn btn-primary btn-sm" type="button"
+                      disabled={!canMutateProject || isVideoPending || (videoReferenceMode === "first_last" && (!currentImageAssetId || !lastFrameAssetId))}
+                      onClick={() => onGenerateVideo({
+                        shotId: shot.id,
+                        prompt: shot.videoPrompt,
+                        videoReferenceMode,
+                        ...(videoReferenceMode === "single" && currentImageAssetId ? { referenceImageAssetId: currentImageAssetId } : {}),
+                        ...(videoReferenceMode === "first_last" && currentImageAssetId && lastFrameAssetId ? { firstFrameAssetId: currentImageAssetId, lastFrameAssetId } : {}),
+                        ...(videoReferenceMode === "multiple" && multiReferenceAssetIds.length ? { referenceImageAssetIds: multiReferenceAssetIds.slice(0, 6) } : {}),
+                      })}
+                    >
                       {isVideoPending ? t("common.submitting") : t("shotDetailDrawer.generateVideo")}
                     </button>
+                    <select
+                      className="input sm-config-source-select"
+                      value={videoReferenceMode}
+                      onChange={(e) => setVideoReferenceMode(e.target.value as VideoReferenceMode)}
+                    >
+                      <option value="none">{t("shotDetailDrawer.videoReferenceNone")}</option>
+                      <option value="single" disabled={!currentImageAssetId}>{t("shotDetailDrawer.videoReferenceCurrent")}</option>
+                      <option value="first_last" disabled={!currentImageAssetId || imageCandidateOptions.length === 0}>{t("shotDetailDrawer.videoReferenceFirstLast")}</option>
+                      <option value="multiple" disabled={imageCandidateOptions.length === 0}>{t("shotDetailDrawer.videoReferenceMultiple")}</option>
+                    </select>
+                    {videoReferenceMode === "first_last" && (
+                      <select
+                        className="input sm-config-source-select"
+                        value={lastFrameAssetId}
+                        onChange={(e) => setLastFrameAssetId(e.target.value)}
+                      >
+                        <option value="">{t("shotDetailDrawer.videoReferenceLastFrame")}</option>
+                        {imageCandidateOptions.map((item) => (
+                          <option key={item.versionId} value={item.assetId}>{item.label}</option>
+                        ))}
+                      </select>
+                    )}
+                    {videoReferenceMode === "multiple" && (
+                      <select
+                        className="input sm-config-source-select"
+                        value=""
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value && !multiReferenceAssetIds.includes(value) && multiReferenceAssetIds.length < 6) {
+                            setMultiReferenceAssetIds([...multiReferenceAssetIds, value]);
+                          }
+                        }}
+                      >
+                        <option value="">{t("shotDetailDrawer.videoReferenceAdd")}</option>
+                        {imageCandidateOptions.map((item) => (
+                          <option key={item.versionId} value={item.assetId}>{item.label}</option>
+                        ))}
+                      </select>
+                    )}
+                    {videoReferenceMode === "multiple" && multiReferenceAssetIds.length > 0 && (
+                      <div className="sm-char-tags">
+                        {multiReferenceAssetIds.map((assetId) => (
+                          <span key={assetId} className="sm-char-tag">
+                            {imageCandidateOptions.find((item) => item.assetId === assetId)?.label ?? assetId}
+                            <button type="button" className="sm-char-tag__remove" onClick={() => setMultiReferenceAssetIds(multiReferenceAssetIds.filter((item) => item !== assetId))}>
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <select
                       className="input sm-config-source-select"
                       value={imageConfigSource}

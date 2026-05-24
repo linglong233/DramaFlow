@@ -12,7 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { ImageConfigSource, ProjectWorkspacePayload, StoryboardContent, StoryboardShot, ShotMediaBinding } from "@dramaflow/shared";
+import type { ImageConfigSource, ProjectWorkspacePayload, StoryboardContent, StoryboardShot, ShotMediaBinding, VideoReferenceMode } from "@dramaflow/shared";
 import {
   STORYBOARD_FRAMING_OPTIONS,
   ensureMediaBindings,
@@ -496,9 +496,22 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
   });
 
   const generateVideo = useMutation({
-    mutationFn: async ({ shotId, prompt, referenceImageAssetId }: { shotId: string; prompt?: string; referenceImageAssetId?: string }) => apiFetch(`/shots/${shotId}/video-jobs`, {
+    mutationFn: async (request: { shotId: string; prompt?: string; videoReferenceMode?: VideoReferenceMode; referenceImageAssetId?: string; firstFrameAssetId?: string; lastFrameAssetId?: string; referenceImageAssetIds?: string[] }) => apiFetch(`/shots/${request.shotId}/video-jobs`, {
       method: "POST",
-      body: { projectId: requireProjectId(), style: "cinematic", aspectRatio: "16:9", durationSeconds: 5, prompt: prompt || undefined, referenceImageAssetId, configSource: imageConfigSource, providerId: selectedVideoProvider },
+      body: {
+        projectId: requireProjectId(),
+        style: "cinematic",
+        aspectRatio: "16:9",
+        durationSeconds: 5,
+        prompt: request.prompt || undefined,
+        videoReferenceMode: request.videoReferenceMode,
+        referenceImageAssetId: request.referenceImageAssetId,
+        firstFrameAssetId: request.firstFrameAssetId,
+        lastFrameAssetId: request.lastFrameAssetId,
+        referenceImageAssetIds: request.referenceImageAssetIds,
+        configSource: imageConfigSource,
+        providerId: selectedVideoProvider,
+      },
     }),
     onSuccess: async () => {
       setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: "Video", jobId: "queued" }), error: null });
@@ -742,7 +755,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           onNavigateToShot={(shotId) => setSelectedShotId(shotId)}
           onShotUpdate={updateShot}
           onGenerateImage={(shotId, prompt) => generateImage.mutate({ shotId, prompt })}
-          onGenerateVideo={(shotId, prompt, ref) => generateVideo.mutate({ shotId, prompt, referenceImageAssetId: ref })}
+          onGenerateVideo={(request) => generateVideo.mutate(request)}
           onGenerateTts={(shotId, characterId, text) => generateTts.mutate({ shotId, characterId, text })}
           onAdoptVersion={(documentId, versionId) => adoptVersion.mutate({ documentId, versionId })}
           onUseMediaVersionForShot={storyboardDraftVersionId ? (shotId, mediaType, versionId) => useMediaVersionForShot.mutate({ shotId, mediaType, versionId }) : undefined}
