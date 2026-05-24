@@ -568,7 +568,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     ? project?.versions.find((v) => v.documentId === storyboardDocId && v.status === "draft")?.id
     : undefined;
 
-  const selectMediaVersion = useMutation({
+  const useMediaVersionForShot = useMutation({
     mutationFn: async ({ shotId, mediaType, versionId }: { shotId: string; mediaType: "image" | "video" | "audio"; versionId: string }) => {
       if (!storyboardDraftVersionId) throw new Error("No storyboard draft version");
       return apiFetch(`/versions/${storyboardDraftVersionId}/media-binding`, {
@@ -586,7 +586,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       }));
     },
     onSuccess: async () => {
-      setFeedback({ message: t("shotDetailDrawer.mediaSelected"), error: null });
+      setFeedback({ message: t("shotDetailDrawer.setForShotSuccess"), error: null });
       await invalidateWorkspace();
     },
     onError: (error, { shotId }) => {
@@ -745,7 +745,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           onGenerateVideo={(shotId, prompt, ref) => generateVideo.mutate({ shotId, prompt, referenceImageAssetId: ref })}
           onGenerateTts={(shotId, characterId, text) => generateTts.mutate({ shotId, characterId, text })}
           onAdoptVersion={(documentId, versionId) => adoptVersion.mutate({ documentId, versionId })}
-          onSelectMediaVersion={storyboardDraftVersionId ? (shotId, mediaType, versionId) => selectMediaVersion.mutate({ shotId, mediaType, versionId }) : undefined}
+          onUseMediaVersionForShot={storyboardDraftVersionId ? (shotId, mediaType, versionId) => useMediaVersionForShot.mutate({ shotId, mediaType, versionId }) : undefined}
           onSubtitleChange={editable ? handleSubtitleChange : undefined}
           currentSubtitle={selectedShotId ? safeContent.mediaBindings[selectedShotId]?.subtitle : undefined}
           onMoveShot={moveShot}
@@ -754,6 +754,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           isVideoPending={generateVideo.isPending && generateVideo.variables?.shotId === selectedShotId}
           isTtsPending={generateTts.isPending && generateTts.variables?.shotId === selectedShotId}
           isAdoptPending={adoptVersion.isPending}
+          isSetCurrentUsePending={useMediaVersionForShot.isPending}
           hasPrev={hasPrev}
           hasNext={hasNext}
           onPrev={() => {
