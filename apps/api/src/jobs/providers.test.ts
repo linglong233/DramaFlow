@@ -40,6 +40,10 @@ import {
   SCRIPT_GENERATION_CONTRACT,
   STORYBOARD_GENERATION_CONTRACT,
 } from "./prompting/text-contracts";
+import {
+  buildMediaImagePrompt,
+  buildMediaVideoPrompt,
+} from "./prompting/media-prompt-builder";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -1215,4 +1219,57 @@ test("storyboard prompt contract includes scene rules and normalized enums", () 
   assert.ok(rendered.user.includes("Multiple shots in the same scene MUST share the same sceneId."));
   assert.ok(rendered.user.includes("CU"));
   assert.ok(rendered.user.includes("dolly-in"));
+});
+
+// =============================================
+// 媒体提示词构建器测试
+// =============================================
+
+test("media image prompt builder keeps director-friendly sections", () => {
+  const result = buildMediaImagePrompt({
+    shot: {
+      id: "shot-1",
+      sceneId: "scene-1",
+      shotLabel: "1A",
+      framing: "CU",
+      cameraMove: "static",
+      durationSeconds: 4,
+      visualDescription: "Lin studies a blood-stained letter.",
+      characterIds: ["char-lin"],
+    },
+    characters: [{ id: "char-lin", name: "Lin", appearance: "short black hair, gray coat", tags: [], referenceImages: [], sortOrder: 0 }],
+    location: { id: "loc-office", name: "Office", description: "rainy glass office", referenceImages: [], sortOrder: 0 },
+    styleGuide: { visualStyle: "noir realism", colorPalette: "blue and amber", compositionNote: "tight negative space" },
+  });
+
+  assert.equal(result.metadata.contractId, "media.image_prompt.v1");
+  assert.ok(result.positivePrompt.includes("Subject: Lin studies a blood-stained letter."));
+  assert.ok(result.positivePrompt.includes("Character: Lin"));
+  assert.ok(result.positivePrompt.includes("Location: rainy glass office"));
+  assert.ok(result.negativePrompt.includes("watermark"));
+});
+
+test("media video prompt builder changes continuity instruction by reference mode", () => {
+  const base = {
+    shot: {
+      id: "shot-1",
+      sceneId: "scene-1",
+      shotLabel: "1A",
+      framing: "MS",
+      cameraMove: "dolly-in",
+      durationSeconds: 5,
+      visualDescription: "Lin walks through the corridor.",
+      actionDescription: "She slows at the door.",
+    },
+    characters: [],
+    styleGuide: { visualStyle: "controlled suspense" },
+  };
+
+  const single = buildMediaVideoPrompt({ ...base, videoReferenceMode: "single" });
+  const firstLast = buildMediaVideoPrompt({ ...base, videoReferenceMode: "first_last" });
+  const multiple = buildMediaVideoPrompt({ ...base, videoReferenceMode: "multiple" });
+
+  assert.ok(single.positivePrompt.includes("Maintain the referenced subject identity"));
+  assert.ok(firstLast.positivePrompt.includes("Bridge motion from the first frame to the last frame"));
+  assert.ok(multiple.positivePrompt.includes("Treat the reference images as a consistency set"));
 });
