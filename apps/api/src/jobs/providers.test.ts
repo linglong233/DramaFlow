@@ -31,6 +31,11 @@ import {
   renderPromptSections,
   summarizePromptInput,
 } from "./prompting/prompt-renderer";
+import {
+  buildJsonRepairPrompt,
+  extractJsonObject,
+  validatePromptSchema,
+} from "./prompting/structured-output";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -1045,4 +1050,55 @@ test("prompt contract render returns metadata with id and version", () => {
   assert.equal(rendered.metadata.contractId, "unit.test.v1");
   assert.equal(rendered.metadata.contractVersion, "1.0.0");
   assert.ok(rendered.user.includes("Pilot"));
+});
+
+// =============================================
+// 结构化输出校验、JSON 提取与修复提示词测试
+// =============================================
+
+test("structured output validator reports missing required fields and invalid enums", () => {
+  const schema = {
+    id: "storyboard.v1",
+    type: "object" as const,
+    required: ["overview", "shots"],
+    properties: {
+      overview: { id: "overview", type: "string" as const },
+      shots: {
+        id: "shots",
+        type: "array" as const,
+        items: {
+          id: "shot",
+          type: "object" as const,
+          required: ["framing"],
+          properties: {
+            framing: { id: "framing", type: "string" as const, enum: ["CU", "MS", "LS"] },
+          },
+        },
+      },
+    },
+  };
+
+  const result = validatePromptSchema({ shots: [{ framing: "BAD" }] }, schema);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.includes("overview")));
+  assert.ok(result.errors.some((error) => error.includes("framing")));
+});
+
+test("structured output helper extracts JSON from fenced model output", () => {
+  const parsed = extractJsonObject<{ ok: boolean }>("```json\n{\"ok\":true}\n```");
+  assert.deepEqual(parsed, { ok: true });
+});
+
+test("json repair prompt asks only to repair the existing payload", () => {
+  const prompt = buildJsonRepairPrompt({
+    schemaName: "script.v1",
+    schemaText: "{ logline: string }",
+    rawOutput: "{ bad json",
+    errors: ["Invalid JSON"],
+  });
+
+  assert.ok(prompt.includes("Repair the JSON only."));
+  assert.ok(prompt.includes("Do not rewrite, expand, summarize, or invent story content."));
+  assert.ok(prompt.includes("Invalid JSON"));
+  assert.ok(prompt.includes("{ bad json"));
 });
