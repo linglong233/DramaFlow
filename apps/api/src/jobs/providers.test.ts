@@ -23,6 +23,14 @@ import {
   redactVideoReferenceDataUrls,
 } from "./video-reference.utils";
 import { buildVideoReferenceDataUrl } from "./video-reference-data-url";
+import {
+  createPromptSnapshot,
+  type PromptContract,
+} from "./prompting/prompt-contracts";
+import {
+  renderPromptSections,
+  summarizePromptInput,
+} from "./prompting/prompt-renderer";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -973,4 +981,68 @@ test("jobs service passes compressed first_last data URLs to openai video provid
   assert.equal(capturedInput?.videoReferenceMode, "first_last");
   assert.match(String(capturedInput?.firstFrameUrl), /^data:image\/jpeg;base64,/);
   assert.match(String(capturedInput?.lastFrameUrl), /^data:image\/jpeg;base64,/);
+});
+
+// =============================================
+// Prompt Contract Core 和 Renderer 测试
+// =============================================
+
+test("prompt renderer emits stable tagged sections", () => {
+  const rendered = renderPromptSections({
+    task: "Generate a script.",
+    rules: ["Return JSON only.", "Use Chinese dialogue."],
+    projectContext: "World bible context.",
+    sourceContent: "Source synopsis.",
+    outputSchema: "{ logline, premise, characters, scenes }",
+    qualityBar: ["Scenes must be playable.", "Characters must stay consistent."],
+  });
+
+  assert.ok(rendered.includes("<task>\nGenerate a script.\n</task>"));
+  assert.ok(rendered.includes("<rules>\n- Return JSON only.\n- Use Chinese dialogue.\n</rules>"));
+  assert.ok(rendered.includes("<project_context>\nWorld bible context.\n</project_context>"));
+  assert.ok(rendered.includes("<source_content>\nSource synopsis.\n</source_content>"));
+  assert.ok(rendered.includes("<output_schema>\n{ logline, premise, characters, scenes }\n</output_schema>"));
+  assert.ok(rendered.includes("<quality_bar>\n- Scenes must be playable.\n- Characters must stay consistent.\n</quality_bar>"));
+});
+
+test("prompt snapshot records contract version and rendered prompts", () => {
+  const snapshot = createPromptSnapshot({
+    contractId: "script.generation.v1",
+    contractVersion: "1.0.0",
+    provider: "openai-completions",
+    model: "gpt-4.1-mini",
+    renderedSystemPrompt: "system",
+    renderedUserPrompt: "user",
+    inputSummary: summarizePromptInput({ title: "Pilot", premise: "A secret" }),
+    schemaVersion: "script.v1",
+    outputValidation: { ok: true, errors: [] },
+  });
+
+  assert.equal(snapshot.contractId, "script.generation.v1");
+  assert.equal(snapshot.contractVersion, "1.0.0");
+  assert.equal(snapshot.model, "gpt-4.1-mini");
+  assert.equal(snapshot.outputValidation?.ok, true);
+});
+
+test("prompt contract render returns metadata with id and version", () => {
+  const contract: PromptContract<{ title: string }, { title: string }> = {
+    id: "unit.test.v1",
+    version: "1.0.0",
+    task: "Unit test",
+    outputKind: "json",
+    render: (input) => ({
+      system: "system",
+      user: renderPromptSections({ task: `Title: ${input.title}` }),
+      metadata: {
+        contractId: "unit.test.v1",
+        contractVersion: "1.0.0",
+        inputSummary: summarizePromptInput(input),
+      },
+    }),
+  };
+
+  const rendered = contract.render({ title: "Pilot" });
+  assert.equal(rendered.metadata.contractId, "unit.test.v1");
+  assert.equal(rendered.metadata.contractVersion, "1.0.0");
+  assert.ok(rendered.user.includes("Pilot"));
 });
