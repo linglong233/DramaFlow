@@ -413,11 +413,11 @@ export function ShotDetailModal({
 
     apiFetch<{ positivePrompt?: string }>(`/shots/${shot.id}/preview-video-prompt`, {
       method: "POST",
-      body: { projectId },
+      body: { projectId, videoReferenceMode },
     })
       .then((data) => setVideoPromptPreview(data.positivePrompt ?? ""))
       .catch(() => setVideoPromptPreview(""));
-  }, [shot.id, projectId]);
+  }, [shot.id, projectId, videoReferenceMode]);
 
   function renderField(label: string, value: string, field: keyof StoryboardShot, rows = 3) {
     return (

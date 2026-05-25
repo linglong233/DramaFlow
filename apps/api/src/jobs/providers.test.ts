@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { GrokMediaProvider } from "./grok-media.provider";
+import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { OpenAiCompatTextProvider } from "./text-generation.provider";
@@ -45,6 +46,7 @@ import {
 import {
   buildMediaImagePrompt,
   buildMediaVideoPrompt,
+  augmentVideoPromptWithReferenceMode,
 } from "./prompting/media-prompt-builder";
 
 const originalFetch = globalThis.fetch;
@@ -1336,6 +1338,24 @@ test("media video prompt builder changes continuity instruction by reference mod
   assert.ok(multiple.positivePrompt.includes("Treat the reference images as a consistency set"));
 });
 
+test("video prompt augmentation appends reference continuity for visual reference modes", () => {
+  const firstLast = augmentVideoPromptWithReferenceMode("Manual motion prompt", "first_last");
+  const multiple = augmentVideoPromptWithReferenceMode("Manual motion prompt", "multiple");
+
+  assert.ok(firstLast.includes("Manual motion prompt"));
+  assert.ok(firstLast.includes("Bridge motion from the first frame to the last frame"));
+  assert.ok(multiple.includes("Treat the reference images as a consistency set"));
+});
+
+test("video prompt augmentation keeps none mode and avoids duplicate continuity", () => {
+  const none = augmentVideoPromptWithReferenceMode("Manual motion prompt", "none");
+  const once = augmentVideoPromptWithReferenceMode("Manual motion prompt", "single");
+  const twice = augmentVideoPromptWithReferenceMode(once, "single");
+
+  assert.equal(none, "Manual motion prompt");
+  assert.equal(twice, once);
+});
+
 // =============================================
 // 小说导入世界观与分块场景契约测试
 // =============================================
@@ -1424,7 +1444,7 @@ test("jobs service uses reference-mode-aware video prompt when no manual prompt 
   assert.ok(capturedPrompt?.includes("Negative prompt: blurry"));
 });
 
-test("jobs service keeps manual video prompt override unchanged", async () => {
+test("jobs service augments supplied video prompt when reference mode is visual", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = Object.create(JobsService.prototype) as any;
   let previewCalled = false;
@@ -1468,7 +1488,7 @@ test("jobs service keeps manual video prompt override unchanged", async () => {
       style: "cinematic",
       aspectRatio: "16:9",
       durationSeconds: 5,
-      videoReferenceMode: "multiple",
+      videoReferenceMode: "first_last",
       prompt: "Manual director prompt",
     },
   };
@@ -1476,5 +1496,69 @@ test("jobs service keeps manual video prompt override unchanged", async () => {
   await (service as unknown as { processVideoJob: (job: unknown) => Promise<unknown> }).processVideoJob(job);
 
   assert.equal(previewCalled, false);
+  assert.ok(capturedPrompt?.includes("Manual director prompt"));
+  assert.ok(capturedPrompt?.includes("Bridge motion from the first frame to the last frame"));
+});
+
+test("jobs service keeps supplied video prompt unchanged for none reference mode", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = Object.create(JobsService.prototype) as any;
+  let capturedPrompt: string | undefined;
+
+  service.resolveLlmConfig = async () => ({
+    provider: "openai-completions",
+    apiKey: "key",
+    baseUrl: "https://openai.test",
+    model: "sora-2",
+  });
+  service.processVideoJobOpenAi = async (_job: unknown, prompt: string) => {
+    capturedPrompt = prompt;
+    return {};
+  };
+
+  const job = {
+    id: "job-video-none-manual",
+    type: "video_generation",
+    status: "queued",
+    projectId: "project-1",
+    shotId: "shot-1",
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    progress: 0,
+    input: {
+      projectId: "project-1",
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      durationSeconds: 5,
+      videoReferenceMode: "none",
+      prompt: "Manual director prompt",
+    },
+  };
+
+  await (service as unknown as { processVideoJob: (job: unknown) => Promise<unknown> }).processVideoJob(job);
+
   assert.equal(capturedPrompt, "Manual director prompt");
+});
+
+test("jobs controller passes video reference mode to preview prompt builder", () => {
+  let capturedMode: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controller = Object.create(JobsController.prototype) as any;
+  controller.promptBuilder = {
+    previewVideoPrompt: (_projectId: string, _shotId: string, videoReferenceMode: unknown) => {
+      capturedMode = videoReferenceMode;
+      return { positivePrompt: "", negativePrompt: "", shotId: "shot-1", injectedCharacters: [] };
+    },
+  };
+
+  const result = controller.previewVideoPrompt(
+    { id: "user-1" },
+    "shot-1",
+    { projectId: "project-1", videoReferenceMode: "multiple" },
+  );
+
+  assert.equal(capturedMode, "multiple");
+  assert.equal(result.shotId, "shot-1");
 });

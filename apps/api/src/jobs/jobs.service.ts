@@ -77,6 +77,7 @@ import { buildVideoReferenceDataUrl } from "./video-reference-data-url";
 import { getVideoProviderAdapter } from "./video-providers/registry";
 import type { VideoProviderConfig, VideoProviderJobState } from "./video-providers/types";
 import { createPromptSnapshot } from "./prompting/prompt-contracts";
+import { augmentVideoPromptWithReferenceMode } from "./prompting/media-prompt-builder";
 import { SCRIPT_GENERATION_CONTRACT, STORYBOARD_GENERATION_CONTRACT } from "./prompting/text-contracts";
 
 export type { StreamChunk };
@@ -1342,9 +1343,11 @@ export class JobsService {
   }
 
   private async processVideoJob(job: JobRecord<MediaJobInput>) {
-    const prompt = job.input.prompt?.trim()
-      || await this.composeVideoPromptForJob(job)
-      || `${job.shotId} ${job.input.style} video`;
+    const suppliedPrompt = job.input.prompt?.trim();
+    const prompt = suppliedPrompt
+      ? augmentVideoPromptWithReferenceMode(suppliedPrompt, job.input.videoReferenceMode ?? "none")
+      : await this.composeVideoPromptForJob(job)
+        || `${job.shotId} ${job.input.style} video`;
 
     // 优先从新 video provider 列表解析
     if (job.input.configSource) {

@@ -38,6 +38,7 @@ import type {
   JobType,
   LlmConfigSource,
   WorldBibleReferenceImageGenerateRequest,
+  VideoReferenceMode,
 } from "@dramaflow/shared";
 
 import { AuthGuard } from "../common/auth.guard";
@@ -431,9 +432,9 @@ export class JobsController {
   previewVideoPrompt(
     @CurrentUser() user: { id: string },
     @Param("id") shotId: string,
-    @Body() body: { projectId: string },
+    @Body() body: { projectId: string; videoReferenceMode?: VideoReferenceMode },
   ) {
-    return this.promptBuilder.previewVideoPrompt(body.projectId, shotId);
+    return this.promptBuilder.previewVideoPrompt(body.projectId, shotId, body.videoReferenceMode ?? "none");
   }
 
   // ===== 任务管理 =====

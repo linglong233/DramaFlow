@@ -68,7 +68,7 @@ export function buildMediaImagePrompt(input: MediaPromptInput): MediaPromptResul
 
 export function buildMediaVideoPrompt(input: MediaVideoPromptInput): MediaPromptResult {
   const image = buildMediaImagePrompt(input);
-  const continuity = continuityForReferenceMode(input.videoReferenceMode ?? "none");
+  const continuity = getVideoReferenceContinuityInstruction(input.videoReferenceMode ?? "none");
   const motion = [
     input.shot.cameraMove ? `Camera movement: ${input.shot.cameraMove}` : "",
     input.shot.actionDescription ? `Action continuity: ${input.shot.actionDescription}` : "",
@@ -104,7 +104,7 @@ function buildBaseSections(input: MediaPromptInput): MediaPromptResult["sections
   };
 }
 
-function continuityForReferenceMode(mode: VideoReferenceMode): string {
+export function getVideoReferenceContinuityInstruction(mode: VideoReferenceMode): string {
   if (mode === "single") {
     return "Maintain the referenced subject identity, wardrobe, hairstyle, composition, and color tone throughout the shot.";
   }
@@ -115,4 +115,18 @@ function continuityForReferenceMode(mode: VideoReferenceMode): string {
     return "Treat the reference images as a consistency set for character, setting, wardrobe, props, and style; do not collage them together.";
   }
   return "Use only the text description for continuity; no visual reference image is provided.";
+}
+
+export function augmentVideoPromptWithReferenceMode(prompt: string, mode: VideoReferenceMode): string {
+  const trimmed = prompt.trim();
+  if (!trimmed || mode === "none") {
+    return trimmed;
+  }
+
+  const continuity = getVideoReferenceContinuityInstruction(mode);
+  if (trimmed.includes(continuity)) {
+    return trimmed;
+  }
+
+  return [trimmed, `Reference continuity: ${continuity}`].join("\n");
 }
