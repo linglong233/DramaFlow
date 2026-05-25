@@ -36,6 +36,10 @@ import {
   extractJsonObject,
   validatePromptSchema,
 } from "./prompting/structured-output";
+import {
+  SCRIPT_GENERATION_CONTRACT,
+  STORYBOARD_GENERATION_CONTRACT,
+} from "./prompting/text-contracts";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -1101,4 +1105,56 @@ test("json repair prompt asks only to repair the existing payload", () => {
   assert.ok(prompt.includes("Do not rewrite, expand, summarize, or invent story content."));
   assert.ok(prompt.includes("Invalid JSON"));
   assert.ok(prompt.includes("{ bad json"));
+});
+
+// =============================================
+// 脚本与分镜提示词契约测试
+// =============================================
+
+test("script prompt contract renders tagged context and schema", () => {
+  const rendered = SCRIPT_GENERATION_CONTRACT.render({
+    title: "Edge of Dawn",
+    genre: "Urban suspense",
+    premise: "A producer finds a hidden threat.",
+    episodeGoal: "Expose the conspiracy.",
+    tone: "tense",
+    audience: "young urban viewers",
+    worldBibleContext: "Character: Lin, precise and exhausted.",
+  });
+
+  assert.equal(rendered.metadata.contractId, "script.generation.v1");
+  assert.equal(SCRIPT_GENERATION_CONTRACT.schema?.id, "script.v1");
+  assert.ok(rendered.user.includes("<task>"));
+  assert.ok(rendered.user.includes("<project_context>"));
+  assert.ok(rendered.user.includes("<output_schema>"));
+  assert.ok(rendered.user.includes("logline"));
+});
+
+test("storyboard prompt contract includes scene rules and normalized enums", () => {
+  const rendered = STORYBOARD_GENERATION_CONTRACT.render({
+    cinematicStyle: "noir neon realism",
+    shotDensity: "dense",
+    script: {
+      logline: "A secret breaks a team.",
+      premise: "A tense short drama.",
+      characters: [{ name: "Lin", profile: "detective" }],
+      scenes: [
+        {
+          id: "scene-1",
+          heading: "INT. OFFICE - NIGHT",
+          synopsis: "Lin finds a clue.",
+          characters: ["Lin"],
+          dialogue: [],
+          directorNote: "quiet",
+        },
+      ],
+    },
+    worldBibleContext: "Character id char-lin belongs to Lin.",
+  });
+
+  assert.equal(rendered.metadata.contractId, "storyboard.generation.v1");
+  assert.equal(STORYBOARD_GENERATION_CONTRACT.schema?.id, "storyboard.v1");
+  assert.ok(rendered.user.includes("Multiple shots in the same scene MUST share the same sceneId."));
+  assert.ok(rendered.user.includes("CU"));
+  assert.ok(rendered.user.includes("dolly-in"));
 });
