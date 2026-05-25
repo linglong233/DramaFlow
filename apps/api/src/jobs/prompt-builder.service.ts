@@ -13,6 +13,7 @@ import type {
   ScriptContent,
   StoryboardShot,
   StyleGuideProfile,
+  VideoReferenceMode,
   WorldBibleContent,
 } from "@dramaflow/shared";
 
@@ -154,6 +155,7 @@ export class PromptBuilderService {
     projectId: string,
     shot: StoryboardShot,
     worldBible: WorldBibleContent,
+    videoReferenceMode: VideoReferenceMode = "none",
   ): Promise<PromptPreviewResult> {
     const characters = this.resolveCharacters(shot, worldBible);
     const location = this.findMatchingLocation(shot, worldBible);
@@ -164,7 +166,7 @@ export class PromptBuilderService {
       characters,
       location: location ?? undefined,
       styleGuide: style ?? undefined,
-      videoReferenceMode: (shot as any).videoReferenceMode ?? "none",
+      videoReferenceMode,
     });
 
     return {
@@ -177,7 +179,11 @@ export class PromptBuilderService {
     };
   }
 
-  async previewVideoPrompt(projectId: string, shotId: string): Promise<PromptPreviewResult> {
+  async previewVideoPrompt(
+    projectId: string,
+    shotId: string,
+    videoReferenceMode: VideoReferenceMode = "none",
+  ): Promise<PromptPreviewResult> {
     return this.database.query((db) => {
       const worldBible = this.extractWorldBibleFromDb(db, projectId);
       const shot = this.findShotInVersions(db, projectId, shotId);
@@ -196,35 +202,21 @@ export class PromptBuilderService {
       const location = this.findMatchingLocation(shot, worldBible, sceneLocationId);
       const style = worldBible.styleGuide;
 
-      const positiveSegments: string[] = [];
-
-      if (style?.visualStyle) positiveSegments.push(style.visualStyle);
-      const framingDesc = FRAMING_PROMPT_MAP[shot.framing] ?? shot.framing;
-      if (framingDesc) positiveSegments.push(framingDesc);
-      if (shot.visualDescription) positiveSegments.push(shot.visualDescription);
-      for (const char of characters) {
-        positiveSegments.push(`${char.name}: ${char.appearance}`);
-      }
-      if (location) {
-        positiveSegments.push(location.description);
-        if (location.lighting) positiveSegments.push(location.lighting);
-      }
-      if (style?.colorPalette) positiveSegments.push(style.colorPalette);
-
-      // Video-specific additions
-      const cameraDesc = CAMERA_MOVE_PROMPT_MAP[shot.cameraMove] ?? shot.cameraMove;
-      if (cameraDesc) positiveSegments.push(cameraDesc);
-      if (shot.durationSeconds) positiveSegments.push(`${shot.durationSeconds} seconds duration`);
-      if (shot.dialogue) positiveSegments.push(`character speaks: "${shot.dialogue}"`);
-      if (shot.soundDesign) positiveSegments.push(`ambient sound: ${shot.soundDesign}`);
+      const mediaPrompt = buildMediaVideoPrompt({
+        shot,
+        characters,
+        location: location ?? undefined,
+        styleGuide: style ?? undefined,
+        videoReferenceMode,
+      });
 
       return {
-        positivePrompt: positiveSegments.filter(Boolean).join(", "),
-        negativePrompt: style?.negativePrompt ?? "blurry, low quality, distorted, deformed, watermark, text",
+        positivePrompt: mediaPrompt.positivePrompt,
+        negativePrompt: mediaPrompt.negativePrompt,
         shotId,
-        injectedCharacters: characters.map((c) => c.name),
-        injectedLocation: location?.name,
-        injectedStyle: style?.visualStyle,
+        injectedCharacters: mediaPrompt.metadata.injectedCharacters,
+        injectedLocation: mediaPrompt.metadata.injectedLocation,
+        injectedStyle: mediaPrompt.metadata.injectedStyle,
       };
     });
   }

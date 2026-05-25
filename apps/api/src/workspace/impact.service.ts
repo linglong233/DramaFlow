@@ -27,6 +27,7 @@ import {
   type ImpactTargetRecord,
   type ProjectImpactIssuesQuery,
   type ProjectImpactIssuesResponse,
+  type PromptSnapshotRecord,
   type VersionDependencyRecord,
   type VersionImpactSummary,
   type VersionRecord,
@@ -325,7 +326,7 @@ export class ImpactService {
           targetAnchorId,
           sourceSnapshotHash,
           targetSnapshotHash,
-          promptSnapshot: typeof metadata.promptSnapshot === "string" ? metadata.promptSnapshot : undefined,
+          promptSnapshot: this.normalizePromptSnapshot(metadata.promptSnapshot),
           provider: typeof metadata.provider === "string" ? metadata.provider : undefined,
           model: typeof metadata.model === "string" ? metadata.model : undefined,
           configSource: metadata.llmConfigSource === "team" || metadata.llmConfigSource === "personal" ? metadata.llmConfigSource : undefined,
@@ -594,7 +595,7 @@ export class ImpactService {
     actorId: string;
     summary: string;
     suggestedContent?: unknown;
-    promptSnapshot?: string;
+    promptSnapshot?: PromptSnapshotRecord;
     provider?: string;
     model?: string;
     createdJobId?: string;
@@ -788,6 +789,17 @@ export class ImpactService {
         .slice(0, 5)
         .map((issue) => this.toIssueSummary(db, issue)),
     };
+  }
+
+  /** 标准化 promptSnapshot：接受字符串或对象 */
+  private normalizePromptSnapshot(value: unknown): PromptSnapshotRecord | undefined {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return undefined;
   }
 
   /** 追加影响议题事件记录 */

@@ -3100,6 +3100,99 @@ async function main() {
     });
   });
 
+  await runCase("structured prompt snapshots are preserved in impact dependencies", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "prompt-snapshot-owner@example.com",
+        displayName: "Prompt Snapshot Owner",
+      });
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+      const readHeaders = authHeaders(owner.accessToken);
+
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      assert.equal(teams.length > 0, true);
+      const teamId = teams.find((team) => team.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
+
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          teamId,
+          name: "Prompt Snapshot Audit Project",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const workspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: readHeaders,
+      });
+      assert.equal(workspaceResponse.status, 200);
+      const workspace = await workspaceResponse.json() as {
+        documents: Array<{ id: string; type: string }>;
+      };
+      const scriptDocument = workspace.documents.find((document) => document.type === "script");
+      const storyboardDocument = workspace.documents.find((document) => document.type === "storyboard");
+      assert.ok(scriptDocument);
+      assert.ok(storyboardDocument);
+
+      const scriptVersionResponse = await originalFetch(`${baseUrl}/documents/${scriptDocument.id}/versions`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          title: "Source Script",
+          content: {
+            logline: "A prompt audit source.",
+            premise: "A test.",
+            characters: [],
+            scenes: [],
+          },
+          metadata: { source: "prompt-snapshot-test" },
+        }),
+      });
+      assert.equal(scriptVersionResponse.status, 201);
+      const scriptVersion = await scriptVersionResponse.json() as { id: string };
+
+      const storyboardVersionResponse = await originalFetch(`${baseUrl}/documents/${storyboardDocument.id}/versions`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          title: "Storyboard From Script",
+          content: {
+            overview: "Prompt audit storyboard.",
+            shots: [],
+          },
+          metadata: {
+            sourceScriptVersionId: scriptVersion.id,
+            provider: "gpt-test",
+            model: "gpt-test",
+            promptSnapshot: {
+              contractId: "storyboard.generation.v1",
+              contractVersion: "1.0.0",
+              schemaVersion: "storyboard.v1",
+            },
+          },
+        }),
+      });
+      assert.equal(storyboardVersionResponse.status, 201);
+      const storyboardVersion = await storyboardVersionResponse.json() as { id: string };
+
+      const summaryResponse = await originalFetch(`${baseUrl}/versions/${storyboardVersion.id}/impact-summary`, {
+        headers: readHeaders,
+      });
+      assert.equal(summaryResponse.status, 200);
+      const summary = await summaryResponse.json() as {
+        dependencies: Array<{ promptSnapshot?: unknown }>;
+      };
+      assert.equal(summary.dependencies.length, 1);
+      const promptSnapshot = summary.dependencies[0].promptSnapshot as Record<string, unknown>;
+      assert.equal(promptSnapshot.contractId, "storyboard.generation.v1");
+      assert.equal(promptSnapshot.contractVersion, "1.0.0");
+      assert.equal(promptSnapshot.schemaVersion, "storyboard.v1");
+    });
+  });
+
   await runCase("mock image generation", async () => {
     const mediaProvider = new OpenAiMediaProvider();
     const image = await mediaProvider.generateImage({

@@ -17,7 +17,7 @@ import type {
 } from "@dramaflow/shared";
 import { normalizeStoryboardContent } from "@dramaflow/shared";
 import type { PromptJsonSchema, RenderedPrompt } from "./prompting/prompt-contracts";
-import { extractJsonObject, validatePromptSchema } from "./prompting/structured-output";
+import { buildJsonRepairPrompt, extractJsonObject, validatePromptSchema } from "./prompting/structured-output";
 
 interface OpenAiCompatMessage {
   content?: string | OpenAiCompatContentPart[];
@@ -122,6 +122,54 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
     }
   }
 
+  private async requestJsonChatCompletion(input: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    temperature: number;
+    system: string;
+    user: string;
+  }): Promise<{ ok: true; raw: string | undefined } | { ok: false; reason: string }> {
+    const response = await fetch(`${input.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: input.model,
+        temperature: input.temperature,
+        stream: false,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: input.system },
+          { role: "user", content: input.user },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      return { ok: false, reason: `HTTP ${response.status}: ${await response.text()}` };
+    }
+
+    return { ok: true, raw: await this.extractResponseContent(response) };
+  }
+
+  private validateStructuredResponse<T>(
+    raw: string | undefined,
+    schema: PromptJsonSchema,
+  ): { parsed?: T; validation: { ok: boolean; errors: string[] } } {
+    const parsed = extractJsonObject<T>(raw);
+    if (!parsed) {
+      return {
+        validation: { ok: false, errors: ["response did not contain parseable JSON content"] },
+      };
+    }
+
+    const validation = validatePromptSchema(parsed, schema);
+    return { parsed, validation };
+  }
+
   async generateStructuredFromRenderedPrompt<T>(
     options: GenerateStructuredFromRenderedPromptOptions<T>,
   ): Promise<StructuredPromptResult<T>> {
@@ -139,44 +187,62 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
     }
 
     try {
-      const response = await fetch(`${effectiveBaseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${effectiveApiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: effectiveModel,
-          temperature: options.temperature,
-          stream: false,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: options.rendered.system },
-            { role: "user", content: options.rendered.user },
-          ],
-        }),
+      const firstResponse = await this.requestJsonChatCompletion({
+        baseUrl: effectiveBaseUrl,
+        apiKey: effectiveApiKey,
+        model: effectiveModel,
+        temperature: options.temperature,
+        system: options.rendered.system,
+        user: options.rendered.user,
       });
 
-      if (!response.ok) {
-        return this.handleStructuredRenderedFailure(options, `HTTP ${response.status}: ${await response.text()}`);
+      if (!firstResponse.ok) {
+        return this.handleStructuredRenderedFailure(options, firstResponse.reason);
       }
 
-      const raw = await this.extractResponseContent(response);
-      const parsed = extractJsonObject<T>(raw);
-      if (!parsed) {
-        return this.handleStructuredRenderedFailure(options, "response did not contain parseable JSON content");
+      const firstAttempt = this.validateStructuredResponse<T>(firstResponse.raw, options.schema);
+      if (firstAttempt.parsed && firstAttempt.validation.ok) {
+        const content = options.transformResult ? options.transformResult(firstAttempt.parsed) : firstAttempt.parsed;
+        return {
+          content,
+          rendered: options.rendered,
+          validation: firstAttempt.validation,
+        };
       }
 
-      const validation = validatePromptSchema(parsed, options.schema);
-      if (!validation.ok) {
-        return this.handleStructuredRenderedFailure(options, validation.errors.join("; "));
+      if (!firstResponse.raw) {
+        return this.handleStructuredRenderedFailure(options, firstAttempt.validation.errors.join("; "));
       }
 
-      const content = options.transformResult ? options.transformResult(parsed) : parsed;
+      const repairPrompt = buildJsonRepairPrompt({
+        schemaName: options.schema.id,
+        schemaText: JSON.stringify(options.schema, null, 2),
+        rawOutput: firstResponse.raw,
+        errors: firstAttempt.validation.errors,
+      });
+      const repairResponse = await this.requestJsonChatCompletion({
+        baseUrl: effectiveBaseUrl,
+        apiKey: effectiveApiKey,
+        model: effectiveModel,
+        temperature: 0,
+        system: "You repair malformed JSON for an automated parser. Return strict JSON only.",
+        user: repairPrompt,
+      });
+
+      if (!repairResponse.ok) {
+        return this.handleStructuredRenderedFailure(options, `${firstAttempt.validation.errors.join("; ")}; repair failed: ${repairResponse.reason}`);
+      }
+
+      const repairedAttempt = this.validateStructuredResponse<T>(repairResponse.raw, options.schema);
+      if (!repairedAttempt.parsed || !repairedAttempt.validation.ok) {
+        return this.handleStructuredRenderedFailure(options, `${firstAttempt.validation.errors.join("; ")}; repair failed: ${repairedAttempt.validation.errors.join("; ")}`);
+      }
+
+      const content = options.transformResult ? options.transformResult(repairedAttempt.parsed) : repairedAttempt.parsed;
       return {
         content,
         rendered: options.rendered,
-        validation,
+        validation: repairedAttempt.validation,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown provider error";

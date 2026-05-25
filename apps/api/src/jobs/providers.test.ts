@@ -131,6 +131,66 @@ test("text provider sends rendered prompt contract metadata and parses structure
   assert.equal(result.rendered.metadata.contractId, "script.generation.v1");
 });
 
+test("text provider repairs invalid structured JSON once", async () => {
+  process.env.OPENAI_COMPAT_API_KEY = "test-key";
+  process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+  process.env.OPENAI_TEXT_MODEL = "gpt-test";
+
+  const requestBodies: Array<{ messages: Array<{ role: string; content: string }>; temperature: number }> = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      messages: Array<{ role: string; content: string }>;
+      temperature: number;
+    };
+    requestBodies.push(body);
+
+    const content = requestBodies.length === 1
+      ? "{ bad json"
+      : JSON.stringify({
+          logline: "A repaired logline",
+          premise: "A repaired premise",
+          characters: [{ name: "Lin", profile: "Lead" }],
+          scenes: [{ id: "scene-1", heading: "INT. ROOM - NIGHT", synopsis: "A clue.", characters: ["Lin"], dialogue: [], directorNote: "tight" }],
+        });
+
+    return new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  const provider = new OpenAiCompatTextProvider();
+  const rendered = SCRIPT_GENERATION_CONTRACT.render({
+    title: "Pilot",
+    genre: "Suspense",
+    premise: "A secret.",
+    episodeGoal: "Reveal it.",
+    tone: "tense",
+    audience: "mobile viewers",
+  });
+
+  const result = await provider.generateStructuredFromRenderedPrompt({
+    operation: "script generation",
+    rendered,
+    schema: SCRIPT_GENERATION_CONTRACT.schema!,
+    temperature: 0.8,
+    config: {
+      provider: "openai-completions",
+      apiKey: "test-key",
+      baseUrl: "https://example.test/v1",
+      model: "gpt-test",
+    },
+    mockFactory: () => ({ logline: "", premise: "", characters: [], scenes: [] }),
+    transformResult: SCRIPT_GENERATION_CONTRACT.validate,
+  });
+
+  assert.equal(requestBodies.length, 2);
+  assert.equal(requestBodies[1].temperature, 0);
+  assert.ok(requestBodies[1].messages[1].content.includes("Repair the JSON only."));
+  assert.ok(requestBodies[1].messages[1].content.includes("{ bad json"));
+  assert.equal(result.content.logline, "A repaired logline");
+  assert.equal(result.validation.ok, true);
+});
+
 test("text provider parses standard JSON chat completion responses", async () => {
   process.env.OPENAI_COMPAT_API_KEY = "test-key";
   process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
@@ -1241,7 +1301,7 @@ test("media image prompt builder keeps director-friendly sections", () => {
     },
     characters: [{ id: "char-lin", name: "Lin", appearance: "short black hair, gray coat", tags: [], referenceImages: [], sortOrder: 0 }],
     location: { id: "loc-office", name: "Office", description: "rainy glass office", referenceImages: [], sortOrder: 0 },
-    styleGuide: { visualStyle: "noir realism", colorPalette: "blue and amber", compositionNote: "tight negative space" },
+    styleGuide: { visualStyle: "noir realism", colorPalette: "blue and amber", compositionNote: "tight negative space", referenceImages: [] },
   });
 
   assert.equal(result.metadata.contractId, "media.image_prompt.v1");
@@ -1252,7 +1312,7 @@ test("media image prompt builder keeps director-friendly sections", () => {
 });
 
 test("media video prompt builder changes continuity instruction by reference mode", () => {
-  const base = {
+  const base: Omit<Parameters<typeof buildMediaVideoPrompt>[0], "videoReferenceMode"> = {
     shot: {
       id: "shot-1",
       sceneId: "scene-1",
@@ -1264,7 +1324,7 @@ test("media video prompt builder changes continuity instruction by reference mod
       actionDescription: "She slows at the door.",
     },
     characters: [],
-    styleGuide: { visualStyle: "controlled suspense" },
+    styleGuide: { visualStyle: "controlled suspense", referenceImages: [] },
   };
 
   const single = buildMediaVideoPrompt({ ...base, videoReferenceMode: "single" });
@@ -1307,4 +1367,114 @@ test("novel chunk scenes contract includes previous summary and future hints", (
   assert.equal(NOVEL_CHUNK_SCENES_CONTRACT.schema?.id, "novel_chunk_scenes.v1");
   assert.ok(rendered.user.includes("Previous summary"));
   assert.ok(rendered.user.includes("Future hints"));
+});
+
+test("jobs service uses reference-mode-aware video prompt when no manual prompt is supplied", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = Object.create(JobsService.prototype) as any;
+  let capturedMode: unknown;
+  let capturedPrompt: string | undefined;
+
+  service.promptBuilder = {
+    previewVideoPrompt: async (_projectId: string, _shotId: string, videoReferenceMode: unknown) => {
+      capturedMode = videoReferenceMode;
+      return {
+        positivePrompt: "Shot: Lin crosses the hallway.\nBridge motion from the first frame to the last frame with a clear continuous action path.",
+        negativePrompt: "blurry",
+        shotId: "shot-1",
+        injectedCharacters: [],
+      };
+    },
+  };
+  service.resolveLlmConfig = async () => ({
+    provider: "openai-completions",
+    apiKey: "key",
+    baseUrl: "https://openai.test",
+    model: "sora-2",
+  });
+  service.processVideoJobOpenAi = async (_job: unknown, prompt: string) => {
+    capturedPrompt = prompt;
+    return {};
+  };
+
+  const job = {
+    id: "job-video-prompt",
+    type: "video_generation",
+    status: "queued",
+    projectId: "project-1",
+    shotId: "shot-1",
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    progress: 0,
+    input: {
+      projectId: "project-1",
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      durationSeconds: 5,
+      videoReferenceMode: "first_last",
+    },
+  };
+
+  await (service as unknown as { processVideoJob: (job: unknown) => Promise<unknown> }).processVideoJob(job);
+
+  assert.equal(capturedMode, "first_last");
+  assert.ok(capturedPrompt?.includes("Bridge motion from the first frame to the last frame"));
+  assert.ok(capturedPrompt?.includes("Negative prompt: blurry"));
+});
+
+test("jobs service keeps manual video prompt override unchanged", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = Object.create(JobsService.prototype) as any;
+  let previewCalled = false;
+  let capturedPrompt: string | undefined;
+
+  service.promptBuilder = {
+    previewVideoPrompt: async () => {
+      previewCalled = true;
+      return {
+        positivePrompt: "Generated prompt",
+        negativePrompt: "blurry",
+        shotId: "shot-1",
+        injectedCharacters: [],
+      };
+    },
+  };
+  service.resolveLlmConfig = async () => ({
+    provider: "openai-completions",
+    apiKey: "key",
+    baseUrl: "https://openai.test",
+    model: "sora-2",
+  });
+  service.processVideoJobOpenAi = async (_job: unknown, prompt: string) => {
+    capturedPrompt = prompt;
+    return {};
+  };
+
+  const job = {
+    id: "job-video-manual",
+    type: "video_generation",
+    status: "queued",
+    projectId: "project-1",
+    shotId: "shot-1",
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    progress: 0,
+    input: {
+      projectId: "project-1",
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      durationSeconds: 5,
+      videoReferenceMode: "multiple",
+      prompt: "Manual director prompt",
+    },
+  };
+
+  await (service as unknown as { processVideoJob: (job: unknown) => Promise<unknown> }).processVideoJob(job);
+
+  assert.equal(previewCalled, false);
+  assert.equal(capturedPrompt, "Manual director prompt");
 });

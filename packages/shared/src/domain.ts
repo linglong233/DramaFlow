@@ -1057,6 +1057,8 @@ export type DependencyType =
 /** 依赖锚点类型：依赖关系的锚定粒度 */
 export type DependencyAnchorType = "document" | "scene" | "shot" | "asset";
 
+export type PromptSnapshotRecord = string | Record<string, unknown>;
+
 /** 版本依赖记录：追踪文档版本之间的生成依赖关系 */
 export interface VersionDependencyRecord {
   id: string;
@@ -1072,7 +1074,7 @@ export interface VersionDependencyRecord {
   targetAnchorId?: string;
   sourceSnapshotHash?: string;
   targetSnapshotHash?: string;
-  promptSnapshot?: string;
+  promptSnapshot?: PromptSnapshotRecord;
   provider?: string;
   model?: string;
   configSource?: LlmConfigSource;
@@ -1155,7 +1157,7 @@ export interface ImpactSuggestionRecord {
   status: ImpactSuggestionStatus;
   summary: string;
   suggestedContent?: unknown;
-  promptSnapshot?: string;
+  promptSnapshot?: PromptSnapshotRecord;
   provider?: string;
   model?: string;
   createdVersionId?: string;

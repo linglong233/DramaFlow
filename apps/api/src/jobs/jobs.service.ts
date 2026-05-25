@@ -1001,7 +1001,7 @@ export class JobsService {
       ? null
       : await this.promptBuilder.previewPrompt(job.projectId, job.input.shotId);
     const prompt = job.input.prompt?.trim()
-      || this.composeImagePrompt(promptPreview)
+      || this.composeMediaPrompt(promptPreview)
       || `${job.input.shotId} ${job.input.style} image`;
     const execution = await this.resolveImageExecution(job);
 
@@ -1342,7 +1342,9 @@ export class JobsService {
   }
 
   private async processVideoJob(job: JobRecord<MediaJobInput>) {
-    const prompt = job.input.prompt?.trim() || `${job.shotId} ${job.input.style} video`;
+    const prompt = job.input.prompt?.trim()
+      || await this.composeVideoPromptForJob(job)
+      || `${job.shotId} ${job.input.style} video`;
 
     // 优先从新 video provider 列表解析
     if (job.input.configSource) {
@@ -2199,7 +2201,7 @@ export class JobsService {
     };
   }
 
-  private composeImagePrompt(preview: PromptPreviewResult | null) {
+  private composeMediaPrompt(preview: PromptPreviewResult | null) {
     if (!preview) {
       return "";
     }
@@ -2210,6 +2212,15 @@ export class JobsService {
       positivePrompt,
       negativePrompt ? `Negative prompt: ${negativePrompt}` : "",
     ].filter(Boolean).join("\n");
+  }
+
+  private async composeVideoPromptForJob(job: JobRecord<MediaJobInput>) {
+    const preview = await this.promptBuilder.previewVideoPrompt(
+      job.projectId,
+      job.input.shotId,
+      job.input.videoReferenceMode ?? "none",
+    );
+    return this.composeMediaPrompt(preview);
   }
 
   private toOpenAiImageLlmConfig(config: ImageGenerationConfig): LlmProviderConfig {
