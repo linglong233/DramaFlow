@@ -68,8 +68,12 @@ import {
   applyResolvedVideoReferencesToInput,
   buildBatchVideoReferenceInput,
   buildResolvedVideoReferences,
+  getVideoReferenceTransport,
+  type ResolvedVideoReferenceImage,
   type ResolvedVideoReferences,
+  type VideoReferenceProviderKey,
 } from "./video-reference.utils";
+import { buildVideoReferenceDataUrl } from "./video-reference-data-url";
 import { getVideoProviderAdapter } from "./video-providers/registry";
 import type { VideoProviderConfig, VideoProviderJobState } from "./video-providers/types";
 
@@ -1322,7 +1326,7 @@ export class JobsService {
         if (videoEntry.provider === "minimax" || videoEntry.provider === "volcengine" || videoEntry.provider === "vidu" || videoEntry.provider === "ali") {
           const adapter = getVideoProviderAdapter(videoEntry.provider as VideoGenerationProvider);
           const config = this.providerEntryToVideoProviderConfig(videoEntry);
-          const references = await this.resolveVideoReferences(job);
+          const references = await this.resolveVideoReferences(job, videoEntry.provider as VideoReferenceProviderKey);
           const currentState = await this.database.query((db) => {
             const liveJob = db.jobs.find((item) => item.id === job.id);
             return liveJob ? this.toVideoJobState(liveJob.result, prompt, job.input) : null;
@@ -1357,7 +1361,7 @@ export class JobsService {
         if (videoEntry.provider === "grok") {
           const grokLlmConfig = this.toGrokLlmConfig(videoConfig);
           const inputWithConfig = {
-            ...await this.buildVideoProviderInput(job, prompt),
+            ...await this.buildVideoProviderInput(job, prompt, "grok"),
             grokConfig: videoConfig.grokConfig,
           };
           const generated = await this.grokMediaProvider.generateVideo(inputWithConfig, grokLlmConfig) as GeneratedMediaResult;
@@ -1369,7 +1373,7 @@ export class JobsService {
         }
         // OpenAI-compatible video path
         const openAiConfig = this.toOpenAiImageLlmConfig(videoConfig);
-        return this.processVideoJobOpenAi(job, prompt, openAiConfig);
+        return this.processVideoJobOpenAi(job, prompt, openAiConfig, "openai-compatible");
       }
 
       // 向下兼容：从旧 imageGenerationConfig 检查 Grok
@@ -1377,7 +1381,7 @@ export class JobsService {
       if (imageConfig?.provider === "grok") {
         const grokLlmConfig = this.toGrokLlmConfig(imageConfig);
         const inputWithConfig = {
-          ...await this.buildVideoProviderInput(job, prompt),
+          ...await this.buildVideoProviderInput(job, prompt, "grok"),
           grokConfig: imageConfig.grokConfig,
         };
         const generated = await this.grokMediaProvider.generateVideo(inputWithConfig, grokLlmConfig) as GeneratedMediaResult;
@@ -1394,12 +1398,17 @@ export class JobsService {
     if (!config) {
       throw new BadRequestException("LLM config is required for video generation.");
     }
-    return this.processVideoJobOpenAi(job, prompt, config);
+    return this.processVideoJobOpenAi(job, prompt, config, "legacy-openai");
   }
 
   /** OpenAI 兼容视频生成路径（异步轮询） */
-  private async processVideoJobOpenAi(job: JobRecord<MediaJobInput>, prompt: string, config: LlmProviderConfig) {
-    const providerInput = await this.buildVideoProviderInput(job, prompt);
+  private async processVideoJobOpenAi(
+    job: JobRecord<MediaJobInput>,
+    prompt: string,
+    config: LlmProviderConfig,
+    providerKey: VideoReferenceProviderKey = "legacy-openai",
+  ) {
+    const providerInput = await this.buildVideoProviderInput(job, prompt, providerKey);
 
     const currentState = await this.database.query((db) => {
       const liveJob = db.jobs.find((item) => item.id === job.id);
@@ -2193,17 +2202,51 @@ export class JobsService {
     }
   }
 
-  /** 解析资产 URL，不存在时抛出异常 */
-  private async resolveReferenceImageUrlStrict(userId: string, assetId: string, label: string): Promise<string> {
-    const result = await this.storageService.getAssetUrl(userId, assetId);
-    if (!result.url) {
+  /** 解析资产为结构化的视频参考图对象，按需附带 Data URL */
+  private async resolveVideoReferenceImageStrict(
+    userId: string,
+    assetId: string,
+    label: string,
+    includeDataUrl: boolean,
+  ): Promise<ResolvedVideoReferenceImage> {
+    const urlResult = await this.storageService.getAssetUrl(userId, assetId);
+    if (!urlResult.url) {
       throw new BadRequestException(`Video reference ${label} could not be resolved to a URL.`);
     }
-    return result.url;
+    if (!urlResult.asset.mimeType.startsWith("image/")) {
+      throw new BadRequestException(`Video reference ${label} must be an image asset.`);
+    }
+
+    const resolved: ResolvedVideoReferenceImage = {
+      assetId: urlResult.asset.id,
+      url: urlResult.url,
+      mimeType: urlResult.asset.mimeType,
+      sizeInBytes: urlResult.asset.sizeInBytes,
+    };
+
+    if (!includeDataUrl) {
+      return resolved;
+    }
+
+    const bufferResult = await this.storageService.getAssetBuffer(userId, assetId);
+    if (!bufferResult.mimeType.startsWith("image/")) {
+      throw new BadRequestException(`Video reference ${label} must be an image asset.`);
+    }
+    const dataUrl = await buildVideoReferenceDataUrl(bufferResult.body, bufferResult.mimeType);
+    return {
+      ...resolved,
+      dataUrl: dataUrl.dataUrl,
+      dataUrlMimeType: dataUrl.mimeType,
+      dataUrlSizeInBytes: dataUrl.sizeInBytes,
+    };
   }
 
   /** 解析视频参考图资产 ID 为完整结构 */
-  private resolveVideoReferences(job: JobRecord<MediaJobInput>): Promise<ResolvedVideoReferences> {
+  private resolveVideoReferences(
+    job: JobRecord<MediaJobInput>,
+    providerKey: VideoReferenceProviderKey,
+  ): Promise<ResolvedVideoReferences> {
+    const transport = getVideoReferenceTransport(providerKey);
     return buildResolvedVideoReferences({
       input: {
         shotId: job.input.shotId,
@@ -2217,12 +2260,17 @@ export class JobsService {
         lastFrameAssetId: job.input.lastFrameAssetId,
         referenceImageAssetIds: job.input.referenceImageAssetIds,
       },
-      resolveAssetUrl: (assetId, label) => this.resolveReferenceImageUrlStrict(job.createdBy, assetId, label),
+      resolveAsset: (assetId, label) =>
+        this.resolveVideoReferenceImageStrict(job.createdBy, assetId, label, transport === "data-url"),
     });
   }
 
   /** 构建归一化的视频 Provider 输入（包含解析后的参考图 URL 字段） */
-  private async buildVideoProviderInput(job: JobRecord<MediaJobInput>, prompt: string): Promise<MediaJobInput & {
+  private async buildVideoProviderInput(
+    job: JobRecord<MediaJobInput>,
+    prompt: string,
+    providerKey: VideoReferenceProviderKey = "legacy-openai",
+  ): Promise<MediaJobInput & {
     prompt: string;
     videoReferenceMode: VideoReferenceMode;
     referenceImageUrl?: string;
@@ -2230,8 +2278,9 @@ export class JobsService {
     lastFrameUrl?: string;
     referenceImageUrls?: string[];
   }> {
-    const references = await this.resolveVideoReferences(job);
-    return applyResolvedVideoReferencesToInput({ ...job.input, prompt }, references);
+    const transport = getVideoReferenceTransport(providerKey);
+    const references = await this.resolveVideoReferences(job, providerKey);
+    return applyResolvedVideoReferencesToInput({ ...job.input, prompt }, references, transport);
   }
 
   // ===== TTS Jobs =====

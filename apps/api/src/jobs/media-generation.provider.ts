@@ -11,6 +11,7 @@ import type {
   MediaContent,
   MediaGenerationProvider,
 } from "@dramaflow/shared";
+import { redactVideoReferenceDataUrls } from "./video-reference.utils";
 
 interface GeneratedMediaContent extends MediaContent {
   inlineBody?: Buffer | Uint8Array | string;
@@ -209,7 +210,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
       prompt: input.prompt,
       provider: "openai-video",
       mimeType: this.readString(raw.mime_type) ?? "video/mp4",
-      parameters: { ...input } as Record<string, unknown>,
+      parameters: redactVideoReferenceDataUrls({ ...input } as Record<string, unknown>),
       providerVideoId,
       providerStatus,
       progress,
@@ -268,7 +269,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
       prompt: input.prompt,
       provider: "mock-video",
       mimeType: "application/json",
-      parameters: { ...input, mock: true } as Record<string, unknown>,
+      parameters: redactVideoReferenceDataUrls({ ...input, mock: true } as Record<string, unknown>),
       inlineBody: JSON.stringify(payload, null, 2),
       fileExtension: "json",
       providerVideoId: `mock:${input.shotId}`,
@@ -283,7 +284,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
       prompt: input.prompt,
       provider: "mock-video",
       mimeType: "application/json",
-      parameters: { ...input, mock: true } as Record<string, unknown>,
+      parameters: redactVideoReferenceDataUrls({ ...input, mock: true } as Record<string, unknown>),
       providerVideoId: `mock:${input.shotId}`,
       providerStatus: "completed",
       progress: 100,

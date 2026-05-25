@@ -8,6 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import sharp from "sharp";
 import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
 import { GrokMediaProvider } from "./grok-media.provider";
 import { JobsService } from "./jobs.service";
@@ -18,7 +19,10 @@ import {
   buildResolvedVideoReferences,
   buildBatchVideoReferenceInput,
   applyResolvedVideoReferencesToInput,
+  getVideoReferenceTransport,
+  redactVideoReferenceDataUrls,
 } from "./video-reference.utils";
+import { buildVideoReferenceDataUrl } from "./video-reference-data-url";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -327,7 +331,7 @@ test("video reference mode defaults no references to none", async () => {
   assert.equal(normalizeVideoReferenceMode({}), "none");
 });
 
-test("resolved video references truncates multiple references to six urls", async () => {
+test("resolved video references keeps structured image objects and url compatibility fields", async () => {
   const resolved = await buildResolvedVideoReferences({
     input: {
       shotId: "shot-1",
@@ -336,10 +340,19 @@ test("resolved video references truncates multiple references to six urls", asyn
       videoReferenceMode: "multiple",
       referenceImageAssetIds: ["a1", "a2", "a3", "a4", "a5", "a6", "a7"],
     },
-    resolveAssetUrl: async (assetId) => `https://cdn.test/${assetId}.png`,
+    resolveAsset: async (assetId) => ({
+      assetId,
+      url: `https://cdn.test/${assetId}.png`,
+      dataUrl: `data:image/jpeg;base64,${assetId}`,
+      mimeType: "image/png",
+      dataUrlMimeType: "image/jpeg",
+      dataUrlSizeInBytes: 128,
+    }),
   });
 
   assert.equal(resolved.mode, "multiple");
+  assert.equal(resolved.referenceImages.length, 6);
+  assert.equal(resolved.referenceImages[0].assetId, "a1");
   assert.deepEqual(resolved.referenceImageUrls, [
     "https://cdn.test/a1.png",
     "https://cdn.test/a2.png",
@@ -360,7 +373,11 @@ test("resolved first_last references requires both frame assets", async () => {
         videoReferenceMode: "first_last",
         firstFrameAssetId: "first",
       },
-      resolveAssetUrl: async (assetId) => `https://cdn.test/${assetId}.png`,
+      resolveAsset: async (assetId) => ({
+        assetId,
+        url: `https://cdn.test/${assetId}.png`,
+        mimeType: "image/png",
+      }),
     }),
     /first_last video reference mode requires both firstFrameAssetId and lastFrameAssetId/,
   );
@@ -395,8 +412,19 @@ test("provider input fields include first_last resolved urls", () => {
     },
     {
       mode: "first_last",
+      firstFrame: {
+        assetId: "asset-first",
+        url: "https://cdn.test/first.png",
+        mimeType: "image/png",
+      },
+      lastFrame: {
+        assetId: "asset-last",
+        url: "https://cdn.test/last.png",
+        mimeType: "image/png",
+      },
       firstFrameUrl: "https://cdn.test/first.png",
       lastFrameUrl: "https://cdn.test/last.png",
+      referenceImages: [],
       referenceImageUrls: [],
     },
   );
@@ -417,6 +445,10 @@ test("provider input fields include multiple resolved urls", () => {
     },
     {
       mode: "multiple",
+      referenceImages: [
+        { assetId: "ref-1", url: "https://cdn.test/ref-1.png", mimeType: "image/png" },
+        { assetId: "ref-2", url: "https://cdn.test/ref-2.png", mimeType: "image/png" },
+      ],
       referenceImageUrls: [
         "https://cdn.test/ref-1.png",
         "https://cdn.test/ref-2.png",
@@ -430,6 +462,134 @@ test("provider input fields include multiple resolved urls", () => {
     "https://cdn.test/ref-2.png",
   ]);
   assert.equal("firstFrameUrl" in input, false);
+});
+
+test("provider input fields can select data URL transport", () => {
+  const input = applyResolvedVideoReferencesToInput(
+    {
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      prompt: "A controlled camera move",
+    },
+    {
+      mode: "single",
+      image: {
+        assetId: "asset-current",
+        url: "https://cdn.test/current.png",
+        dataUrl: "data:image/jpeg;base64,current",
+        mimeType: "image/png",
+        dataUrlMimeType: "image/jpeg",
+        dataUrlSizeInBytes: 128,
+      },
+      referenceImages: [],
+      imageUrl: "https://cdn.test/current.png",
+      referenceImageUrls: [],
+    },
+    "data-url",
+  );
+
+  assert.equal(input.videoReferenceMode, "single");
+  assert.equal(input.referenceImageUrl, "data:image/jpeg;base64,current");
+});
+
+test("provider input fields fall back to url when data URL is unavailable", () => {
+  const input = applyResolvedVideoReferencesToInput(
+    {
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      prompt: "A controlled camera move",
+    },
+    {
+      mode: "single",
+      image: {
+        assetId: "asset-current",
+        url: "https://cdn.test/current.png",
+        mimeType: "image/png",
+      },
+      referenceImages: [],
+      imageUrl: "https://cdn.test/current.png",
+      referenceImageUrls: [],
+    },
+    "data-url",
+  );
+
+  assert.equal(input.referenceImageUrl, "https://cdn.test/current.png");
+});
+
+test("video reference transport defaults are provider aware", () => {
+  assert.equal(getVideoReferenceTransport("grok"), "data-url");
+  assert.equal(getVideoReferenceTransport("openai-compatible"), "data-url");
+  assert.equal(getVideoReferenceTransport("legacy-openai"), "data-url");
+  assert.equal(getVideoReferenceTransport("minimax"), "url");
+  assert.equal(getVideoReferenceTransport("volcengine"), "url");
+  assert.equal(getVideoReferenceTransport("vidu"), "url");
+  assert.equal(getVideoReferenceTransport("ali"), "url");
+});
+
+test("video reference parameter redaction removes data URL payloads", () => {
+  const redacted = redactVideoReferenceDataUrls({
+    referenceImageUrl: "data:image/jpeg;base64,current",
+    firstFrameUrl: "https://cdn.test/first.png",
+    referenceImageUrls: [
+      "data:image/jpeg;base64,one",
+      "https://cdn.test/two.png",
+    ],
+  });
+
+  assert.equal(redacted.referenceImageUrl, "[data-url omitted]");
+  assert.equal(redacted.firstFrameUrl, "https://cdn.test/first.png");
+  assert.deepEqual(redacted.referenceImageUrls, [
+    "[data-url omitted]",
+    "https://cdn.test/two.png",
+  ]);
+});
+
+// =============================================
+// 视频参考图 Data URL 压缩工具测试
+// =============================================
+
+test("video reference data URL helper compresses image buffers", async () => {
+  const source = await sharp({
+    create: {
+      width: 64,
+      height: 32,
+      channels: 3,
+      background: "#336699",
+    },
+  }).png().toBuffer();
+
+  const result = await buildVideoReferenceDataUrl(source, "image/png", {
+    maxDimension: 32,
+    jpegQuality: 80,
+    maxBytes: 512 * 1024,
+  });
+
+  assert.equal(result.mimeType, "image/jpeg");
+  assert.match(result.dataUrl, /^data:image\/jpeg;base64,/);
+  assert.ok(result.sizeInBytes > 0);
+  assert.ok(result.sizeInBytes <= 512 * 1024);
+});
+
+test("video reference data URL helper rejects oversized compressed output", async () => {
+  const source = await sharp({
+    create: {
+      width: 16,
+      height: 16,
+      channels: 3,
+      background: "#cc6633",
+    },
+  }).png().toBuffer();
+
+  await assert.rejects(
+    buildVideoReferenceDataUrl(source, "image/png", {
+      maxDimension: 16,
+      jpegQuality: 90,
+      maxBytes: 8,
+    }),
+    /Video reference image is too large after compression/,
+  );
 });
 
 // =============================================
@@ -475,7 +635,13 @@ function videoAdapterInput(overrides: Partial<import("./video-providers/types").
     },
     references: {
       mode: "single" as const,
+      image: {
+        assetId: "asset-frame",
+        url: "https://cdn.test/frame.png",
+        mimeType: "image/png",
+      },
       imageUrl: "https://cdn.test/frame.png",
+      referenceImages: [],
       referenceImageUrls: [],
     },
     ...overrides,
@@ -502,6 +668,37 @@ test("minimax video adapter sends content array with reference image", async () 
   assert.equal(body.content[1].image_url?.url, "https://cdn.test/frame.png");
 });
 
+// URL-only 适配器回归测试：确保即使存在 data URL 也只使用普通 URL
+test("url-only video adapters keep using url even when structured data URL exists", async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ task_id: "mini-task-1", status: "processing" }), { status: 200 });
+  }) as typeof fetch;
+
+  const adapter = new MiniMaxVideoProviderAdapter();
+  const state = await adapter.createJob(videoAdapterInput({
+    references: {
+      mode: "single",
+      image: {
+        assetId: "asset-frame",
+        url: "https://cdn.test/frame.png",
+        dataUrl: "data:image/jpeg;base64,frame",
+        mimeType: "image/png",
+        dataUrlMimeType: "image/jpeg",
+        dataUrlSizeInBytes: 128,
+      },
+      imageUrl: "https://cdn.test/frame.png",
+      referenceImages: [],
+      referenceImageUrls: [],
+    },
+  }));
+
+  const body = capturedBody as { content: Array<{ image_url?: { url: string } }> };
+  assert.equal(body.content[1].image_url?.url, "https://cdn.test/frame.png");
+  assert.equal(JSON.stringify(state.parameters).includes("data:image/"), false);
+});
+
 test("volcengine video adapter sends first and last frame roles", async () => {
   let capturedBody: Record<string, unknown> | undefined;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -514,8 +711,19 @@ test("volcengine video adapter sends first and last frame roles", async () => {
     config: { provider: "volcengine", apiKey: "key", baseUrl: "https://volc.test", model: "seedance" },
     references: {
       mode: "first_last",
+      firstFrame: {
+        assetId: "asset-first",
+        url: "https://cdn.test/first.png",
+        mimeType: "image/png",
+      },
+      lastFrame: {
+        assetId: "asset-last",
+        url: "https://cdn.test/last.png",
+        mimeType: "image/png",
+      },
       firstFrameUrl: "https://cdn.test/first.png",
       lastFrameUrl: "https://cdn.test/last.png",
+      referenceImages: [],
       referenceImageUrls: [],
     },
   }));
@@ -547,8 +755,19 @@ test("ali video adapter maps last frame to last_img_url", async () => {
     config: { provider: "ali", apiKey: "key", baseUrl: "https://dashscope.test", model: "wan2.6-i2v-flash" },
     references: {
       mode: "first_last",
+      firstFrame: {
+        assetId: "asset-first",
+        url: "https://cdn.test/first.png",
+        mimeType: "image/png",
+      },
+      lastFrame: {
+        assetId: "asset-last",
+        url: "https://cdn.test/last.png",
+        mimeType: "image/png",
+      },
       firstFrameUrl: "https://cdn.test/first.png",
       lastFrameUrl: "https://cdn.test/last.png",
+      referenceImages: [],
       referenceImageUrls: [],
     },
   }));
@@ -568,7 +787,7 @@ test("ali video adapter maps last frame to last_img_url", async () => {
 // OpenAI 视频 Provider 参考图 URL 字段测试
 // =============================================
 
-test("media provider sends normalized video reference urls", async () => {
+test("media provider sends data URL references but redacts stored parameters", async () => {
   let capturedBody: Record<string, unknown> | undefined;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     capturedBody = JSON.parse(String(init?.body));
@@ -579,16 +798,14 @@ test("media provider sends normalized video reference urls", async () => {
   }) as typeof fetch;
 
   const provider = new OpenAiMediaProvider();
-  await provider.createVideoJob({
+  const state = await provider.createVideoJob({
     shotId: "shot-1",
     style: "cinematic",
     aspectRatio: "16:9",
     durationSeconds: 5,
     prompt: "A clean camera move",
-    videoReferenceMode: "first_last",
-    firstFrameUrl: "https://cdn.test/first.png",
-    lastFrameUrl: "https://cdn.test/last.png",
-    referenceImageUrls: ["https://cdn.test/ref.png"],
+    videoReferenceMode: "single",
+    referenceImageUrl: "data:image/jpeg;base64,current",
   } as never, {
     provider: "openai-completions",
     apiKey: "key",
@@ -596,20 +813,18 @@ test("media provider sends normalized video reference urls", async () => {
     model: "sora-2",
   });
 
-  assert.equal(capturedBody?.reference_mode, "first_last");
-  assert.equal(capturedBody?.first_frame_url, "https://cdn.test/first.png");
-  assert.equal(capturedBody?.last_frame_url, "https://cdn.test/last.png");
-  assert.deepEqual(capturedBody?.reference_image_urls, ["https://cdn.test/ref.png"]);
+  assert.equal(capturedBody?.image_url, "data:image/jpeg;base64,current");
+  assert.equal(state.parameters.referenceImageUrl, "[data-url omitted]");
 });
 
 // =============================================
 // Grok 视频 Provider 参考图 URL 字段测试
 // =============================================
 
-test("grok video provider sends normalized video reference images", async () => {
+test("grok video provider sends data URL references but redacts stored parameters", async () => {
   let capturedBody: Record<string, unknown> | undefined;
   let fetchCount = 0;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     fetchCount++;
     if (fetchCount === 1) {
       capturedBody = JSON.parse(String(init?.body));
@@ -626,22 +841,19 @@ test("grok video provider sends normalized video reference images", async () => 
         headers: { "content-type": "application/json" },
       });
     }
-    // Second fetch: video download
     return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
   }) as typeof fetch;
 
   const provider = new GrokMediaProvider();
-  await provider.generateVideo({
+  const generated = await provider.generateVideo({
     shotId: "shot-1",
     style: "cinematic",
     aspectRatio: "16:9",
     durationSeconds: 5,
     prompt: "A clean camera move",
     videoReferenceMode: "multiple",
-    firstFrameUrl: "https://cdn.test/first.png",
-    lastFrameUrl: "https://cdn.test/last.png",
     referenceImageUrls: [
-      "https://cdn.test/ref-1.png",
+      "data:image/jpeg;base64,ref-1",
       "https://cdn.test/ref-2.png",
     ],
   } as never, {
@@ -652,15 +864,16 @@ test("grok video provider sends normalized video reference images", async () => 
   });
 
   const messages = capturedBody?.messages as Array<{ content: Array<Record<string, unknown>> }>;
-  const content = messages[0].content;
-  const imageUrls = content
+  const imageUrls = messages[0].content
     .filter((part) => part.type === "image_url")
     .map((part) => ((part.image_url as Record<string, unknown>).url));
 
   assert.deepEqual(imageUrls, [
-    "https://cdn.test/first.png",
-    "https://cdn.test/last.png",
-    "https://cdn.test/ref-1.png",
+    "data:image/jpeg;base64,ref-1",
+    "https://cdn.test/ref-2.png",
+  ]);
+  assert.deepEqual(generated.parameters.referenceImageUrls, [
+    "[data-url omitted]",
     "https://cdn.test/ref-2.png",
   ]);
 });
@@ -669,9 +882,17 @@ test("grok video provider sends normalized video reference images", async () => 
 // JobsService OpenAI 视频路径参考图字段测试
 // =============================================
 
-test("jobs service passes resolved first_last references to openai video provider", async () => {
+test("jobs service passes compressed first_last data URLs to openai video provider", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = Object.create(JobsService.prototype) as any;
+  const source = await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: "#224466",
+    },
+  }).png().toBuffer();
   let capturedInput: Record<string, unknown> | undefined;
 
   service.database = {
@@ -680,7 +901,21 @@ test("jobs service passes resolved first_last references to openai video provide
   };
   service.storageService = {
     getAssetUrl: async (_userId: string, assetId: string) => ({
+      asset: {
+        id: assetId,
+        mimeType: "image/png",
+        sizeInBytes: source.byteLength,
+      },
       url: `https://cdn.test/${assetId}.png`,
+    }),
+    getAssetBuffer: async (_userId: string, assetId: string) => ({
+      asset: {
+        id: assetId,
+        mimeType: "image/png",
+        sizeInBytes: source.byteLength,
+      },
+      body: source,
+      mimeType: "image/png",
     }),
   };
   service.mediaProvider = {
@@ -726,15 +961,16 @@ test("jobs service passes resolved first_last references to openai video provide
       job: unknown,
       prompt: string,
       config: { provider: string; apiKey: string; baseUrl: string; model: string },
+      providerKey?: "legacy-openai" | "openai-compatible",
     ) => Promise<unknown>;
   }).processVideoJobOpenAi(job, "A clean camera move", {
     provider: "openai-completions",
     apiKey: "key",
     baseUrl: "https://openai.test",
     model: "sora-2",
-  });
+  }, "openai-compatible");
 
   assert.equal(capturedInput?.videoReferenceMode, "first_last");
-  assert.equal(capturedInput?.firstFrameUrl, "https://cdn.test/asset-first.png");
-  assert.equal(capturedInput?.lastFrameUrl, "https://cdn.test/asset-last.png");
+  assert.match(String(capturedInput?.firstFrameUrl), /^data:image\/jpeg;base64,/);
+  assert.match(String(capturedInput?.lastFrameUrl), /^data:image\/jpeg;base64,/);
 });

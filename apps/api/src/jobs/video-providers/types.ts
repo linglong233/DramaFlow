@@ -85,5 +85,9 @@ export function serializeReferenceParameters(references: ResolvedVideoReferences
     ...(references.firstFrameUrl ? { firstFrameUrl: references.firstFrameUrl } : {}),
     ...(references.lastFrameUrl ? { lastFrameUrl: references.lastFrameUrl } : {}),
     ...(references.referenceImageUrls.length ? { referenceImageUrls: references.referenceImageUrls } : {}),
+    // 仅记录 data URL 的轻量元数据，不写入 data URL 字符串本身
+    ...(references.image?.dataUrlSizeInBytes ? { imageDataUrlSizeInBytes: references.image.dataUrlSizeInBytes } : {}),
+    ...(references.firstFrame?.dataUrlSizeInBytes ? { firstFrameDataUrlSizeInBytes: references.firstFrame.dataUrlSizeInBytes } : {}),
+    ...(references.lastFrame?.dataUrlSizeInBytes ? { lastFrameDataUrlSizeInBytes: references.lastFrame.dataUrlSizeInBytes } : {}),
   };
 }

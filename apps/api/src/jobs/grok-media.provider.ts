@@ -15,6 +15,7 @@ import type {
   MediaContent,
   MediaGenerationProvider,
 } from "@dramaflow/shared";
+import { redactVideoReferenceDataUrls } from "./video-reference.utils";
 
 interface GeneratedMediaContent extends MediaContent {
   inlineBody?: Buffer | Uint8Array | string;
@@ -224,7 +225,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
       prompt: input.prompt,
       provider: "grok-video",
       mimeType: "video/mp4",
-      parameters: { ...input } as Record<string, unknown>,
+      parameters: redactVideoReferenceDataUrls({ ...input } as Record<string, unknown>),
       inlineBody: body,
       fileExtension: "mp4",
     };
@@ -302,7 +303,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
       prompt: input.prompt,
       provider: "mock-grok-video",
       mimeType: "application/json",
-      parameters: { ...input, mock: true } as Record<string, unknown>,
+      parameters: redactVideoReferenceDataUrls({ ...input, mock: true } as Record<string, unknown>),
       inlineBody: JSON.stringify(payload, null, 2),
       fileExtension: "json",
       providerVideoId: `mock:grok:${input.shotId}`,
