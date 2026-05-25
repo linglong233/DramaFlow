@@ -46,13 +46,25 @@ const scriptSchema: PromptJsonSchema = {
       items: {
         id: "scene",
         type: "object",
-        required: ["id", "heading", "synopsis", "characters", "dialogue", "directorNote"],
+        required: ["id", "heading", "synopsis", "characters", "dialogue"],
         properties: {
           id: { id: "scene.id", type: "string" },
           heading: { id: "scene.heading", type: "string" },
           synopsis: { id: "scene.synopsis", type: "string" },
           characters: { id: "scene.characters", type: "array", items: { id: "scene.character", type: "string" } },
-          dialogue: { id: "scene.dialogue", type: "array", items: { id: "dialogue", type: "object" } },
+          dialogue: {
+            id: "scene.dialogue",
+            type: "array",
+            items: {
+              id: "dialogue",
+              type: "object",
+              required: ["speaker", "line"],
+              properties: {
+                speaker: { id: "dialogue.speaker", type: "string" },
+                line: { id: "dialogue.line", type: "string" },
+              },
+            },
+          },
           directorNote: { id: "scene.directorNote", type: "string" },
         },
       },
