@@ -18,6 +18,7 @@ import { InternalJobsController } from "../src/jobs/internal-jobs.controller";
 import { OpenAiMediaProvider } from "../src/jobs/media-generation.provider";
 import { JobsController } from "../src/jobs/jobs.controller";
 import { OpenAiCompatTextProvider } from "../src/jobs/text-generation.provider";
+import { runPromptEvals } from "../src/jobs/prompting/prompt-evals";
 import { UploadsController } from "../src/storage/uploads.controller";
 import { WorkspaceController } from "../src/workspace/workspace.controller";
 
@@ -3111,6 +3112,12 @@ async function main() {
     assert.equal(image.mimeType.startsWith("image"), true);
     assert.ok(image.provider.length > 0);
   });
+
+  {
+    const result = runPromptEvals();
+    assert.equal(result.ok, true, result.errors.join("\n"));
+    console.log("api test passed: prompt contracts deterministic evals");
+  }
 
   console.log("api tests passed");
 }
