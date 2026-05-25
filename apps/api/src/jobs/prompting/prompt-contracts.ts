@@ -1,3 +1,4 @@
+/** @fileoverview 提示词契约核心类型与快照工厂 */
 export type PromptOutputKind = "plain_text" | "json";
 
 export type PromptSchemaType = "string" | "number" | "boolean" | "object" | "array";

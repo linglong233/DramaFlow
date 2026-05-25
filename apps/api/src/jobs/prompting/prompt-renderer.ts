@@ -1,3 +1,4 @@
+/** @fileoverview 提示词段落渲染器与输入摘要工具 */
 export interface PromptSections {
   task?: string;
   rules?: string[];
