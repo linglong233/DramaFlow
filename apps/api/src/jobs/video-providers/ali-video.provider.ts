@@ -39,8 +39,9 @@ export class AliVideoProviderAdapter implements VideoProviderAdapter {
       },
       body: JSON.stringify({
         model,
-        input: { ...aliInput, resolution },
+        input: aliInput,
         parameters: {
+          resolution,
           ...(input.durationSeconds ? { duration: input.durationSeconds } : {}),
         },
       }),

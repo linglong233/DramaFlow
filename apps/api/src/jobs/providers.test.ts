@@ -553,9 +553,15 @@ test("ali video adapter maps last frame to last_img_url", async () => {
     },
   }));
 
-  const body = capturedBody as { input: { img_url?: string; last_img_url?: string } };
+  const body = capturedBody as {
+    input: { img_url?: string; last_img_url?: string; resolution?: string };
+    parameters?: { resolution?: string; duration?: number };
+  };
   assert.equal(body.input.img_url, "https://cdn.test/first.png");
   assert.equal(body.input.last_img_url, "https://cdn.test/last.png");
+  assert.equal(body.input.resolution, undefined);
+  assert.equal(body.parameters?.resolution, "1080P");
+  assert.equal(body.parameters?.duration, 5);
 });
 
 // =============================================
