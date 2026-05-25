@@ -5,7 +5,7 @@ import type {
   ScriptContent,
   StoryboardContent,
 } from "@dramaflow/shared";
-import { normalizeScriptContent, normalizeStoryboardContent } from "@dramaflow/shared";
+import { normalizeScriptContent, normalizeStoryboardContent, normalizeWorldBibleContent } from "@dramaflow/shared";
 import type { PromptContract, PromptJsonSchema } from "./prompt-contracts";
 import { renderPromptSections, summarizePromptInput } from "./prompt-renderer";
 
@@ -188,4 +188,104 @@ export const STORYBOARD_GENERATION_CONTRACT: PromptContract<StoryboardPromptInpu
     },
   }),
   validate: (output) => normalizeStoryboardContent(output),
+};
+
+export interface WorldBibleExtractionInput {
+  adaptationPlan: string;
+  sourceText: string;
+}
+
+export interface NovelChunkScenesInput {
+  adaptationPlan: string;
+  worldBibleContext: string;
+  previousSummary?: string;
+  futureHints?: string;
+  chunkText: string;
+  chunkIndex: number;
+}
+
+const worldBibleSchema: PromptJsonSchema = {
+  id: "world_bible.v1",
+  type: "object",
+  required: ["characters", "locations"],
+  properties: {
+    characters: { id: "characters", type: "array", items: { id: "character", type: "object" } },
+    locations: { id: "locations", type: "array", items: { id: "location", type: "object" } },
+    styleGuide: { id: "styleGuide", type: "object" },
+  },
+};
+
+const novelChunkScenesSchema: PromptJsonSchema = {
+  id: "novel_chunk_scenes.v1",
+  type: "object",
+  required: ["scenes", "summary", "continuityNotes"],
+  properties: {
+    scenes: { id: "scenes", type: "array", items: { id: "scene", type: "object" } },
+    summary: { id: "summary", type: "string" },
+    continuityNotes: { id: "continuityNotes", type: "string" },
+  },
+};
+
+export const WORLD_BIBLE_EXTRACTION_CONTRACT: PromptContract<WorldBibleExtractionInput, import("@dramaflow/shared").WorldBibleContent> = {
+  id: "world_bible.extract.v1",
+  version: "1.0.0",
+  task: "Extract a world bible from source text and adaptation plan.",
+  outputKind: "json",
+  schema: worldBibleSchema,
+  render: (input) => ({
+    system: "You are a story analyst. Always return strict JSON.",
+    user: renderPromptSections({
+      task: "Extract the project world bible from the adaptation plan and source text.",
+      rules: [
+        "Return strict JSON only.",
+        "Extract named characters, physical appearance, personality, and tags.",
+        "Extract named locations and production-useful descriptions.",
+        "If a field is unknown, use an empty string or empty array.",
+      ],
+      projectContext: input.adaptationPlan,
+      sourceContent: input.sourceText.slice(0, 16000),
+      outputSchema: 'JSON object: { "characters": [{ "id": "char-N", "name": string, "appearance": string, "personality": string, "tags": string[], "referenceImages": [], "sortOrder": number }], "locations": [{ "id": "loc-N", "name": string, "description": string, "referenceImages": [], "sortOrder": number }], "styleGuide": { "visualStyle": string } }',
+      qualityBar: ["Prefer stable IDs.", "Do not invent locations unsupported by the text."],
+    }),
+    metadata: {
+      contractId: "world_bible.extract.v1",
+      contractVersion: "1.0.0",
+      inputSummary: summarizePromptInput({ adaptationPlan: input.adaptationPlan.slice(0, 200), sourceLength: input.sourceText.length }),
+    },
+  }),
+  validate: (output) => normalizeWorldBibleContent(output),
+};
+
+export const NOVEL_CHUNK_SCENES_CONTRACT: PromptContract<NovelChunkScenesInput, { scenes: import("@dramaflow/shared").ScriptScene[]; summary: string; continuityNotes: string }> = {
+  id: "novel.chunk_to_scenes.v1",
+  version: "1.0.0",
+  task: "Adapt a novel chunk into short drama script scenes.",
+  outputKind: "json",
+  schema: novelChunkScenesSchema,
+  render: (input) => ({
+    system: "You are a screenplay development assistant. Always return strict JSON.",
+    user: renderPromptSections({
+      task: `Convert novel chunk ${input.chunkIndex + 1} into short-drama scenes.`,
+      rules: [
+        "Return strict JSON only.",
+        "Do not summarize instead of writing scenes.",
+        "Keep continuity with previous summary and future hints.",
+        "Extract dialogue as speaker and line pairs.",
+      ],
+      projectContext: [
+        `Adaptation plan:\n${input.adaptationPlan}`,
+        `World bible:\n${input.worldBibleContext}`,
+        input.previousSummary ? `Previous summary:\n${input.previousSummary}` : "",
+        input.futureHints ? `Future hints:\n${input.futureHints}` : "",
+      ].filter(Boolean).join("\n\n"),
+      sourceContent: input.chunkText,
+      outputSchema: 'JSON object: { "scenes": [{ "id": "scene-N", "heading": string, "synopsis": string, "characters": string[], "dialogue": [{ "speaker": string, "line": string }], "directorNote": string }], "summary": string, "continuityNotes": string }',
+      qualityBar: ["Scenes should be shootable.", "Summary should be 2-3 sentences.", "Continuity notes should help the next chunk."],
+    }),
+    metadata: {
+      contractId: "novel.chunk_to_scenes.v1",
+      contractVersion: "1.0.0",
+      inputSummary: summarizePromptInput({ chunkIndex: input.chunkIndex, chunkLength: input.chunkText.length }),
+    },
+  }),
 };

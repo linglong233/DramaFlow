@@ -39,6 +39,8 @@ import {
 import {
   SCRIPT_GENERATION_CONTRACT,
   STORYBOARD_GENERATION_CONTRACT,
+  NOVEL_CHUNK_SCENES_CONTRACT,
+  WORLD_BIBLE_EXTRACTION_CONTRACT,
 } from "./prompting/text-contracts";
 import {
   buildMediaImagePrompt,
@@ -1272,4 +1274,37 @@ test("media video prompt builder changes continuity instruction by reference mod
   assert.ok(single.positivePrompt.includes("Maintain the referenced subject identity"));
   assert.ok(firstLast.positivePrompt.includes("Bridge motion from the first frame to the last frame"));
   assert.ok(multiple.positivePrompt.includes("Treat the reference images as a consistency set"));
+});
+
+// =============================================
+// 小说导入世界观与分块场景契约测试
+// =============================================
+
+test("world bible extraction contract renders source text and schema", () => {
+  const rendered = WORLD_BIBLE_EXTRACTION_CONTRACT.render({
+    adaptationPlan: "Keep the story intimate.",
+    sourceText: "Lin enters the city.",
+  });
+
+  assert.equal(rendered.metadata.contractId, "world_bible.extract.v1");
+  assert.equal(WORLD_BIBLE_EXTRACTION_CONTRACT.schema?.id, "world_bible.v1");
+  assert.ok(rendered.user.includes("<source_content>"));
+  assert.ok(rendered.user.includes("characters"));
+  assert.ok(rendered.user.includes("locations"));
+});
+
+test("novel chunk scenes contract includes previous summary and future hints", () => {
+  const rendered = NOVEL_CHUNK_SCENES_CONTRACT.render({
+    adaptationPlan: "Fast suspense.",
+    worldBibleContext: "Lin: detective",
+    previousSummary: "Lin found a clue.",
+    futureHints: "Next chunk: confrontation.",
+    chunkText: "Lin opens the locked room.",
+    chunkIndex: 2,
+  });
+
+  assert.equal(rendered.metadata.contractId, "novel.chunk_to_scenes.v1");
+  assert.equal(NOVEL_CHUNK_SCENES_CONTRACT.schema?.id, "novel_chunk_scenes.v1");
+  assert.ok(rendered.user.includes("Previous summary"));
+  assert.ok(rendered.user.includes("Future hints"));
 });

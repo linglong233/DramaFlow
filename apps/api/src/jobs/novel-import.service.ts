@@ -16,6 +16,11 @@ import type {
 } from "@dramaflow/shared";
 import { normalizeScriptContent, normalizeScriptScene, normalizeWorldBibleContent } from "@dramaflow/shared";
 import { createId } from "../common/id";
+import {
+  NOVEL_CHUNK_SCENES_CONTRACT,
+  WORLD_BIBLE_EXTRACTION_CONTRACT,
+} from "./prompting/text-contracts";
+import { extractJsonObject, validatePromptSchema } from "./prompting/structured-output";
 import { DevDatabaseService } from "../common/dev-database.service";
 import type { StreamChunk } from "./text-generation.provider";
 import { WorkspaceService } from "../workspace/workspace.service";
@@ -458,27 +463,22 @@ export class NovelImportService {
     config: LlmProviderConfig,
     streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ) {
-    const raw = await this.collectText(
-      "You are a story analyst. Always return strict JSON.",
-      [
-        "从小说和改编计划中提取世界观。",
-        'Return JSON with shape: { "characters": [{ "id": "char-N", "name": "...", "appearance": "...", "personality": "...", "tags": [], "referenceImages": [], "sortOrder": N }], "locations": [{ "id": "loc-N", "name": "...", "description": "...", "referenceImages": [], "sortOrder": N }], "styleGuide": { "visualStyle": "..." } }',
-        `\n改编计划：\n${session.adaptationPlan ?? ""}`,
-        `\n小说片段：\n${session.sourceText.slice(0, 16000)}`,
-      ].join("\n"),
-      config,
-      streamLlm,
-    );
-    try {
-      return normalizeWorldBibleContent(this.parseStrictJson(raw));
-    } catch (error) {
+    const rendered = WORLD_BIBLE_EXTRACTION_CONTRACT.render({
+      adaptationPlan: session.adaptationPlan ?? "",
+      sourceText: session.sourceText,
+    });
+    const raw = await this.collectText(rendered.system, rendered.user, config, streamLlm);
+    const parsed = extractJsonObject<import("@dramaflow/shared").WorldBibleContent>(raw);
+    const validation = parsed ? validatePromptSchema(parsed, WORLD_BIBLE_EXTRACTION_CONTRACT.schema!) : { ok: false, errors: ["World bible response was not valid JSON"] };
+    if (!parsed || !validation.ok) {
       await this.updateSession(session.id, (live) => {
         live.status = "failed";
         live.stage = "worldBible";
-        live.error = `World bible JSON parse failed: ${error instanceof Error ? error.message : "Unknown error"}`;
+        live.error = `World bible JSON validation failed: ${validation.errors.join("; ")}`;
       });
-      throw error;
+      throw new Error(`World bible JSON validation failed: ${validation.errors.join("; ")}`);
     }
+    return WORLD_BIBLE_EXTRACTION_CONTRACT.validate!(parsed);
   }
 
   private async generateSynopsisForSession(
@@ -516,21 +516,21 @@ export class NovelImportService {
       .map((item) => item.summary ? `后续块 ${item.index + 1}: ${item.summary}` : "")
       .filter(Boolean)
       .join("\n");
-    const raw = await this.collectText(
-      "You are a screenplay development assistant. Always return strict JSON.",
-      [
-        "把当前小说分块改编成短剧剧本场景。",
-        'Return JSON: { "scenes": [{ "id": "scene-N", "heading": "...", "synopsis": "...", "characters": ["name"], "dialogue": [{ "speaker": "...", "line": "..." }], "directorNote": "..." }], "summary": "2-3 sentence summary", "continuityNotes": "notes for following chunks" }',
-        `\n改编计划：\n${session.adaptationPlan ?? ""}`,
-        `\n世界观：\n${this.formatWorldBibleContext(session.worldBible)}`,
-        previousSummary ? `\n上一块摘要：\n${previousSummary}` : "",
-        futureHints ? `\n后续参考：\n${futureHints}` : "",
-        `\n当前分块：\n${chunk.text}`,
-      ].filter(Boolean).join("\n"),
-      config,
-      streamLlm,
-    );
-    const parsed = this.parseStrictJson<{ scenes?: unknown[]; summary?: unknown; continuityNotes?: unknown }>(raw);
+
+    const rendered = NOVEL_CHUNK_SCENES_CONTRACT.render({
+      adaptationPlan: session.adaptationPlan ?? "",
+      worldBibleContext: this.formatWorldBibleContext(session.worldBible),
+      previousSummary,
+      futureHints,
+      chunkText: chunk.text,
+      chunkIndex,
+    });
+    const raw = await this.collectText(rendered.system, rendered.user, config, streamLlm);
+    const parsed = extractJsonObject<{ scenes?: unknown[]; summary?: unknown; continuityNotes?: unknown }>(raw);
+    const validation = parsed ? validatePromptSchema(parsed, NOVEL_CHUNK_SCENES_CONTRACT.schema!) : { ok: false, errors: ["Novel chunk response was not valid JSON"] };
+    if (!parsed || !validation.ok) {
+      throw new Error(`Novel chunk JSON validation failed: ${validation.errors.join("; ")}`);
+    }
     return {
       scenes: (parsed.scenes ?? []).map((scene, index) => normalizeScriptScene(scene, index + chunkIndex * 100)),
       summary: typeof parsed.summary === "string" ? parsed.summary : "",
