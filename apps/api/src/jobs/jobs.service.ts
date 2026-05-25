@@ -64,7 +64,12 @@ import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provide
 import { TTSProviderService } from "./tts.provider";
 import { ExportService } from "./export.service";
 import { NovelImportService } from "./novel-import.service";
-import { buildResolvedVideoReferences, type ResolvedVideoReferences } from "./video-reference.utils";
+import {
+  applyResolvedVideoReferencesToInput,
+  buildBatchVideoReferenceInput,
+  buildResolvedVideoReferences,
+  type ResolvedVideoReferences,
+} from "./video-reference.utils";
 import { getVideoProviderAdapter } from "./video-providers/registry";
 import type { VideoProviderConfig, VideoProviderJobState } from "./video-providers/types";
 
@@ -452,7 +457,7 @@ export class JobsService {
     shotIds: string[],
     configSource?: ImageConfigSource,
     providerId?: string,
-    videoReferenceMode?: VideoReferenceMode,
+    videoReferenceMode: VideoReferenceMode = "single",
   ): Promise<BatchJobGroupRecord> {
     await this.workspaceService.assertProjectPermission(
       userId,
@@ -479,8 +484,7 @@ export class JobsService {
     const jobIds: string[] = [];
     for (const shotId of uniqueShotIds) {
       const referenceImageAssetId = imageAssetByShot.get(shotId);
-      const effectiveMode: VideoReferenceMode =
-        videoReferenceMode === "single" && referenceImageAssetId ? "single" : "none";
+      const referenceInput = buildBatchVideoReferenceInput(referenceImageAssetId, videoReferenceMode);
       const job = await this.enqueueJob(userId, {
         type: "video_generation",
         projectId,
@@ -492,10 +496,7 @@ export class JobsService {
           aspectRatio: "16:9",
           configSource,
           providerId,
-          videoReferenceMode: effectiveMode,
-          ...(referenceImageAssetId && effectiveMode === "single"
-            ? { referenceImageAssetId }
-            : {}),
+          ...referenceInput,
         },
       });
       jobIds.push(job.id);
