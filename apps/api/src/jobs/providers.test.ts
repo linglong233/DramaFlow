@@ -9,6 +9,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { GoogleGeminiImageProvider } from "./google-gemini-image.provider";
+import { GrokMediaProvider } from "./grok-media.provider";
+import { JobsService } from "./jobs.service";
 import { OpenAiMediaProvider } from "./media-generation.provider";
 import { OpenAiCompatTextProvider } from "./text-generation.provider";
 import {
@@ -554,4 +556,179 @@ test("ali video adapter maps last frame to last_img_url", async () => {
   const body = capturedBody as { input: { img_url?: string; last_img_url?: string } };
   assert.equal(body.input.img_url, "https://cdn.test/first.png");
   assert.equal(body.input.last_img_url, "https://cdn.test/last.png");
+});
+
+// =============================================
+// OpenAI 视频 Provider 参考图 URL 字段测试
+// =============================================
+
+test("media provider sends normalized video reference urls", async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({
+      id: "video-job-1",
+      status: "queued",
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  const provider = new OpenAiMediaProvider();
+  await provider.createVideoJob({
+    shotId: "shot-1",
+    style: "cinematic",
+    aspectRatio: "16:9",
+    durationSeconds: 5,
+    prompt: "A clean camera move",
+    videoReferenceMode: "first_last",
+    firstFrameUrl: "https://cdn.test/first.png",
+    lastFrameUrl: "https://cdn.test/last.png",
+    referenceImageUrls: ["https://cdn.test/ref.png"],
+  } as never, {
+    provider: "openai-completions",
+    apiKey: "key",
+    baseUrl: "https://openai.test",
+    model: "sora-2",
+  });
+
+  assert.equal(capturedBody?.reference_mode, "first_last");
+  assert.equal(capturedBody?.first_frame_url, "https://cdn.test/first.png");
+  assert.equal(capturedBody?.last_frame_url, "https://cdn.test/last.png");
+  assert.deepEqual(capturedBody?.reference_image_urls, ["https://cdn.test/ref.png"]);
+});
+
+// =============================================
+// Grok 视频 Provider 参考图 URL 字段测试
+// =============================================
+
+test("grok video provider sends normalized video reference images", async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  let fetchCount = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchCount++;
+    if (fetchCount === 1) {
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: '<video><source src="https://cdn.test/video.mp4" type="video/mp4"></video>',
+            },
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    // Second fetch: video download
+    return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+  }) as typeof fetch;
+
+  const provider = new GrokMediaProvider();
+  await provider.generateVideo({
+    shotId: "shot-1",
+    style: "cinematic",
+    aspectRatio: "16:9",
+    durationSeconds: 5,
+    prompt: "A clean camera move",
+    videoReferenceMode: "multiple",
+    firstFrameUrl: "https://cdn.test/first.png",
+    lastFrameUrl: "https://cdn.test/last.png",
+    referenceImageUrls: [
+      "https://cdn.test/ref-1.png",
+      "https://cdn.test/ref-2.png",
+    ],
+  } as never, {
+    provider: "openai-completions",
+    apiKey: "key",
+    baseUrl: "https://grok.test",
+    model: "grok-imagine-1.0-video",
+  });
+
+  const messages = capturedBody?.messages as Array<{ content: Array<Record<string, unknown>> }>;
+  const content = messages[0].content;
+  const imageUrls = content
+    .filter((part) => part.type === "image_url")
+    .map((part) => ((part.image_url as Record<string, unknown>).url));
+
+  assert.deepEqual(imageUrls, [
+    "https://cdn.test/first.png",
+    "https://cdn.test/last.png",
+    "https://cdn.test/ref-1.png",
+    "https://cdn.test/ref-2.png",
+  ]);
+});
+
+// =============================================
+// JobsService OpenAI 视频路径参考图字段测试
+// =============================================
+
+test("jobs service passes resolved first_last references to openai video provider", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = Object.create(JobsService.prototype) as any;
+  let capturedInput: Record<string, unknown> | undefined;
+
+  service.database = {
+    query: async (reader: (db: { jobs: Array<{ id: string; result?: unknown }> }) => unknown) =>
+      reader({ jobs: [{ id: "job-openai-video" }] }),
+  };
+  service.storageService = {
+    getAssetUrl: async (_userId: string, assetId: string) => ({
+      url: `https://cdn.test/${assetId}.png`,
+    }),
+  };
+  service.mediaProvider = {
+    createVideoJob: async (input: Record<string, unknown>) => {
+      capturedInput = input;
+      return {
+        prompt: input.prompt,
+        provider: "openai-video",
+        providerVideoId: "provider-video-1",
+        providerStatus: "queued",
+        progress: 10,
+        parameters: input,
+        mimeType: "video/mp4",
+      };
+    },
+  };
+  service.updateVideoJobProgress = async (_jobId: string, _state: unknown) => ({} as Record<string, unknown>);
+
+  const job = {
+    id: "job-openai-video",
+    type: "video_generation",
+    status: "queued",
+    projectId: "project-1",
+    shotId: "shot-1",
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    progress: 0,
+    input: {
+      projectId: "project-1",
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      durationSeconds: 5,
+      videoReferenceMode: "first_last",
+      firstFrameAssetId: "asset-first",
+      lastFrameAssetId: "asset-last",
+    },
+  };
+
+  await (service as unknown as {
+    processVideoJobOpenAi: (
+      job: unknown,
+      prompt: string,
+      config: { provider: string; apiKey: string; baseUrl: string; model: string },
+    ) => Promise<unknown>;
+  }).processVideoJobOpenAi(job, "A clean camera move", {
+    provider: "openai-completions",
+    apiKey: "key",
+    baseUrl: "https://openai.test",
+    model: "sora-2",
+  });
+
+  assert.equal(capturedInput?.videoReferenceMode, "first_last");
+  assert.equal(capturedInput?.firstFrameUrl, "https://cdn.test/asset-first.png");
+  assert.equal(capturedInput?.lastFrameUrl, "https://cdn.test/asset-last.png");
 });

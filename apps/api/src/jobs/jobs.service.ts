@@ -1357,12 +1357,8 @@ export class JobsService {
         if (videoEntry.provider === "grok") {
           const grokLlmConfig = this.toGrokLlmConfig(videoConfig);
           const inputWithConfig = {
-            ...job.input,
-            prompt,
+            ...await this.buildVideoProviderInput(job, prompt),
             grokConfig: videoConfig.grokConfig,
-            referenceImageUrl: job.input.referenceImageAssetId
-              ? await this.resolveReferenceImageUrl(job.createdBy, job.input.referenceImageAssetId)
-              : undefined,
           };
           const generated = await this.grokMediaProvider.generateVideo(inputWithConfig, grokLlmConfig) as GeneratedMediaResult;
           return this.finalizeMediaJob(job, "video", prompt, {
@@ -1381,12 +1377,8 @@ export class JobsService {
       if (imageConfig?.provider === "grok") {
         const grokLlmConfig = this.toGrokLlmConfig(imageConfig);
         const inputWithConfig = {
-          ...job.input,
-          prompt,
+          ...await this.buildVideoProviderInput(job, prompt),
           grokConfig: imageConfig.grokConfig,
-          referenceImageUrl: job.input.referenceImageAssetId
-            ? await this.resolveReferenceImageUrl(job.createdBy, job.input.referenceImageAssetId)
-            : undefined,
         };
         const generated = await this.grokMediaProvider.generateVideo(inputWithConfig, grokLlmConfig) as GeneratedMediaResult;
         return this.finalizeMediaJob(job, "video", prompt, {
@@ -1407,15 +1399,17 @@ export class JobsService {
 
   /** OpenAI 兼容视频生成路径（异步轮询） */
   private async processVideoJobOpenAi(job: JobRecord<MediaJobInput>, prompt: string, config: LlmProviderConfig) {
+    const providerInput = await this.buildVideoProviderInput(job, prompt);
+
     const currentState = await this.database.query((db) => {
       const liveJob = db.jobs.find((item) => item.id === job.id);
       return liveJob ? this.toVideoJobState(liveJob.result, prompt, job.input) : null;
     });
 
     if (!currentState?.providerVideoId) {
-      const created = this.toVideoJobState(await this.mediaProvider.createVideoJob({ ...job.input, prompt }, config), prompt, job.input);
+      const created = this.toVideoJobState(await this.mediaProvider.createVideoJob(providerInput, config), prompt, job.input);
       if (created.mode === "mock") {
-        const generated = await this.mediaProvider.generateVideo({ ...job.input, prompt }, config) as GeneratedMediaResult;
+        const generated = await this.mediaProvider.generateVideo(providerInput, config) as GeneratedMediaResult;
         return this.finalizeMediaJob(job, "video", prompt, {
           ...generated,
           providerVideoId: created.providerVideoId,
@@ -1434,7 +1428,7 @@ export class JobsService {
     }
 
     const refreshed = this.toVideoJobState(
-      await this.mediaProvider.getVideoJob(currentState.providerVideoId, { ...job.input, prompt }, config),
+      await this.mediaProvider.getVideoJob(currentState.providerVideoId, providerInput, config),
       prompt,
       job.input,
     );
@@ -2225,6 +2219,19 @@ export class JobsService {
       },
       resolveAssetUrl: (assetId, label) => this.resolveReferenceImageUrlStrict(job.createdBy, assetId, label),
     });
+  }
+
+  /** 构建归一化的视频 Provider 输入（包含解析后的参考图 URL 字段） */
+  private async buildVideoProviderInput(job: JobRecord<MediaJobInput>, prompt: string): Promise<MediaJobInput & {
+    prompt: string;
+    videoReferenceMode: VideoReferenceMode;
+    referenceImageUrl?: string;
+    firstFrameUrl?: string;
+    lastFrameUrl?: string;
+    referenceImageUrls?: string[];
+  }> {
+    const references = await this.resolveVideoReferences(job);
+    return applyResolvedVideoReferencesToInput({ ...job.input, prompt }, references);
   }
 
   // ===== TTS Jobs =====
