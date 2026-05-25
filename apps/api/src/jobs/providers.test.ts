@@ -14,6 +14,8 @@ import { OpenAiCompatTextProvider } from "./text-generation.provider";
 import {
   normalizeVideoReferenceMode,
   buildResolvedVideoReferences,
+  buildBatchVideoReferenceInput,
+  applyResolvedVideoReferencesToInput,
 } from "./video-reference.utils";
 
 const originalFetch = globalThis.fetch;
@@ -360,6 +362,72 @@ test("resolved first_last references requires both frame assets", async () => {
     }),
     /first_last video reference mode requires both firstFrameAssetId and lastFrameAssetId/,
   );
+});
+
+test("batch video reference input defaults omitted mode with current image to single", () => {
+  assert.deepEqual(buildBatchVideoReferenceInput("asset-current"), {
+    videoReferenceMode: "single",
+    referenceImageAssetId: "asset-current",
+  });
+});
+
+test("batch video reference input downgrades to none without current image", () => {
+  assert.deepEqual(buildBatchVideoReferenceInput(undefined), {
+    videoReferenceMode: "none",
+  });
+});
+
+test("batch video reference input respects explicit none", () => {
+  assert.deepEqual(buildBatchVideoReferenceInput("asset-current", "none"), {
+    videoReferenceMode: "none",
+  });
+});
+
+test("provider input fields include first_last resolved urls", () => {
+  const input = applyResolvedVideoReferencesToInput(
+    {
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      prompt: "A controlled camera move",
+    },
+    {
+      mode: "first_last",
+      firstFrameUrl: "https://cdn.test/first.png",
+      lastFrameUrl: "https://cdn.test/last.png",
+      referenceImageUrls: [],
+    },
+  );
+
+  assert.equal(input.videoReferenceMode, "first_last");
+  assert.equal(input.firstFrameUrl, "https://cdn.test/first.png");
+  assert.equal(input.lastFrameUrl, "https://cdn.test/last.png");
+  assert.equal("referenceImageUrl" in input, false);
+});
+
+test("provider input fields include multiple resolved urls", () => {
+  const input = applyResolvedVideoReferencesToInput(
+    {
+      shotId: "shot-1",
+      style: "cinematic",
+      aspectRatio: "16:9",
+      prompt: "A controlled camera move",
+    },
+    {
+      mode: "multiple",
+      referenceImageUrls: [
+        "https://cdn.test/ref-1.png",
+        "https://cdn.test/ref-2.png",
+      ],
+    },
+  );
+
+  assert.equal(input.videoReferenceMode, "multiple");
+  assert.deepEqual(input.referenceImageUrls, [
+    "https://cdn.test/ref-1.png",
+    "https://cdn.test/ref-2.png",
+  ]);
+  assert.equal("firstFrameUrl" in input, false);
 });
 
 // =============================================

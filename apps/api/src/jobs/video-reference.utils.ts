@@ -27,6 +27,19 @@ export interface BuildResolvedVideoReferencesOptions {
   resolveAssetUrl: (assetId: string, label: string) => Promise<string>;
 }
 
+export interface ResolvedVideoReferenceInputFields {
+  videoReferenceMode: VideoReferenceMode;
+  referenceImageUrl?: string;
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
+  referenceImageUrls?: string[];
+}
+
+export interface BatchVideoReferenceInput {
+  videoReferenceMode: VideoReferenceMode;
+  referenceImageAssetId?: string;
+}
+
 /** multiple 模式下最大参考图数量 */
 const MAX_MULTIPLE_REFERENCES = 6;
 
@@ -90,5 +103,43 @@ export async function buildResolvedVideoReferences(
     referenceImageUrls: await Promise.all(
       assetIds.map((assetId, index) => options.resolveAssetUrl(assetId, `referenceImageAssetIds[${index}]`)),
     ),
+  };
+}
+
+export function buildBatchVideoReferenceInput(
+  referenceImageAssetId: string | undefined,
+  requestedMode: VideoReferenceMode = "single",
+): BatchVideoReferenceInput {
+  if (requestedMode === "single" && referenceImageAssetId) {
+    return {
+      videoReferenceMode: "single",
+      referenceImageAssetId,
+    };
+  }
+
+  return {
+    videoReferenceMode: "none",
+  };
+}
+
+export function toResolvedVideoReferenceInputFields(
+  references: ResolvedVideoReferences,
+): ResolvedVideoReferenceInputFields {
+  return {
+    videoReferenceMode: references.mode,
+    ...(references.imageUrl ? { referenceImageUrl: references.imageUrl } : {}),
+    ...(references.firstFrameUrl ? { firstFrameUrl: references.firstFrameUrl } : {}),
+    ...(references.lastFrameUrl ? { lastFrameUrl: references.lastFrameUrl } : {}),
+    ...(references.referenceImageUrls.length ? { referenceImageUrls: references.referenceImageUrls } : {}),
+  };
+}
+
+export function applyResolvedVideoReferencesToInput<T extends object>(
+  input: T,
+  references: ResolvedVideoReferences,
+): T & ResolvedVideoReferenceInputFields {
+  return {
+    ...input,
+    ...toResolvedVideoReferenceInputFields(references),
   };
 }
