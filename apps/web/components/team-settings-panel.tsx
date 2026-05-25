@@ -21,6 +21,7 @@ import type {
   TeamSummary,
   TeamPermissionTemplatesResponse,
   UpdateTeamPermissionTemplatesPayload,
+  VideoGenerationProvider,
 } from "@dramaflow/shared";
 import {
   PROJECT_PERMISSIONS,
@@ -86,6 +87,7 @@ export function TeamSettingsPanel() {
   const [videoDrafts, setVideoDrafts] = useState<ProviderEntryDraft[]>([]);
   const [defaultImageProvider, setDefaultImageProvider] = useState<string>("");
   const [defaultVideoProvider, setDefaultVideoProvider] = useState<string>("");
+  const [selectedVideoProviderType, setSelectedVideoProviderType] = useState<VideoGenerationProvider>("grok");
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
 
@@ -359,7 +361,7 @@ export function TeamSettingsPanel() {
   }
 
   function addVideoProvider() {
-    const draft = createVideoProviderDraft();
+    const draft = createVideoProviderDraft(selectedVideoProviderType);
     setVideoDrafts((prev) => [...prev, draft]);
     setEditingVideoId(draft.id);
   }
@@ -773,7 +775,7 @@ export function TeamSettingsPanel() {
                           draft={draft}
                           onChange={(updated) => updateImageDraft(draft.id, updated)}
                           type="image"
-                          maskedApiKey
+                          maskedApiKey={Boolean(draft.apiKey)}
                         />
                       ) : null}
                     </div>
@@ -834,15 +836,27 @@ export function TeamSettingsPanel() {
                           draft={draft}
                           onChange={(updated) => updateVideoDraft(draft.id, updated)}
                           type="video"
-                          maskedApiKey
+                          maskedApiKey={Boolean(draft.apiKey)}
                         />
                       ) : null}
                     </div>
                   ))
                 )}
-                <button type="button" className="btn btn-secondary" onClick={addVideoProvider}>
-                  + 添加视频 Provider
-                </button>
+                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
+                  <select
+                    className="input"
+                    style={{ maxWidth: 220 }}
+                    value={selectedVideoProviderType}
+                    onChange={(event) => setSelectedVideoProviderType(event.target.value as VideoGenerationProvider)}
+                  >
+                    {Object.entries(VIDEO_PROVIDER_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn btn-secondary" onClick={addVideoProvider}>
+                    + 添加视频 Provider
+                  </button>
+                </div>
               </div>
             </div>
           </section>

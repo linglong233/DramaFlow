@@ -14,6 +14,8 @@ import type { ProviderEntryDraft } from "../lib/image-config";
 import {
   IMAGE_PROVIDER_LABELS,
   VIDEO_PROVIDER_LABELS,
+  getDefaultImageProviderModel,
+  getDefaultVideoProviderModel,
 } from "../lib/image-config";
 import { useI18n } from "../lib/i18n";
 
@@ -40,7 +42,9 @@ export function ProviderEntryForm({ draft, onChange, type, maskedApiKey }: Provi
     const provider = newProvider as ImageGenerationProvider | VideoGenerationProvider;
     update({
       provider,
-      model: "",
+      model: type === "video"
+        ? getDefaultVideoProviderModel(provider as VideoGenerationProvider)
+        : getDefaultImageProviderModel(provider as ImageGenerationProvider),
       sdConfig: {},
       comfyuiConfig: {},
       grokConfig: {},

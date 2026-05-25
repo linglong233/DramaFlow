@@ -10,6 +10,10 @@ const candidateGridTsx = readFileSync(join(scriptDir, "../components/project-wor
 const candidateLightboxTsx = readFileSync(join(scriptDir, "../components/project-workspace/candidate-lightbox.tsx"), "utf8");
 const shotDetailModalTsx = readFileSync(join(scriptDir, "../components/project-workspace/shot-detail-modal.tsx"), "utf8");
 const storyboardWorkbenchTsx = readFileSync(join(scriptDir, "../components/project-workspace/storyboard-workbench.tsx"), "utf8");
+const imageConfigTs = readFileSync(join(scriptDir, "../lib/image-config.ts"), "utf8");
+const providerEntryFormTsx = readFileSync(join(scriptDir, "../components/provider-entry-form.tsx"), "utf8");
+const profileSettingsPanelTsx = readFileSync(join(scriptDir, "../components/profile-settings-panel.tsx"), "utf8");
+const teamSettingsPanelTsx = readFileSync(join(scriptDir, "../components/team-settings-panel.tsx"), "utf8");
 
 function assertRuleContains(selector: string, declarations: string[]) {
   const selectorStart = globalsCss.indexOf(`${selector} {`);
@@ -81,5 +85,35 @@ assertFileContains("shot-detail-modal.tsx", shotDetailModalTsx, "onUseMediaVersi
 
 assertFileContains("storyboard-workbench.tsx", storyboardWorkbenchTsx, "useMediaVersionForShot");
 assertFileContains("storyboard-workbench.tsx", storyboardWorkbenchTsx, "setForShotSuccess");
+
+// Video provider discovery tests
+for (const provider of ["minimax", "volcengine", "vidu", "ali"]) {
+  assertFileContains("image-config.ts", imageConfigTs, `"${provider}"`);
+}
+
+assertFileContains("image-config.ts", imageConfigTs, "getDefaultVideoProviderModel");
+assertFileContains("image-config.ts", imageConfigTs, `case "minimax": return "video-01";`);
+assertFileContains("image-config.ts", imageConfigTs, `case "volcengine": return "doubao-seedance-1-5-pro-251215";`);
+assertFileContains("image-config.ts", imageConfigTs, `case "vidu": return "viduq3-turbo";`);
+assertFileContains("image-config.ts", imageConfigTs, `case "ali": return "wan2.6-i2v-flash";`);
+
+// Provider form model reset tests
+assertFileContains("provider-entry-form.tsx", providerEntryFormTsx, "getDefaultImageProviderModel");
+assertFileContains("provider-entry-form.tsx", providerEntryFormTsx, "getDefaultVideoProviderModel");
+assertFileContains("provider-entry-form.tsx", providerEntryFormTsx, "model: type === \"video\"");
+assertFileDoesNotContain("provider-entry-form.tsx", providerEntryFormTsx, "model: \"\",");
+
+// Explicit add-video-provider type selection tests
+assertFileContains("profile-settings-panel.tsx", profileSettingsPanelTsx, "selectedVideoProviderType");
+assertFileContains("profile-settings-panel.tsx", profileSettingsPanelTsx, "createVideoProviderDraft(selectedVideoProviderType)");
+assertFileContains("profile-settings-panel.tsx", profileSettingsPanelTsx, "VIDEO_PROVIDER_LABELS");
+
+assertFileContains("team-settings-panel.tsx", teamSettingsPanelTsx, "selectedVideoProviderType");
+assertFileContains("team-settings-panel.tsx", teamSettingsPanelTsx, "createVideoProviderDraft(selectedVideoProviderType)");
+assertFileContains("team-settings-panel.tsx", teamSettingsPanelTsx, "VIDEO_PROVIDER_LABELS");
+
+// Team API key masking behavior tests
+assertFileContains("team-settings-panel.tsx", teamSettingsPanelTsx, "maskedApiKey={Boolean(draft.apiKey)}");
+assertFileDoesNotContain("team-settings-panel.tsx", teamSettingsPanelTsx, "maskedApiKey\n                        />");
 
 console.log("web tests passed");

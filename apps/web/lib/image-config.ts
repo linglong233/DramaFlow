@@ -43,7 +43,7 @@ export interface ProviderEntryDraft {
 }
 
 /** 图片 provider 的默认 model */
-function defaultImageModel(provider: ImageGenerationProvider): string {
+export function getDefaultImageProviderModel(provider: ImageGenerationProvider): string {
   switch (provider) {
     case "google-gemini": return "gemini-3.1-flash-image-preview";
     case "grok": return "grok-imagine-1.0";
@@ -52,7 +52,7 @@ function defaultImageModel(provider: ImageGenerationProvider): string {
 }
 
 /** 视频 provider 的默认 model */
-function defaultVideoModel(provider: VideoGenerationProvider): string {
+export function getDefaultVideoProviderModel(provider: VideoGenerationProvider): string {
   switch (provider) {
     case "grok": return "grok-imagine-1.0-video";
     case "minimax": return "video-01";
@@ -72,7 +72,7 @@ export function createImageProviderDraft(provider?: ImageGenerationProvider): Pr
     name: "",
     apiKey: "",
     baseUrl: "",
-    model: defaultImageModel(p),
+    model: getDefaultImageProviderModel(p),
     sdConfig: {},
     comfyuiConfig: {},
     grokConfig: {},
@@ -88,7 +88,7 @@ export function createVideoProviderDraft(provider?: VideoGenerationProvider): Pr
     name: "",
     apiKey: "",
     baseUrl: "",
-    model: defaultVideoModel(p),
+    model: getDefaultVideoProviderModel(p),
     sdConfig: {},
     comfyuiConfig: {},
     grokConfig: {},
