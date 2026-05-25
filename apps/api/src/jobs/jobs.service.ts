@@ -76,6 +76,8 @@ import {
 import { buildVideoReferenceDataUrl } from "./video-reference-data-url";
 import { getVideoProviderAdapter } from "./video-providers/registry";
 import type { VideoProviderConfig, VideoProviderJobState } from "./video-providers/types";
+import { createPromptSnapshot } from "./prompting/prompt-contracts";
+import { SCRIPT_GENERATION_CONTRACT, STORYBOARD_GENERATION_CONTRACT } from "./prompting/text-contracts";
 
 export type { StreamChunk };
 
@@ -663,11 +665,21 @@ export class JobsService {
     const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
     const worldBibleRef = await this.getCurrentVersionReference(job.projectId, "world_bible");
     const enrichedInput = { ...job.input };
-    if (worldBible) {
-      const wbPrompt = this.formatWorldBiblePrompt(worldBible);
-      enrichedInput.premise = `${job.input.premise}\n${wbPrompt}`;
-    }
-    const content = await this.textProvider.generateScript(enrichedInput, config);
+    const worldBibleContext = worldBible ? this.formatWorldBiblePrompt(worldBible) : undefined;
+    const renderedPrompt = SCRIPT_GENERATION_CONTRACT.render({
+      ...enrichedInput,
+      worldBibleContext,
+    });
+    const structured = await this.textProvider.generateStructuredFromRenderedPrompt({
+      operation: "script generation",
+      rendered: renderedPrompt,
+      schema: SCRIPT_GENERATION_CONTRACT.schema!,
+      temperature: 0.8,
+      config,
+      mockFactory: () => this.mockScriptFallback(enrichedInput),
+      transformResult: SCRIPT_GENERATION_CONTRACT.validate,
+    });
+    const content = structured.content;
     const enrichedContent = await this.autoMatchWorldBible(job.projectId, content);
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
@@ -686,7 +698,17 @@ export class JobsService {
         ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
         ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
         ...(job.input.sourceSynopsisVersionId ? { sourceSynopsisVersionId: job.input.sourceSynopsisVersionId } : {}),
-        promptSnapshot: JSON.stringify(enrichedInput),
+        promptSnapshot: createPromptSnapshot({
+          contractId: structured.rendered.metadata.contractId,
+          contractVersion: structured.rendered.metadata.contractVersion,
+          provider: resolvedModel,
+          model: resolvedModel,
+          renderedSystemPrompt: structured.rendered.system,
+          renderedUserPrompt: structured.rendered.user,
+          inputSummary: structured.rendered.metadata.inputSummary,
+          schemaVersion: SCRIPT_GENERATION_CONTRACT.schema?.id,
+          outputValidation: structured.validation,
+        }),
       },
       createdBy: job.createdBy,
       status: "approved",
@@ -915,27 +937,23 @@ export class JobsService {
     const resolvedModel = this.resolveTextModel(config);
     const worldBible = await this.getWorldBible(job.createdBy, job.projectId);
     const worldBibleRef = await this.getCurrentVersionReference(job.projectId, "world_bible");
+    const worldBibleContext = worldBible ? this.formatWorldBiblePrompt(worldBible) : undefined;
     const enrichedStoryboardInput = { ...job.input };
-    if (worldBible && (worldBible.characters.length > 0 || worldBible.locations.length > 0 || worldBible.styleGuide?.visualStyle)) {
-      const wbParts: string[] = [job.input.cinematicStyle, "", "## 项目世界观"];
-      if (worldBible.characters.length > 0) {
-        wbParts.push(`角色：${worldBible.characters.map((c) => `${c.name} (id: "${c.id}")`).join("；")}`);
-      }
-      if (worldBible.locations.length > 0) {
-        wbParts.push(`场景：${worldBible.locations.map((l) => `${l.name}（${l.description}）`).join("；")}`);
-      }
-      if (worldBible.styleGuide?.visualStyle) {
-        wbParts.push(`风格：${worldBible.styleGuide.visualStyle}`);
-      }
-      if (worldBible.characters.length > 0) {
-        wbParts.push("", `IMPORTANT: For each shot, populate characterIds with the actual character IDs listed above. Only include characters who appear in the shot.`);
-      }
-      enrichedStoryboardInput.cinematicStyle = wbParts.filter(Boolean).join("\n");
-    }
-    const content = await this.textProvider.generateStoryboard({
+    const renderedPrompt = STORYBOARD_GENERATION_CONTRACT.render({
       ...enrichedStoryboardInput,
       script,
-    }, config);
+      worldBibleContext,
+    });
+    const structured = await this.textProvider.generateStructuredFromRenderedPrompt({
+      operation: "storyboard generation",
+      rendered: renderedPrompt,
+      schema: STORYBOARD_GENERATION_CONTRACT.schema!,
+      temperature: 0.7,
+      config,
+      mockFactory: () => ({ overview: "", shots: [] }),
+      transformResult: STORYBOARD_GENERATION_CONTRACT.validate,
+    });
+    const content = structured.content;
     const document = await this.workspaceService.ensureDocumentForProject({
       projectId: job.projectId,
       type: "storyboard",
@@ -953,7 +971,17 @@ export class JobsService {
         model: resolvedModel,
         ...(job.input.llmConfigSource ? { llmConfigSource: job.input.llmConfigSource } : {}),
         ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
-        promptSnapshot: JSON.stringify({ ...enrichedStoryboardInput, script }),
+        promptSnapshot: createPromptSnapshot({
+          contractId: structured.rendered.metadata.contractId,
+          contractVersion: structured.rendered.metadata.contractVersion,
+          provider: resolvedModel,
+          model: resolvedModel,
+          renderedSystemPrompt: structured.rendered.system,
+          renderedUserPrompt: structured.rendered.user,
+          inputSummary: structured.rendered.metadata.inputSummary,
+          schemaVersion: STORYBOARD_GENERATION_CONTRACT.schema?.id,
+          outputValidation: structured.validation,
+        }),
       },
       createdBy: job.createdBy,
       status: "approved",
@@ -1820,6 +1848,15 @@ export class JobsService {
     } catch { return null; }
   }
 
+  private mockScriptFallback(input: { title: string; premise: string }): import("@dramaflow/shared").ScriptContent {
+    return {
+      logline: input.title,
+      premise: input.premise,
+      characters: [],
+      scenes: [],
+    };
+  }
+
   private formatWorldBiblePrompt(worldBible: WorldBibleContent | null): string {
     if (!worldBible) return "";
     const parts: string[] = [];
@@ -2650,7 +2687,14 @@ export class JobsService {
             ...(llmConfigSource ? { llmConfigSource } : {}),
             ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
             ...(input.sourceSynopsisVersionId ? { sourceSynopsisVersionId: input.sourceSynopsisVersionId } : {}),
-            promptSnapshot: JSON.stringify(enrichedInput),
+            promptSnapshot: createPromptSnapshot({
+              contractId: SCRIPT_GENERATION_CONTRACT.id,
+              contractVersion: SCRIPT_GENERATION_CONTRACT.version,
+              provider: resolvedModel,
+              model: resolvedModel,
+              inputSummary: JSON.stringify({ title: enrichedInput.title, premise: enrichedInput.premise?.slice(0, 200) }),
+              schemaVersion: SCRIPT_GENERATION_CONTRACT.schema?.id,
+            }),
           },
           createdBy: userId,
           status: "approved",
@@ -2840,7 +2884,14 @@ export class JobsService {
             model: resolvedModel,
             ...(llmConfigSource ? { llmConfigSource } : {}),
             ...(worldBibleRef?.version.id ? { sourceWorldBibleVersionId: worldBibleRef.version.id } : {}),
-            promptSnapshot: JSON.stringify({ ...enrichedStoryboardInput, script }),
+            promptSnapshot: createPromptSnapshot({
+              contractId: STORYBOARD_GENERATION_CONTRACT.id,
+              contractVersion: STORYBOARD_GENERATION_CONTRACT.version,
+              provider: resolvedModel,
+              model: resolvedModel,
+              inputSummary: JSON.stringify({ cinematicStyle: enrichedStoryboardInput.cinematicStyle, shotDensity: enrichedStoryboardInput.shotDensity }),
+              schemaVersion: STORYBOARD_GENERATION_CONTRACT.schema?.id,
+            }),
           },
           createdBy: userId,
           status: "approved",
