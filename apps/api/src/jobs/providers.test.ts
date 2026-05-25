@@ -67,6 +67,64 @@ test("text provider throws when no API key is configured", async () => {
   );
 });
 
+test("text provider sends rendered prompt contract metadata and parses structured payload", async () => {
+  process.env.OPENAI_COMPAT_API_KEY = "test-key";
+  process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+  process.env.OPENAI_TEXT_MODEL = "gpt-test";
+
+  let capturedBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              logline: "A test logline",
+              premise: "A test premise",
+              characters: [{ name: "Lin", profile: "Lead" }],
+              scenes: [{ id: "scene-1", heading: "INT. ROOM - NIGHT", synopsis: "A clue.", characters: ["Lin"], dialogue: [], directorNote: "tight" }],
+            }),
+          },
+        },
+      ],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  const provider = new OpenAiCompatTextProvider();
+  const rendered = SCRIPT_GENERATION_CONTRACT.render({
+    title: "Pilot",
+    genre: "Suspense",
+    premise: "A secret.",
+    episodeGoal: "Reveal it.",
+    tone: "tense",
+    audience: "mobile viewers",
+  });
+
+  const result = await provider.generateStructuredFromRenderedPrompt({
+    operation: "script generation",
+    rendered,
+    schema: SCRIPT_GENERATION_CONTRACT.schema!,
+    temperature: 0.8,
+    config: {
+      provider: "openai-completions",
+      apiKey: "test-key",
+      baseUrl: "https://example.test/v1",
+      model: "gpt-test",
+    },
+    mockFactory: () => ({ logline: "", premise: "", characters: [], scenes: [] }),
+    transformResult: SCRIPT_GENERATION_CONTRACT.validate,
+  });
+
+  const messages = capturedBody?.messages as Array<{ role: string; content: string }>;
+  assert.equal(messages[0].content, rendered.system);
+  assert.equal(messages[1].content, rendered.user);
+  assert.equal(capturedBody?.response_format && typeof capturedBody.response_format, "object");
+  assert.equal(result.content.logline, "A test logline");
+  assert.equal(result.validation.ok, true);
+  assert.equal(result.rendered.metadata.contractId, "script.generation.v1");
+});
+
 test("text provider parses standard JSON chat completion responses", async () => {
   process.env.OPENAI_COMPAT_API_KEY = "test-key";
   process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";

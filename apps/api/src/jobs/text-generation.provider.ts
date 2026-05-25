@@ -16,6 +16,8 @@ import type {
   TextGenerationProvider,
 } from "@dramaflow/shared";
 import { normalizeStoryboardContent } from "@dramaflow/shared";
+import type { PromptJsonSchema, RenderedPrompt } from "./prompting/prompt-contracts";
+import { extractJsonObject, validatePromptSchema } from "./prompting/structured-output";
 
 interface OpenAiCompatMessage {
   content?: string | OpenAiCompatContentPart[];
@@ -38,6 +40,25 @@ export interface StreamChunk {
   content?: string;
   result?: unknown;
   error?: string;
+}
+
+export interface StructuredPromptResult<T> {
+  content: T;
+  rendered: RenderedPrompt;
+  validation: {
+    ok: boolean;
+    errors: string[];
+  };
+}
+
+export interface GenerateStructuredFromRenderedPromptOptions<T> {
+  operation: string;
+  rendered: RenderedPrompt;
+  schema: PromptJsonSchema;
+  temperature: number;
+  config?: import("@dramaflow/shared").LlmProviderConfig;
+  mockFactory: () => T;
+  transformResult?: (result: T) => T;
 }
 
 @Injectable()
@@ -99,6 +120,84 @@ export class OpenAiCompatTextProvider implements TextGenerationProvider {
         yield { type: "error", error: `Chat failed: ${message}` };
       }
     }
+  }
+
+  async generateStructuredFromRenderedPrompt<T>(
+    options: GenerateStructuredFromRenderedPromptOptions<T>,
+  ): Promise<StructuredPromptResult<T>> {
+    const effectiveApiKey = options.config?.apiKey || this.apiKey;
+    const effectiveBaseUrl = (options.config?.baseUrl || this.baseUrl).replace(/\/$/, "");
+    const effectiveModel = options.config?.model || this.model;
+
+    if (!effectiveApiKey || effectiveApiKey === "replace-me") {
+      const mock = options.mockFactory();
+      return {
+        content: mock,
+        rendered: options.rendered,
+        validation: { ok: true, errors: [] },
+      };
+    }
+
+    try {
+      const response = await fetch(`${effectiveBaseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${effectiveApiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: effectiveModel,
+          temperature: options.temperature,
+          stream: false,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: options.rendered.system },
+            { role: "user", content: options.rendered.user },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return this.handleStructuredRenderedFailure(options, `HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const raw = await this.extractResponseContent(response);
+      const parsed = extractJsonObject<T>(raw);
+      if (!parsed) {
+        return this.handleStructuredRenderedFailure(options, "response did not contain parseable JSON content");
+      }
+
+      const validation = validatePromptSchema(parsed, options.schema);
+      if (!validation.ok) {
+        return this.handleStructuredRenderedFailure(options, validation.errors.join("; "));
+      }
+
+      const content = options.transformResult ? options.transformResult(parsed) : parsed;
+      return {
+        content,
+        rendered: options.rendered,
+        validation,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown provider error";
+      return this.handleStructuredRenderedFailure(options, message);
+    }
+  }
+
+  private handleStructuredRenderedFailure<T>(
+    options: GenerateStructuredFromRenderedPromptOptions<T>,
+    reason: string,
+  ): StructuredPromptResult<T> {
+    if (this.mockFallbackEnabled) {
+      this.logger.warn(`${options.operation} falling back to mock data: ${reason}`);
+      return {
+        content: options.mockFactory(),
+        rendered: options.rendered,
+        validation: { ok: false, errors: [reason] },
+      };
+    }
+
+    throw new Error(`OpenAI-compatible ${options.operation} failed: ${reason}`);
   }
 
   async generateScript(input: GenerateScriptInput, config?: import("@dramaflow/shared").LlmProviderConfig): Promise<ScriptContent> {
