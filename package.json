@@ -13,7 +13,7 @@
     "dev:web": "npm --workspace @dramaflow/web run dev",
     "dev:worker": "npm --workspace @dramaflow/worker run dev",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "node --test scripts/build-workspace.test.mjs && npm run test --workspaces --if-present"
   },
   "engines": {
     "node": ">=24.0.0"
