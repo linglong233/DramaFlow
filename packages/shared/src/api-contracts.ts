@@ -19,6 +19,8 @@ import type {
   BatchJobGroupRecord,
   CharacterVoiceConfig,
   CommentRecord,
+  ComposeShotInput,
+  ComposeShotResult,
   ConversationBrief,
   ConversationDimension,
   ConversationDimensionStatus,
@@ -908,6 +910,16 @@ export interface ExportResponse extends ExportRecord {}
 /** 导出列表响应 */
 export interface ExportListResponse {
   exports: ExportRecord[];
+}
+
+// ===== 单镜头合成契约 =====
+
+/** 创建单镜头合成任务请求体 */
+export interface CreateShotCompositionJobPayload extends Omit<ComposeShotInput, "shotId"> {}
+
+/** 单镜头合成任务响应 */
+export interface ShotCompositionJobResponse {
+  jobId: string;
 }
 
 // ===== 对话式生成契约 =====

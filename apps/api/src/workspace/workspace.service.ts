@@ -73,6 +73,7 @@ import {
   type TeamMemberSummary,
   type TeamRole,
   type TeamSummary,
+  type MediaContent,
   type TimelineClipRecord,
   type TimelineRecord,
   type TimelineSavePayload,
@@ -1304,6 +1305,9 @@ export class WorkspaceService {
       }
 
       liveVersion.status = nextStatus;
+      if (nextStatus === "approved") {
+        liveDocument.currentVersionId = liveVersion.id;
+      }
       return {
         version: liveVersion,
         auditContentType,
@@ -1851,6 +1855,80 @@ export class WorkspaceService {
     await this.impactService.recordDependenciesForVersion(result.version.id);
 
     return result.version;
+  }
+
+  /**
+   * 为 AI 生成内容创建版本，并根据项目审核策略自动确定初始审核状态。
+   * 如果不需要审核或用户角色可自动批准，版本直接进入 approved 状态；
+   * 否则进入 submitted 状态等待审核。
+   */
+  async createGeneratedVersionForDocument(options: {
+    userId: string;
+    documentId: string;
+    title: string;
+    content: unknown;
+    metadata: Record<string, unknown>;
+  }): Promise<VersionRecord> {
+    const document = await this.database.query((db) => this.mustFindDocument(db, options.documentId));
+    const actor = await this.getActor(options.userId, document.projectId);
+
+    const policy = await this.database.query((db) => {
+      const project = this.mustFindProject(db, document.projectId);
+      const team = this.mustFindTeam(db, project.teamId);
+      const auditConfigs = db.auditConfigs.filter((config) => config.projectId === project.id);
+      const auditContentType = this.getAuditContentType(document.type);
+      const reviewRequired = auditContentType
+        ? resolveContentReviewRequired(team.defaultReviewPolicy, project.reviewPolicyMode, auditConfigs, auditContentType)
+        : resolveReviewRequired(team.defaultReviewPolicy, project.reviewPolicyMode);
+      const autoApproved = auditContentType
+        ? canAutoApprove(auditConfigs, auditContentType, actor.projectRoles)
+        : false;
+      return {
+        auditContentType,
+        status: getSubmittedStatus(reviewRequired && !autoApproved),
+        autoApproved,
+      };
+    });
+
+    const version = await this.createVersionForDocument({
+      documentId: options.documentId,
+      title: options.title,
+      content: options.content,
+      metadata: options.metadata,
+      createdBy: options.userId,
+      status: policy.status,
+    });
+
+    if (policy.auditContentType) {
+      await this.auditService.recordAuditAction({
+        projectId: document.projectId,
+        versionId: version.id,
+        documentType: document.type,
+        action: "submitted",
+        reviewerId: options.userId,
+      });
+
+      if (policy.autoApproved) {
+        await this.auditService.recordAuditAction({
+          projectId: document.projectId,
+          versionId: version.id,
+          documentType: document.type,
+          action: "approved",
+          reviewerId: options.userId,
+          comment: "Auto-approved by audit role policy.",
+        });
+      }
+
+      this.realtimeEvents.emitReviewUpdated({
+        projectId: document.projectId,
+        versionId: version.id,
+        documentId: document.id,
+        status: version.status,
+        action: policy.autoApproved ? "approved" : "submitted",
+      });
+    }
+
+    return version;
   }
 
   private async reviewVersion(userId: string, versionId: string, nextStatus: "approved" | "rejected", comment?: string) {
@@ -2863,6 +2941,35 @@ export class WorkspaceService {
     });
   }
 
+  private findApprovedShotCompositionVersion(
+    db: DevDatabase,
+    projectId: string,
+    shotId: string,
+  ): { version: VersionRecord; content: MediaContent } | null {
+    const videoDocument = db.documents.find(
+      (document) => document.projectId === projectId && document.type === "video" && document.shotId === shotId,
+    );
+    if (!videoDocument) {
+      return null;
+    }
+
+    const candidates = db.versions
+      .filter((version) =>
+        version.documentId === videoDocument.id
+        && version.status === "approved"
+        && version.metadata?.source === "shot_composition",
+      )
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+    for (const version of candidates) {
+      const content = version.content as MediaContent | undefined;
+      if (content?.assetUrl) {
+        return { version, content };
+      }
+    }
+    return null;
+  }
+
   async autoAssembleTimeline(userId: string, projectId: string): Promise<TimelineRecord> {
     const actor = await this.getActor(userId, projectId);
     if (!this.actorHasProjectPermission(actor, "timeline.edit")) {
@@ -2893,6 +3000,28 @@ export class WorkspaceService {
           for (const shot of shots) {
             const shotDuration = shot.durationSeconds || 3;
 
+            // 优先使用已验收的单镜头合成版本
+            const composition = this.findApprovedShotCompositionVersion(db, projectId, shot.id);
+            if (composition) {
+              videoTracks.push({
+                id: createId("clip"),
+                assetUrl: composition.content.assetUrl,
+                assetId: composition.content.assetId,
+                startTime: currentTime,
+                duration: shotDuration,
+                inPoint: 0,
+                sortOrder: clipIndex,
+                label: shot.shotLabel || `Shot ${clipIndex + 1}`,
+                shotId: shot.id,
+                transitionIn: clipIndex > 0 ? "fade" : "none",
+                transitionDuration: clipIndex > 0 ? 0.5 : undefined,
+                source: "shot_composition",
+              });
+              currentTime += shotDuration;
+              clipIndex++;
+              continue;
+            }
+
             // Find adopted video asset for this shot
             const videoDoc = db.documents.find(
               (d) => d.projectId === projectId && d.type === "video" && d.shotId === shot.id,
@@ -2912,6 +3041,7 @@ export class WorkspaceService {
                 shotId: shot.id,
                 transitionIn: clipIndex > 0 ? "fade" : "none",
                 transitionDuration: clipIndex > 0 ? 0.5 : undefined,
+                source: "timeline_auto_assemble",
               });
             }
 
@@ -2932,6 +3062,7 @@ export class WorkspaceService {
                 sortOrder: clipIndex,
                 label: shot.dialogue ? shot.dialogue.substring(0, 30) : undefined,
                 shotId: shot.id,
+                source: "timeline_auto_assemble",
               });
             }
 
@@ -2947,6 +3078,7 @@ export class WorkspaceService {
                 subtitleStyle: { fontSize: 24, color: "#ffffff", position: "bottom" },
                 label: shot.dialogue.substring(0, 30),
                 shotId: shot.id,
+                source: "timeline_auto_assemble",
               });
             }
 
@@ -3007,6 +3139,7 @@ export class WorkspaceService {
       assetUrl: string;
       mimeType: string;
       sizeInBytes: number;
+      shotId?: string;
     },
   ) {
     const actor = await this.getActor(userId, projectId);
@@ -3024,6 +3157,7 @@ export class WorkspaceService {
       type: input.type as any,
       title: input.title,
       createdBy: userId,
+      shotId: input.shotId,
     });
 
     const version = await this.createVersionForDocument({

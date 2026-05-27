@@ -58,7 +58,16 @@ type ShotJobMap = {
   image?: ProjectWorkspacePayload["jobs"][number];
   video?: ProjectWorkspacePayload["jobs"][number];
   tts?: ProjectWorkspacePayload["jobs"][number];
+  composition?: ProjectWorkspacePayload["jobs"][number];
 };
+
+type ShotCompositionStatus =
+  | "missing_video"
+  | "ready"
+  | "running"
+  | "pending_review"
+  | "approved"
+  | "rejected";
 
 interface ShotProjectState {
   imageDocument: ProjectWorkspacePayload["documents"][number] | null;
@@ -75,6 +84,8 @@ interface ShotProjectState {
   hasAudio: boolean;
   hasPendingCandidates: boolean;
   isFinished: boolean;
+  compositionVersion: ProjectWorkspacePayload["versions"][number] | null;
+  compositionStatus: ShotCompositionStatus;
 }
 
 function createShotId(sceneId: string, index: number) {
@@ -206,6 +217,7 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
       if (job.type === "image_generation" && !entry.image) entry.image = job;
       if (job.type === "video_generation" && !entry.video) entry.video = job;
       if (job.type === "tts_generation" && !entry.tts) entry.tts = job;
+      if (job.type === "shot_composition" && !entry.composition) entry.composition = job;
       map.set(job.shotId, entry);
     }
     return map;
@@ -270,6 +282,25 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         ?? (reverseMappings.has(shot.id) ? latestJobsByShot.get(reverseMappings.get(shot.id)!) : undefined)
         ?? {};
 
+      // 计算合成版本和状态
+      const compositionCandidates = videoCandidates
+        .filter((candidate) => candidate.metadata?.source === "shot_composition")
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      const approvedComposition = compositionCandidates.find((candidate) => candidate.status === "approved") ?? null;
+      const latestComposition = compositionCandidates[0] ?? null;
+      const compositionJob = shotJobs.composition;
+      const compositionStatus: ShotCompositionStatus = compositionJob?.status === "running" || compositionJob?.status === "queued"
+        ? "running"
+        : approvedComposition
+          ? "approved"
+          : latestComposition?.status === "rejected"
+            ? "rejected"
+            : latestComposition && (latestComposition.status === "submitted" || latestComposition.status === "pending_review")
+              ? "pending_review"
+              : hasVideo
+                ? "ready"
+                : "missing_video";
+
       map.set(shot.id, {
         imageDocument: docs.image ?? null,
         videoDocument: docs.video ?? null,
@@ -280,6 +311,8 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         hasImage, hasVideo, hasAudio,
         hasPendingCandidates,
         isFinished: hasImage && hasVideo && (!requiresTts || hasAudio),
+        compositionVersion: approvedComposition ?? latestComposition,
+        compositionStatus,
       });
     }
     return map;
@@ -532,6 +565,24 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     onError: setMutationError,
   });
 
+  const composeShot = useMutation({
+    mutationFn: async ({ shotId }: { shotId: string }) => apiFetch(`/shots/${shotId}/composition-jobs`, {
+      method: "POST",
+      body: {
+        projectId: requireProjectId(),
+        resolution: "1080x1920",
+        fps: 30,
+        format: "mp4",
+        allowMockFallback: true,
+      },
+    }),
+    onSuccess: async () => {
+      setFeedback({ message: t("projectWorkspace.feedback.mediaJobSuccess", { label: t("shotComposition.compose"), jobId: "queued" }), error: null });
+      await invalidateWorkspace();
+    },
+    onError: setMutationError,
+  });
+
   const batchGenerateMissingImages = useMutation({
     mutationFn: async () => apiFetch(`/projects/${requireProjectId()}/batch-image-jobs`, {
       method: "POST",
@@ -766,6 +817,8 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
           isImagePending={generateImage.isPending && generateImage.variables?.shotId === selectedShotId}
           isVideoPending={generateVideo.isPending && generateVideo.variables?.shotId === selectedShotId}
           isTtsPending={generateTts.isPending && generateTts.variables?.shotId === selectedShotId}
+          onComposeShot={(shotId) => composeShot.mutate({ shotId })}
+          isCompositionPending={composeShot.isPending && composeShot.variables?.shotId === selectedShotId}
           isAdoptPending={adoptVersion.isPending}
           isSetCurrentUsePending={useMediaVersionForShot.isPending}
           hasPrev={hasPrev}

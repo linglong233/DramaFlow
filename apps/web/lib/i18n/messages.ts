@@ -1327,7 +1327,8 @@ export const zhCNMessages = {
       rewrite_segment: "文本重写",
       tts_generation: "语音合成",
       export_video: "视频导出",
-      impact_suggestion: "影响建议"
+      impact_suggestion: "影响建议",
+      shot_composition: "镜头合成"
     },
     statusLabels: {
       queued: "排队中",
@@ -1527,6 +1528,19 @@ export const zhCNMessages = {
     videoReferenceMultiple: "多参考图",
     videoReferenceLastFrame: "选择尾帧",
     videoReferenceAdd: "添加参考图"
+  },
+  shotComposition: {
+    title: "镜头合成",
+    compose: "合成镜头片段",
+    jobLabel: "镜头合成",
+    status: {
+      missingVideo: "缺少视频素材",
+      ready: "待合成",
+      running: "合成中",
+      pendingReview: "合成待审核",
+      approved: "合成已通过",
+      rejected: "合成被拒绝",
+    },
   },
   shotCard: {
     statusDone: "已完成",
@@ -2945,7 +2959,8 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       rewrite_segment: "Rewrite",
       tts_generation: "TTS",
       export_video: "Export",
-      impact_suggestion: "Impact suggestion"
+      impact_suggestion: "Impact suggestion",
+      shot_composition: "Shot composition"
     },
     statusLabels: {
       queued: "Queued",
@@ -3145,6 +3160,19 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     videoReferenceMultiple: "Multiple refs",
     videoReferenceLastFrame: "Select last frame",
     videoReferenceAdd: "Add reference"
+  },
+  shotComposition: {
+    title: "Shot composition",
+    compose: "Compose shot",
+    jobLabel: "Shot composition",
+    status: {
+      missingVideo: "Missing video",
+      ready: "Ready to compose",
+      running: "Composing",
+      pendingReview: "Pending review",
+      approved: "Approved",
+      rejected: "Rejected",
+    },
   },
   shotCard: {
     statusDone: "Done",

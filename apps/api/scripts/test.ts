@@ -115,6 +115,46 @@ async function readResponse(response: Response) {
   };
 }
 
+async function uploadTestAsset(
+  baseUrl: string,
+  accessToken: string,
+  projectId: string,
+  input: { filename: string; mimeType: string; body: string },
+) {
+  const createTarget = await originalFetch(`${baseUrl}/uploads`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(accessToken, true),
+    },
+    body: JSON.stringify({
+      projectId,
+      filename: input.filename,
+      contentType: input.mimeType,
+      sizeInBytes: Buffer.byteLength(input.body),
+    }),
+  });
+  assert.equal(createTarget.status, 201);
+  const payload = await createTarget.json() as {
+    asset: { id: string };
+    target: { key: string; publicUrl?: string; headers: Record<string, string> };
+  };
+
+  const directUpload = await originalFetch(`${baseUrl}/uploads/direct/${encodeURIComponent(payload.target.key)}`, {
+    method: "PUT",
+    headers: {
+      ...payload.target.headers,
+      ...authHeaders(accessToken),
+    },
+    body: input.body,
+  });
+  assert.equal(directUpload.status, 200);
+
+  return {
+    assetId: payload.asset.id,
+    assetUrl: payload.target.publicUrl ?? `${baseUrl}/uploads/${payload.target.key}`,
+  };
+}
+
 function parseSseEvents<T = Record<string, unknown>>(bodyText: string): T[] {
   return bodyText
     .split(/\n\n+/)
@@ -398,6 +438,7 @@ async function main() {
       "retryNovelImportChunk",
       "rerunNovelImportFollowingChunks",
       "writeNovelImportDrafts",
+      "createShotCompositionJob",
       "getJob",
     ]);
     assertMethodsStayOnPrototype(new UploadsController({} as never), [
@@ -3190,6 +3231,201 @@ async function main() {
       assert.equal(promptSnapshot.contractId, "storyboard.generation.v1");
       assert.equal(promptSnapshot.contractVersion, "1.0.0");
       assert.equal(promptSnapshot.schemaVersion, "storyboard.v1");
+    });
+  });
+
+  await runCase("shot composition requires a selected or current video asset", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, { email: "compose-missing-video@example.com", displayName: "Compose Missing Video" });
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          teamId,
+          name: "Composition Missing Video",
+          description: "Composition should fail without video",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const project = await createProjectResponse.json() as { id: string };
+
+      const workspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(workspaceResponse.status, 200);
+      const workspace = await workspaceResponse.json() as { documents: Array<{ id: string; type: string }> };
+      const storyboardDocument = workspace.documents.find((document) => document.type === "storyboard");
+      assert.ok(storyboardDocument);
+
+      const versionResponse = await originalFetch(`${baseUrl}/documents/${storyboardDocument.id}/versions`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          title: "Storyboard",
+          content: {
+            overview: "Composition test",
+            shots: [{
+              id: "shot-compose-missing-video",
+              sceneId: "scene-compose",
+              shotLabel: "1A",
+              framing: "MS",
+              cameraMove: "static",
+              durationSeconds: 3,
+              visualDescription: "A shot without generated video",
+              dialogue: "This should not compose.",
+            }],
+            mediaBindings: {},
+          },
+          metadata: { source: "composition-test" },
+        }),
+      });
+      assert.equal(versionResponse.status, 201);
+
+      const compositionResponse = await originalFetch(`${baseUrl}/shots/shot-compose-missing-video/composition-jobs`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          projectId: project.id,
+          resolution: "1080x1920",
+          fps: 30,
+          format: "mp4",
+        }),
+      });
+      assert.equal(compositionResponse.status, 400);
+      const errorText = await compositionResponse.text();
+      assert.match(errorText, /Shot video is required before composition/);
+    });
+  });
+
+  await runCase("timeline auto assembly prefers approved shot compositions", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, { email: "compose-timeline@example.com", displayName: "Compose Timeline" });
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+      const readHeaders = authHeaders(owner.accessToken);
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          teamId,
+          name: "Composition Timeline",
+          description: "Timeline should prefer approved composition",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const project = await createProjectResponse.json() as { id: string };
+
+      const workspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, { headers: readHeaders });
+      const workspace = await workspaceResponse.json() as { documents: Array<{ id: string; type: string }> };
+      const storyboardDocument = workspace.documents.find((document) => document.type === "storyboard");
+      assert.ok(storyboardDocument);
+
+      await originalFetch(`${baseUrl}/documents/${storyboardDocument.id}/versions`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          title: "Storyboard",
+          content: {
+            overview: "Timeline composition",
+            shots: [{
+              id: "shot-compose-timeline",
+              sceneId: "scene-compose",
+              shotLabel: "1A",
+              framing: "MS",
+              cameraMove: "static",
+              durationSeconds: 3,
+              visualDescription: "A composed shot",
+              dialogue: "This audio should already be burned in.",
+            }],
+            mediaBindings: {},
+          },
+          metadata: { source: "composition-timeline-test" },
+        }),
+      });
+
+      // 提交 storyboard 版本使其成为 currentVersion
+      const workspaceAfterVersionResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, { headers: readHeaders });
+      const workspaceAfterVersion = await workspaceAfterVersionResponse.json() as {
+        documents: Array<{ id: string; type: string; draftVersionId?: string }>;
+      };
+      const sbDoc = workspaceAfterVersion.documents.find((document) => document.type === "storyboard");
+      if (sbDoc?.draftVersionId) {
+        const submitStoryboardResponse = await originalFetch(`${baseUrl}/versions/${sbDoc.draftVersionId}/submit`, {
+          method: "POST",
+          headers: readHeaders,
+        });
+        assert.equal(submitStoryboardResponse.status, 201);
+      }
+
+      const uploadedVideo = await uploadTestAsset(baseUrl, owner.accessToken, project.id, {
+        filename: "raw-video.mp4",
+        mimeType: "video/mp4",
+        body: "raw-video",
+      });
+      const registerVideoResponse = await originalFetch(`${baseUrl}/projects/${project.id}/assets`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          type: "video",
+          title: "Raw Video",
+          filename: "raw-video.mp4",
+          assetId: uploadedVideo.assetId,
+          assetUrl: uploadedVideo.assetUrl,
+          mimeType: "video/mp4",
+          sizeInBytes: 9,
+          shotId: "shot-compose-timeline",
+        }),
+      });
+      assert.equal(registerVideoResponse.status, 201);
+      const registeredVideo = await registerVideoResponse.json() as { version: { id: string } };
+
+      // 提交并自动验收上传的视频版本，使其成为 currentVersion
+      const submitVideoResponse = await originalFetch(`${baseUrl}/versions/${registeredVideo.version.id}/submit`, {
+        method: "POST",
+        headers: readHeaders,
+      });
+      assert.equal(submitVideoResponse.status, 201);
+
+      const compositionJobResponse = await originalFetch(`${baseUrl}/shots/shot-compose-timeline/composition-jobs`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          projectId: project.id,
+          resolution: "1080x1920",
+          fps: 30,
+          format: "mp4",
+          allowMockFallback: true,
+        }),
+      });
+      assert.equal(compositionJobResponse.status, 201);
+      const compositionJob = await compositionJobResponse.json() as { id: string };
+      const processResponse = await originalFetch(`${baseUrl}/internal/jobs/${compositionJob.id}/process`, {
+        method: "POST",
+        headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+      });
+      assert.equal(processResponse.ok, true);
+
+      const timelineResponse = await originalFetch(`${baseUrl}/projects/${project.id}/timeline/auto-assemble`, {
+        method: "POST",
+        headers: readHeaders,
+      });
+      assert.equal(timelineResponse.status, 201);
+      const timeline = await timelineResponse.json() as { tracks: Array<{ type: string; clips: Array<{ source?: string; shotId?: string }> }> };
+      const videoTrack = timeline.tracks.find((track) => track.type === "video");
+      const dialogueTrack = timeline.tracks.find((track) => track.type === "dialogue");
+      const subtitleTrack = timeline.tracks.find((track) => track.type === "subtitle");
+      assert.equal(videoTrack?.clips.length, 1);
+      assert.equal(videoTrack?.clips[0]?.source, "shot_composition");
+      assert.equal(dialogueTrack?.clips.length, 0);
+      assert.equal(subtitleTrack?.clips.length, 0);
     });
   });
 

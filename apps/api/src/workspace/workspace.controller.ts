@@ -569,6 +569,7 @@ export class WorkspaceController {
       assetUrl: string;
       mimeType: string;
       sizeInBytes: number;
+      shotId?: string;
     },
   ) {
     return this.workspaceService.registerProjectAsset(

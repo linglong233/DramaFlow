@@ -27,6 +27,28 @@ interface ResolvedClip {
   localPath: string;
 }
 
+export interface ShotCompositionRenderInput {
+  projectId: string;
+  shotId: string;
+  videoAssetUrl: string;
+  audioAssetUrl?: string;
+  subtitleText?: string;
+  duration: number;
+  resolution: string;
+  fps: number;
+  format: ExportTimelineInput["format"];
+  allowMockFallback?: boolean;
+}
+
+export interface ShotCompositionRenderResult {
+  assetId: string;
+  assetUrl: string;
+  mimeType: string;
+  fileSize: number;
+  duration: number;
+  mode: "ffmpeg" | "mock";
+}
+
 @Injectable()
 export class ExportService {
   constructor(
@@ -168,6 +190,138 @@ export class ExportService {
     }
   }
 
+  /** 单镜头合成：为单个镜头构建时间线并渲染输出 */
+  async composeShot(
+    userId: string,
+    input: ShotCompositionRenderInput,
+    onProgress?: ExportProgressCallback,
+  ): Promise<ShotCompositionRenderResult> {
+    const ffmpegAvailable = await this.checkFfmpegAvailable();
+    if (!ffmpegAvailable && !input.allowMockFallback) {
+      throw new BadRequestException(
+        "FFmpeg is not installed or not found in PATH. Set FFMPEG_PATH or allow mock fallback.",
+      );
+    }
+
+    if (!ffmpegAvailable) {
+      return this.mockShotComposition(userId, input);
+    }
+
+    const compositionId = createId("shotcomp");
+    const workDir = join(tmpdir(), `dramaflow-shot-composition-${compositionId}`);
+    try {
+      await mkdir(workDir, { recursive: true });
+      await mkdir(join(workDir, "assets"), { recursive: true });
+      onProgress?.(5);
+
+      const timeline = this.buildShotCompositionTimeline(input);
+      const resolvedClips = await this.collectAssets(timeline, workDir);
+      onProgress?.(20);
+
+      const outputFilename = `shot_${input.shotId}_${compositionId}.${input.format}`;
+      const outputPath = join(workDir, outputFilename);
+      await this.runFfmpeg(
+        resolvedClips,
+        timeline,
+        {
+          projectId: input.projectId,
+          resolution: input.resolution,
+          fps: input.fps,
+          format: input.format,
+          allowMockFallback: input.allowMockFallback,
+        },
+        outputPath,
+        (ffmpegPercent) => onProgress?.(20 + Math.round(ffmpegPercent * 0.7)),
+      );
+      onProgress?.(90);
+
+      const outputBuffer = await readFile(outputPath);
+      const fileStat = await stat(outputPath);
+      const mimeType = input.format === "webm" ? "video/webm"
+        : input.format === "mov" ? "video/quicktime"
+        : "video/mp4";
+      const stored = await this.storageService.storeGeneratedAsset(userId, {
+        projectId: input.projectId,
+        filename: outputFilename,
+        contentType: mimeType,
+        body: outputBuffer,
+      });
+      onProgress?.(100);
+
+      return {
+        assetId: stored.asset.id,
+        assetUrl: stored.url ?? "",
+        mimeType,
+        fileSize: fileStat.size,
+        duration: input.duration,
+        mode: "ffmpeg",
+      };
+    } finally {
+      if (process.env.EXPORT_KEEP_TEMP !== "true") {
+        await rm(workDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  }
+
+  /** 构建单镜头合成时间线 */
+  private buildShotCompositionTimeline(input: ShotCompositionRenderInput): TimelineRecord {
+    const videoClip: TimelineClipRecord = {
+      id: createId("clip"),
+      assetUrl: input.videoAssetUrl,
+      startTime: 0,
+      duration: input.duration,
+      inPoint: 0,
+      sortOrder: 0,
+      label: `Shot ${input.shotId}`,
+      shotId: input.shotId,
+      source: "shot_composition",
+    };
+
+    const dialogueClip: TimelineClipRecord | null = input.audioAssetUrl
+      ? {
+          id: createId("clip"),
+          assetUrl: input.audioAssetUrl,
+          startTime: 0,
+          duration: input.duration,
+          inPoint: 0,
+          sortOrder: 0,
+          label: `Dialogue ${input.shotId}`,
+          shotId: input.shotId,
+          source: "shot_composition",
+        }
+      : null;
+
+    const subtitleClip: TimelineClipRecord | null = input.subtitleText?.trim()
+      ? {
+          id: createId("clip"),
+          startTime: 0,
+          duration: input.duration,
+          inPoint: 0,
+          sortOrder: 0,
+          subtitleText: input.subtitleText.trim(),
+          subtitleStyle: { fontSize: 24, color: "#ffffff", position: "bottom" },
+          label: `Subtitle ${input.shotId}`,
+          shotId: input.shotId,
+          source: "shot_composition",
+        }
+      : null;
+
+    return {
+      id: createId("tl"),
+      projectId: input.projectId,
+      duration: input.duration,
+      fps: input.fps,
+      resolution: input.resolution,
+      tracks: [
+        { id: createId("track"), type: "video", name: "视频", sortOrder: 0, isMuted: false, volume: 1, clips: [videoClip] },
+        { id: createId("track"), type: "dialogue", name: "对白", sortOrder: 1, isMuted: false, volume: 1, clips: dialogueClip ? [dialogueClip] : [] },
+        { id: createId("track"), type: "subtitle", name: "字幕", sortOrder: 2, isMuted: false, volume: 1, clips: subtitleClip ? [subtitleClip] : [] },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   /** Mock export: generates a placeholder video-like file when FFmpeg is unavailable. */
   private async mockExport(
     userId: string,
@@ -221,6 +375,39 @@ export class ExportService {
     return this.database.query((db) =>
       db.exports.find((e) => e.id === exportRecord.id)!,
     );
+  }
+
+  /** 单镜头合成 mock 模式：FFmpeg 不可用时生成占位文件 */
+  private async mockShotComposition(
+    userId: string,
+    input: ShotCompositionRenderInput,
+  ): Promise<ShotCompositionRenderResult> {
+    const [width, height] = input.resolution.split("x").map(Number);
+    const w = width || 1080;
+    const h = height || 1920;
+    const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="#0f172a" />
+  <text x="${w / 2}" y="${h * 0.42}" fill="#f8fafc" font-size="44" font-family="sans-serif" text-anchor="middle">Shot Composition Preview</text>
+  <text x="${w / 2}" y="${h * 0.48}" fill="#cbd5e1" font-size="24" font-family="sans-serif" text-anchor="middle">${input.shotId}</text>
+  <text x="${w / 2}" y="${h * 0.54}" fill="#94a3b8" font-size="20" font-family="sans-serif" text-anchor="middle">FFmpeg not available - mock mode</text>
+</svg>`.trim();
+
+    const stored = await this.storageService.storeGeneratedAsset(userId, {
+      projectId: input.projectId,
+      filename: `shot_composition_mock_${input.shotId}.svg`,
+      contentType: "image/svg+xml",
+      body: svg,
+    });
+
+    return {
+      assetId: stored.asset.id,
+      assetUrl: stored.url ?? "",
+      mimeType: "image/svg+xml",
+      fileSize: Buffer.byteLength(svg),
+      duration: input.duration,
+      mode: "mock",
+    };
   }
 
   /**
@@ -380,7 +567,7 @@ export class ExportService {
     let videoOutput = "[outv]";
     for (let i = 0; i < subtitleClips.length; i++) {
       const sc = subtitleClips[i];
-      const text = sc.clip.subtitleText!.replace(/'/g, "\\'").replace(/:/g, "\\:");
+      const text = this.escapeDrawtextText(sc.clip.subtitleText!);
       const enable = `between(t,${sc.clip.startTime},${sc.clip.startTime + sc.clip.duration})`;
       const nextLabel = i === subtitleClips.length - 1 ? "[outvfinal]" : `[subv${i}]`;
       filterParts.push(
@@ -501,6 +688,15 @@ export class ExportService {
   private isImageFile(filePath: string): boolean {
     const ext = extname(filePath).toLowerCase();
     return [".png", ".jpg", ".jpeg", ".svg", ".webp", ".bmp", ".gif"].includes(ext);
+  }
+
+  /** 转义 FFmpeg drawtext 滤镜中的特殊字符 */
+  private escapeDrawtextText(value: string): string {
+    return value
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/:/g, "\\:")
+      .replace(/\r?\n/g, "\\n");
   }
 
   /** Get the appropriate video codec for the output format. */

@@ -97,7 +97,8 @@ export type JobType =
   | "export_video"
   | "shot_regenerate"
   | "novel_import"
-  | "impact_suggestion";
+  | "impact_suggestion"
+  | "shot_composition";
 
 /** 任务执行状态 */
 export type JobStatus = "queued" | "running" | "completed" | "failed";
@@ -1246,6 +1247,8 @@ export interface TimelineClipRecord {
   label?: string;
   /** 关联的镜头 ID */
   shotId?: string;
+  /** 片段来源，用于区分已验收单镜头合成片段 */
+  source?: "shot_composition" | "timeline_auto_assemble" | "manual";
 }
 
 /** 时间线轨道 */
@@ -1386,4 +1389,28 @@ export interface ExportTimelineInput {
   format: ExportFormat;
   /** 是否允许在无 FFmpeg 时使用 Mock 降级 */
   allowMockFallback?: boolean;
+}
+
+/** 单镜头合成输入参数 */
+export interface ComposeShotInput {
+  projectId: string;
+  shotId: string;
+  resolution: string;
+  fps: number;
+  format: ExportFormat;
+  /** 是否允许在无 FFmpeg 时使用 Mock 降级 */
+  allowMockFallback?: boolean;
+}
+
+/** 单镜头合成结果 */
+export interface ComposeShotResult {
+  documentId: string;
+  versionId: string;
+  assetId: string;
+  assetUrl: string;
+  mimeType: string;
+  /** 合成视频时长（秒） */
+  duration: number;
+  /** 运行模式：真实 FFmpeg 或 Mock */
+  mode?: "ffmpeg" | "mock";
 }

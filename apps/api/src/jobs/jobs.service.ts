@@ -15,7 +15,10 @@ import {
 } from "@nestjs/common";
 import type {
   BatchJobGroupRecord,
+  ComposeShotInput,
+  ComposeShotResult,
   CreateImageJobPayload,
+  ExportFormat,
   ExportTimelineInput,
   GenerateMediaInput,
   GenerateScriptInput,
@@ -36,6 +39,7 @@ import type {
   ProviderEntry,
   RewriteSegmentInput,
   ScriptContent,
+  ShotMediaBinding,
   StoryboardContent,
   VersionRecord,
   WorldBibleReferenceImageGenerateResponse,
@@ -106,6 +110,17 @@ type RewriteJobInput = RewriteSegmentInput & TextJobInputBase;
 interface GeneratedMediaResult extends MediaContent {
   inlineBody?: Buffer | Uint8Array | string;
   fileExtension?: string;
+}
+
+interface ResolvedShotCompositionInput {
+  storyboardVersionId?: string;
+  shotHash?: string;
+  duration: number;
+  subtitleText?: string;
+  videoVersionId?: string;
+  videoAssetUrl?: string;
+  audioVersionId?: string;
+  audioAssetUrl?: string;
 }
 
 interface VideoJobState extends Record<string, unknown> {
@@ -634,6 +649,8 @@ export class JobsService {
           return await this.processTTSJob(job as unknown as JobRecord<GenerateTTSInput>);
         case "export_video":
           return await this.processExportJob(job as unknown as JobRecord<ExportTimelineInput>);
+        case "shot_composition":
+          return await this.processShotCompositionJob(job as unknown as JobRecord<ComposeShotInput>);
         case "novel_import":
           return await this.processNovelImportJob(job as unknown as JobRecord<NovelImportJobInput>);
         case "impact_suggestion":
@@ -2575,6 +2592,149 @@ export class JobsService {
       projectId,
       input: { projectId, ...input },
     });
+  }
+
+  // ===== Shot Composition Jobs =====
+
+  async createShotCompositionJob(
+    userId: string,
+    shotId: string,
+    input: Omit<ComposeShotInput, "shotId">,
+  ) {
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      input.projectId,
+      "job.manage",
+      "You do not have permission to create shot composition jobs",
+    );
+    const resolved = await this.resolveShotCompositionInput(input.projectId, shotId);
+    if (!resolved.videoVersionId || !resolved.videoAssetUrl) {
+      throw new BadRequestException("Shot video is required before composition");
+    }
+    return this.enqueueJob(userId, {
+      type: "shot_composition",
+      projectId: input.projectId,
+      shotId,
+      input: {
+        ...input,
+        shotId,
+        resolution: input.resolution || "1080x1920",
+        fps: input.fps || 30,
+        format: input.format || "mp4",
+      },
+    });
+  }
+
+  private async resolveShotCompositionInput(projectId: string, shotId: string): Promise<ResolvedShotCompositionInput> {
+    return this.database.query((db) => {
+      const storyboardDocument = db.documents.find((document) => document.projectId === projectId && document.type === "storyboard");
+      const storyboardVersionId = storyboardDocument?.currentVersionId ?? storyboardDocument?.draftVersionId;
+      const storyboardVersion = storyboardVersionId ? db.versions.find((version) => version.id === storyboardVersionId) : undefined;
+      const storyboard = storyboardVersion?.content as StoryboardContent | undefined;
+      const shot = storyboard?.shots?.find((item) => item.id === shotId);
+      if (!shot) {
+        throw new NotFoundException("Storyboard shot not found");
+      }
+
+      const binding = (storyboard?.mediaBindings?.[shotId] ?? {}) as ShotMediaBinding;
+      const videoDocument = db.documents.find((document) => document.projectId === projectId && document.type === "video" && document.shotId === shotId);
+      const audioDocument = db.documents.find((document) => document.projectId === projectId && document.type === "audio" && document.shotId === shotId);
+      const videoVersionId = binding.videoVersionId ?? videoDocument?.currentVersionId;
+      const audioVersionId = binding.audioVersionId ?? audioDocument?.currentVersionId;
+      const videoVersion = videoVersionId ? db.versions.find((version) => version.id === videoVersionId) : undefined;
+      const audioVersion = audioVersionId ? db.versions.find((version) => version.id === audioVersionId) : undefined;
+      const videoContent = videoVersion?.content as MediaContent | undefined;
+      const audioContent = audioVersion?.content as { assetUrl?: string; duration?: number } | undefined;
+
+      return {
+        storyboardVersionId: storyboardVersion?.id,
+        shotHash: this.impactService.stableHash(shot),
+        duration: Number(shot.durationSeconds || audioContent?.duration || 3),
+        subtitleText: binding.subtitle?.trim() || shot.dialogue?.trim() || undefined,
+        videoVersionId,
+        videoAssetUrl: typeof videoContent?.assetUrl === "string" ? videoContent.assetUrl : undefined,
+        audioVersionId,
+        audioAssetUrl: typeof audioContent?.assetUrl === "string" ? audioContent.assetUrl : undefined,
+      };
+    });
+  }
+
+  private async processShotCompositionJob(job: JobRecord<ComposeShotInput>) {
+    await this.markJobRunning(job.id, { progress: 5 });
+    const resolved = await this.resolveShotCompositionInput(job.projectId, job.shotId!);
+    if (!resolved.videoVersionId || !resolved.videoAssetUrl) {
+      throw new BadRequestException("Shot video is required before composition");
+    }
+
+    const rendered = await this.exportService.composeShot(
+      job.createdBy,
+      {
+        projectId: job.projectId,
+        shotId: job.shotId!,
+        videoAssetUrl: resolved.videoAssetUrl,
+        audioAssetUrl: resolved.audioAssetUrl,
+        subtitleText: resolved.subtitleText,
+        duration: resolved.duration,
+        resolution: job.input.resolution,
+        fps: job.input.fps,
+        format: job.input.format,
+        allowMockFallback: job.input.allowMockFallback,
+      },
+      (percent) => {
+        void this.markJobRunning(job.id, { progress: percent });
+      },
+    );
+
+    const document = await this.workspaceService.ensureDocumentForProject({
+      projectId: job.projectId,
+      type: "video",
+      title: `合成镜头 - ${job.shotId}`,
+      createdBy: job.createdBy,
+      shotId: job.shotId,
+    });
+
+    const version = await this.workspaceService.createGeneratedVersionForDocument({
+      userId: job.createdBy,
+      documentId: document.id,
+      title: `合成镜头 ${job.shotId}`,
+      content: {
+        prompt: "",
+        assetId: rendered.assetId,
+        assetUrl: rendered.assetUrl,
+        provider: "ffmpeg",
+        mimeType: rendered.mimeType,
+        parameters: {
+          resolution: job.input.resolution,
+          fps: job.input.fps,
+          format: job.input.format,
+        },
+        mode: rendered.mode,
+      },
+      metadata: {
+        source: "shot_composition",
+        sourceJobId: job.id,
+        shotId: job.shotId,
+        sourceVideoVersionId: resolved.videoVersionId,
+        sourceAudioVersionId: resolved.audioVersionId,
+        sourceSubtitle: resolved.subtitleText,
+        sourceStoryboardVersionId: resolved.storyboardVersionId,
+        sourceShotHash: resolved.shotHash,
+        mode: rendered.mode,
+        fileSize: rendered.fileSize,
+      },
+    });
+
+    const result: ComposeShotResult = {
+      documentId: document.id,
+      versionId: version.id,
+      assetId: rendered.assetId,
+      assetUrl: rendered.assetUrl,
+      mimeType: rendered.mimeType,
+      duration: rendered.duration,
+      mode: rendered.mode,
+    };
+
+    return this.completeJob(job.id, result as unknown as Record<string, unknown>);
   }
 
   private async processExportJob(job: JobRecord<ExportTimelineInput>) {

@@ -29,6 +29,7 @@ import type {
   CreateSynopsisJobPayload,
   CreateVideoJobPayload,
   CreateBatchVideoJobsPayload,
+  ComposeShotInput,
   ConversationDimension,
   ConversationGeneratePayload,
   ConversationMessagePayload,
@@ -550,6 +551,17 @@ export class JobsController {
     @Body() body: { resolution: string; fps: number; bitrate?: string; format: import("@dramaflow/shared").ExportFormat; allowMockFallback?: boolean },
   ) {
     return this.jobsService.createExportJob(user.id, projectId, body);
+  }
+
+  // ===== Shot Composition =====
+
+  @Post("shots/:id/composition-jobs")
+  createShotCompositionJob(
+    @CurrentUser() user: { id: string },
+    @Param("id") shotId: string,
+    @Body() body: Omit<ComposeShotInput, "shotId">,
+  ) {
+    return this.jobsService.createShotCompositionJob(user.id, shotId, body);
   }
 
   // ===== 对话式生成 =====

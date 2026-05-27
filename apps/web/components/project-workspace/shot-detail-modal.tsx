@@ -50,6 +50,7 @@ type ShotJobMap = {
   image?: ProjectWorkspacePayload["jobs"][number];
   video?: ProjectWorkspacePayload["jobs"][number];
   tts?: ProjectWorkspacePayload["jobs"][number];
+  composition?: ProjectWorkspacePayload["jobs"][number];
 };
 
 interface ShotProjectState {
@@ -67,6 +68,8 @@ interface ShotProjectState {
   hasAudio: boolean;
   hasPendingCandidates: boolean;
   isFinished: boolean;
+  compositionVersion: ProjectWorkspacePayload["versions"][number] | null;
+  compositionStatus: "missing_video" | "ready" | "running" | "pending_review" | "approved" | "rejected";
 }
 
 interface GenerateVideoRequest {
@@ -108,6 +111,8 @@ interface Props {
   isVideoPending: boolean;
   isTtsPending: boolean;
   isAdoptPending: boolean;
+  onComposeShot?: (shotId: string) => void;
+  isCompositionPending?: boolean;
   isSetCurrentUsePending: boolean;
   hasPrev: boolean;
   hasNext: boolean;
@@ -294,6 +299,8 @@ export function ShotDetailModal({
   isVideoPending,
   isTtsPending,
   isAdoptPending,
+  onComposeShot,
+  isCompositionPending,
   isSetCurrentUsePending,
   hasPrev,
   hasNext,
@@ -395,6 +402,19 @@ export function ShotDetailModal({
   const currentVideoMime = (state?.currentVideo?.content as MediaVersionContent | undefined)?.mimeType ?? "video/mp4";
   const currentAudioUrl = (state?.currentAudio?.content as MediaVersionContent | undefined)?.assetUrl;
   const currentVoiceName = (state?.currentAudio?.content as MediaVersionContent | undefined)?.voiceName ?? selectedVoice?.voiceName;
+
+  // 镜头合成状态
+  const compositionContent = state?.compositionVersion?.content as MediaVersionContent | undefined;
+  const compositionUrl = compositionContent?.assetUrl;
+  const compositionStatus = state?.compositionStatus;
+  const compositionStatusLabel: Record<string, string> = {
+    missing_video: t("shotComposition.status.missingVideo"),
+    ready: t("shotComposition.status.ready"),
+    running: t("shotComposition.status.running"),
+    pending_review: t("shotComposition.status.pendingReview"),
+    approved: t("shotComposition.status.approved"),
+    rejected: t("shotComposition.status.rejected"),
+  };
 
   useEffect(() => {
     setConfirmDelete(false);
@@ -1047,6 +1067,30 @@ export function ShotDetailModal({
                       placeholder={t("shotDetailDrawer.subtitlePlaceholder")}
                     />
                   </label>
+                )}
+              </div>
+
+              {/* Card 3: 镜头合成 */}
+              <div className="sm-card sm-card--composition">
+                <h4 className="sm-card__accent-title sm-card__accent-title--video">
+                  {t("shotComposition.title")}
+                </h4>
+                <div className={`sm-status-pill sm-status-pill--${compositionStatus ?? "missing_video"}`}>
+                  {compositionStatusLabel[compositionStatus ?? "missing_video"]}
+                </div>
+                {state?.jobs.composition && renderJobRow(t("shotComposition.jobLabel"), state.jobs.composition)}
+                {compositionUrl && (
+                  <video controls src={compositionUrl} className="sm-video-preview" />
+                )}
+                {canUseProject && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    type="button"
+                    disabled={!canMutateProject || compositionStatus === "missing_video" || isCompositionPending}
+                    onClick={() => onComposeShot?.(shot.id)}
+                  >
+                    {isCompositionPending ? t("common.submitting") : t("shotComposition.compose")}
+                  </button>
                 )}
               </div>
             </div>

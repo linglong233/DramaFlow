@@ -65,6 +65,7 @@ function JobTypeIcon({ type }: { type: JobType }) {
         </svg>
       );
     case "video_generation":
+    case "shot_composition":
       return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <rect x="1" y="2.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
