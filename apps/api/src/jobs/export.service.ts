@@ -21,6 +21,11 @@ import { StorageService } from "../storage/storage.service";
 
 export type ExportProgressCallback = (percent: number) => void;
 
+interface CollectAssetsOptions {
+  failOnUnresolved?: boolean;
+  requiredTrackTypes?: Array<TimelineTrackRecord["type"]>;
+}
+
 interface ResolvedClip {
   clip: TimelineClipRecord;
   trackType: TimelineTrackRecord["type"];
@@ -203,10 +208,6 @@ export class ExportService {
       );
     }
 
-    if (!ffmpegAvailable) {
-      return this.mockShotComposition(userId, input);
-    }
-
     const compositionId = createId("shotcomp");
     const workDir = join(tmpdir(), `dramaflow-shot-composition-${compositionId}`);
     try {
@@ -215,8 +216,19 @@ export class ExportService {
       onProgress?.(5);
 
       const timeline = this.buildShotCompositionTimeline(input);
-      const resolvedClips = await this.collectAssets(timeline, workDir);
+
+      // 严格收集资源：缺失 video 资源直接报错，即使 mock fallback 开启也不例外
+      const resolvedClips = await this.collectAssets(timeline, workDir, {
+        failOnUnresolved: true,
+        requiredTrackTypes: ["video"],
+      });
       onProgress?.(20);
+
+      if (!ffmpegAvailable) {
+        const mocked = await this.mockShotComposition(userId, input);
+        onProgress?.(100);
+        return mocked;
+      }
 
       const outputFilename = `shot_${input.shotId}_${compositionId}.${input.format}`;
       const outputPath = join(workDir, outputFilename);
@@ -417,6 +429,7 @@ export class ExportService {
   private async collectAssets(
     timeline: TimelineRecord,
     workDir: string,
+    options: CollectAssetsOptions = {},
   ): Promise<ResolvedClip[]> {
     const resolved: ResolvedClip[] = [];
     let index = 0;
@@ -433,7 +446,23 @@ export class ExportService {
 
         try {
           if (clip.assetUrl.startsWith("http://") || clip.assetUrl.startsWith("https://")) {
-            await this.downloadFile(clip.assetUrl, localPath);
+            try {
+              await this.downloadFile(clip.assetUrl, localPath);
+            } catch (downloadError) {
+              // HTTP 下载失败时，尝试从本地文件系统直接解析（适配测试和本地存储场景）
+              const uploadsMatch = clip.assetUrl.match(/\/uploads\/(.+)$/);
+              if (uploadsMatch) {
+                const uploadsDir = process.env.UPLOADS_DIR ?? "apps/api/uploads";
+                const relativePath = uploadsMatch[1];
+                const isAbsolute = uploadsDir.includes(":") || uploadsDir.startsWith("/");
+                const localUploadsDir = isAbsolute ? uploadsDir : join(process.cwd(), uploadsDir);
+                const fullPath = join(localUploadsDir, relativePath);
+                await stat(fullPath);
+                resolved.push({ clip, trackType: track.type, localPath: fullPath });
+                continue;
+              }
+              throw downloadError;
+            }
           } else {
             // Local file reference — resolve relative to uploads dir
             const uploadsDir = process.env.UPLOADS_DIR ?? "apps/api/uploads";
@@ -447,9 +476,17 @@ export class ExportService {
 
           resolved.push({ clip, trackType: track.type, localPath });
         } catch {
-          // Skip clips whose assets cannot be resolved
+          if (options.failOnUnresolved) {
+            throw new BadRequestException(`Shot composition ${track.type} asset could not be resolved: ${clip.assetUrl}`);
+          }
           process.stdout.write(`[export] skipping unresolvable asset: ${clip.assetUrl}\n`);
         }
+      }
+    }
+
+    for (const requiredTrackType of options.requiredTrackTypes ?? []) {
+      if (!resolved.some((item) => item.trackType === requiredTrackType)) {
+        throw new BadRequestException(`Shot composition ${requiredTrackType} asset could not be resolved`);
       }
     }
 

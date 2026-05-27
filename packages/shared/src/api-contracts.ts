@@ -918,9 +918,7 @@ export interface ExportListResponse {
 export interface CreateShotCompositionJobPayload extends Omit<ComposeShotInput, "shotId"> {}
 
 /** 单镜头合成任务响应 */
-export interface ShotCompositionJobResponse {
-  jobId: string;
-}
+export interface ShotCompositionJobResponse extends JobRecord<ComposeShotInput, ComposeShotResult> {}
 
 // ===== 对话式生成契约 =====
 

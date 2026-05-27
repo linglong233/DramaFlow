@@ -2483,10 +2483,11 @@ async function main() {
       });
       assert.equal(projectResponse.status, 200);
       const project = await projectResponse.json() as {
-        documents: Array<{ id: string; type: string }>;
+        documents: Array<{ id: string; type: string; currentVersionId?: string }>;
       };
       const scriptDocument = project.documents.find((document) => document.type === "script");
       assert.ok(scriptDocument);
+      const currentBeforeAutoSubmit = scriptDocument.currentVersionId;
 
       const upsertAutoApproveResponse = await originalFetch(`${baseUrl}/projects/${createdProject.id}/audit-configs/script`, {
         method: "PATCH",
@@ -2531,6 +2532,16 @@ async function main() {
       assert.equal(autoAuditRecords.some((record) => record.action === "submitted"), true);
       assert.equal(autoAuditRecords.some((record) => record.action === "approved" && record.comment === "Auto-approved by audit role policy."), true);
 
+      const projectAfterAutoSubmitResponse = await originalFetch(`${baseUrl}/projects/${createdProject.id}`, {
+        headers: readHeaders,
+      });
+      assert.equal(projectAfterAutoSubmitResponse.status, 200);
+      const projectAfterAutoSubmit = await projectAfterAutoSubmitResponse.json() as {
+        documents: Array<{ id: string; type: string; currentVersionId?: string }>;
+      };
+      const scriptAfterAutoSubmit = projectAfterAutoSubmit.documents.find((document) => document.id === scriptDocument.id);
+      assert.equal(scriptAfterAutoSubmit?.currentVersionId, currentBeforeAutoSubmit);
+
       const upsertManualReviewResponse = await originalFetch(`${baseUrl}/projects/${createdProject.id}/audit-configs/script`, {
         method: "PATCH",
         headers: { ...jsonHeaders },
@@ -2566,6 +2577,15 @@ async function main() {
       const submittedReviewVersion = await submitReviewResponse.json() as { status: string };
       assert.equal(submittedReviewVersion.status, "submitted");
 
+      const projectBeforeManualApproveResponse = await originalFetch(`${baseUrl}/projects/${createdProject.id}`, {
+        headers: readHeaders,
+      });
+      assert.equal(projectBeforeManualApproveResponse.status, 200);
+      const projectBeforeManualApprove = await projectBeforeManualApproveResponse.json() as {
+        documents: Array<{ id: string; type: string; currentVersionId?: string }>;
+      };
+      const currentBeforeManualApprove = projectBeforeManualApprove.documents.find((document) => document.id === scriptDocument.id)?.currentVersionId;
+
       const approveResponse = await originalFetch(`${baseUrl}/versions/${reviewVersion.id}/approve`, {
         method: "POST",
         headers: { ...jsonHeaders },
@@ -2581,6 +2601,16 @@ async function main() {
       assert.equal(approvedAuditResponse.status, 200);
       const approvedAuditRecords = await approvedAuditResponse.json() as Array<{ action: string; comment?: string }>;
       assert.equal(approvedAuditRecords.some((record) => record.action === "approved" && record.comment === "LGTM with one minor note."), true);
+
+      const projectAfterManualApproveResponse = await originalFetch(`${baseUrl}/projects/${createdProject.id}`, {
+        headers: readHeaders,
+      });
+      assert.equal(projectAfterManualApproveResponse.status, 200);
+      const projectAfterManualApprove = await projectAfterManualApproveResponse.json() as {
+        documents: Array<{ id: string; type: string; currentVersionId?: string }>;
+      };
+      const scriptAfterManualApprove = projectAfterManualApprove.documents.find((document) => document.id === scriptDocument.id);
+      assert.equal(scriptAfterManualApprove?.currentVersionId, currentBeforeManualApprove);
     });
   });
 
@@ -3302,6 +3332,117 @@ async function main() {
     });
   });
 
+  await runCase("shot composition fails when selected video asset cannot be resolved", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, { email: "compose-missing-asset@example.com", displayName: "Compose Missing Asset" });
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+      const readHeaders = authHeaders(owner.accessToken);
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams.find((t) => t.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          teamId,
+          name: "Composition Missing Asset",
+          description: "Composition should fail when video file is missing",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const project = await createProjectResponse.json() as { id: string };
+
+      const workspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, { headers: readHeaders });
+      assert.equal(workspaceResponse.status, 200);
+      const workspace = await workspaceResponse.json() as { documents: Array<{ id: string; type: string }> };
+      const storyboardDocument = workspace.documents.find((document) => document.type === "storyboard");
+      assert.ok(storyboardDocument);
+
+      const storyboardVersionResponse = await originalFetch(`${baseUrl}/documents/${storyboardDocument.id}/versions`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          title: "Storyboard",
+          content: {
+            overview: "Missing asset composition",
+            shots: [{
+              id: "shot-compose-missing-asset",
+              sceneId: "scene-compose-missing-asset",
+              shotLabel: "1A",
+              framing: "MS",
+              cameraMove: "static",
+              durationSeconds: 3,
+              visualDescription: "A shot with a broken video asset",
+              dialogue: "This should fail.",
+            }],
+            mediaBindings: {},
+          },
+          metadata: { source: "composition-test" },
+        }),
+      });
+      assert.equal(storyboardVersionResponse.status, 201);
+      const storyboardVersion = await storyboardVersionResponse.json() as { id: string };
+
+      const adoptStoryboardResponse = await originalFetch(`${baseUrl}/versions/${storyboardVersion.id}/adopt`, {
+        method: "POST",
+        headers: readHeaders,
+      });
+      assert.equal(adoptStoryboardResponse.status, 201);
+
+      const registerVideoResponse = await originalFetch(`${baseUrl}/projects/${project.id}/assets`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          type: "video",
+          title: "Broken Video",
+          filename: "missing-video.mp4",
+          assetId: "missing-video-asset",
+          assetUrl: "/uploads/does-not-exist/missing-video.mp4",
+          mimeType: "video/mp4",
+          sizeInBytes: 10,
+          shotId: "shot-compose-missing-asset",
+        }),
+      });
+      assert.equal(registerVideoResponse.status, 201);
+      const registeredVideo = await registerVideoResponse.json() as { version: { id: string } };
+
+      const adoptVideoResponse = await originalFetch(`${baseUrl}/versions/${registeredVideo.version.id}/adopt`, {
+        method: "POST",
+        headers: readHeaders,
+      });
+      assert.equal(adoptVideoResponse.status, 201);
+
+      const compositionJobResponse = await originalFetch(`${baseUrl}/shots/shot-compose-missing-asset/composition-jobs`, {
+        method: "POST",
+        headers: { ...jsonHeaders },
+        body: JSON.stringify({
+          projectId: project.id,
+          resolution: "1080x1920",
+          fps: 30,
+          format: "mp4",
+          allowMockFallback: true,
+        }),
+      });
+      assert.equal(compositionJobResponse.status, 201);
+      const compositionJob = await compositionJobResponse.json() as { id: string };
+
+      const processResponse = await originalFetch(`${baseUrl}/internal/jobs/${compositionJob.id}/process`, {
+        method: "POST",
+        headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+      });
+      assert.equal(processResponse.status, 400);
+      const errorText = await processResponse.text();
+      assert.match(errorText, /Shot composition video asset could not be resolved/);
+
+      const jobResponse = await originalFetch(`${baseUrl}/jobs/${compositionJob.id}`, { headers: readHeaders });
+      assert.equal(jobResponse.status, 200);
+      const failedJob = await jobResponse.json() as { status: string; error?: string };
+      assert.equal(failedJob.status, "failed");
+      assert.match(failedJob.error ?? "", /Shot composition video asset could not be resolved/);
+    });
+  });
+
   await runCase("timeline auto assembly prefers approved shot compositions", async () => {
     await withHttpApp(async (baseUrl) => {
       const owner = await registerUser(baseUrl, { email: "compose-timeline@example.com", displayName: "Compose Timeline" });
@@ -3351,7 +3492,7 @@ async function main() {
         }),
       });
 
-      // 提交 storyboard 版本使其成为 currentVersion
+      // 提交 storyboard 版本并显式采用使其成为 currentVersion
       const workspaceAfterVersionResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, { headers: readHeaders });
       const workspaceAfterVersion = await workspaceAfterVersionResponse.json() as {
         documents: Array<{ id: string; type: string; draftVersionId?: string }>;
@@ -3363,6 +3504,11 @@ async function main() {
           headers: readHeaders,
         });
         assert.equal(submitStoryboardResponse.status, 201);
+        const adoptStoryboardResponse = await originalFetch(`${baseUrl}/versions/${sbDoc.draftVersionId}/adopt`, {
+          method: "POST",
+          headers: jsonHeaders,
+        });
+        assert.equal(adoptStoryboardResponse.status, 201);
       }
 
       const uploadedVideo = await uploadTestAsset(baseUrl, owner.accessToken, project.id, {
@@ -3387,12 +3533,18 @@ async function main() {
       assert.equal(registerVideoResponse.status, 201);
       const registeredVideo = await registerVideoResponse.json() as { version: { id: string } };
 
-      // 提交并自动验收上传的视频版本，使其成为 currentVersion
+      // 提交并自动验收上传的视频版本，然后显式采用使其成为 currentVersion
       const submitVideoResponse = await originalFetch(`${baseUrl}/versions/${registeredVideo.version.id}/submit`, {
         method: "POST",
         headers: readHeaders,
       });
       assert.equal(submitVideoResponse.status, 201);
+
+      const adoptVideoResponse = await originalFetch(`${baseUrl}/versions/${registeredVideo.version.id}/adopt`, {
+        method: "POST",
+        headers: jsonHeaders,
+      });
+      assert.equal(adoptVideoResponse.status, 201);
 
       const compositionJobResponse = await originalFetch(`${baseUrl}/shots/shot-compose-timeline/composition-jobs`, {
         method: "POST",

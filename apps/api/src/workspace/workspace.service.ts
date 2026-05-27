@@ -1305,9 +1305,6 @@ export class WorkspaceService {
       }
 
       liveVersion.status = nextStatus;
-      if (nextStatus === "approved") {
-        liveDocument.currentVersionId = liveVersion.id;
-      }
       return {
         version: liveVersion,
         auditContentType,

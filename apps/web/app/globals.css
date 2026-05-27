@@ -13555,6 +13555,48 @@ textarea.input {
   color: var(--text-tertiary);
 }
 
+.shot-card__composition {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+}
+
+.shot-card__composition--missing_video {
+  color: var(--text-tertiary);
+}
+
+.shot-card__composition--ready {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.shot-card__composition--running {
+  color: #ca8a04;
+  background: rgba(202, 138, 4, 0.14);
+  animation: uw-pulse 1.5s ease-in-out infinite;
+}
+
+.shot-card__composition--pending_review {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.shot-card__composition--approved {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.12);
+}
+
+.shot-card__composition--rejected {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.12);
+}
+
 .shot-card--multi-selected {
   border-color: var(--accent, #38bdf8);
   background: rgba(56, 189, 248, 0.06);

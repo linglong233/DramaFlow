@@ -573,7 +573,6 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
         resolution: "1080x1920",
         fps: 30,
         format: "mp4",
-        allowMockFallback: true,
       },
     }),
     onSuccess: async () => {

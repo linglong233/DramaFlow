@@ -38,6 +38,7 @@ interface MediaVersionContent {
   assetUrl?: string;
   mimeType?: string;
   model?: string;
+  mode?: string;
   duration?: number;
   voiceName?: string;
   voiceId?: string;
@@ -406,6 +407,9 @@ export function ShotDetailModal({
   // 镜头合成状态
   const compositionContent = state?.compositionVersion?.content as MediaVersionContent | undefined;
   const compositionUrl = compositionContent?.assetUrl;
+  const compositionMimeType = compositionContent?.mimeType ?? "";
+  const compositionMode = typeof compositionContent?.mode === "string" ? compositionContent.mode : undefined;
+  const compositionIsImage = compositionMimeType.startsWith("image/") || compositionMode === "mock";
   const compositionStatus = state?.compositionStatus;
   const compositionStatusLabel: Record<string, string> = {
     missing_video: t("shotComposition.status.missingVideo"),
@@ -1079,7 +1083,10 @@ export function ShotDetailModal({
                   {compositionStatusLabel[compositionStatus ?? "missing_video"]}
                 </div>
                 {state?.jobs.composition && renderJobRow(t("shotComposition.jobLabel"), state.jobs.composition)}
-                {compositionUrl && (
+                {compositionUrl && compositionIsImage && (
+                  <img src={compositionUrl} alt={t("shotComposition.title")} className="sm-video-preview" />
+                )}
+                {compositionUrl && !compositionIsImage && (
                   <video controls src={compositionUrl} className="sm-video-preview" />
                 )}
                 {canUseProject && (

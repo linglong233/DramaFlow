@@ -16,15 +16,19 @@ import {
 
 import { useI18n } from "../../lib/i18n";
 
+type ShotCompositionStatus = "missing_video" | "ready" | "running" | "pending_review" | "approved" | "rejected";
+
 interface ShotProjectState {
   hasImage: boolean;
   hasVideo: boolean;
   hasAudio: boolean;
+  compositionStatus?: ShotCompositionStatus;
   currentImage: { content?: unknown } | null;
   jobs: {
     image?: { status: string };
     video?: { status: string };
     tts?: { status: string };
+    composition?: { status: string };
   };
 }
 
@@ -128,6 +132,15 @@ function GripIcon() {
   );
 }
 
+function CompositionIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="2" y="3" width="10" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M4 3l1.4 3M7 3l1.4 3M10 3l1.4 3M2 6h10" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export const ShotCard = forwardRef<HTMLButtonElement, Props>(function ShotCard({
   shot,
   state,
@@ -157,6 +170,16 @@ export const ShotCard = forwardRef<HTMLButtonElement, Props>(function ShotCard({
   const durationText = shot.durationSeconds >= 60
     ? `${Math.floor(shot.durationSeconds / 60)}m ${shot.durationSeconds % 60}s`
     : `${shot.durationSeconds}s`;
+
+  const compositionStatus = state?.compositionStatus ?? "missing_video";
+  const compositionTitle: Record<ShotCompositionStatus, string> = {
+    missing_video: t("shotComposition.status.missingVideo"),
+    ready: t("shotComposition.status.ready"),
+    running: t("shotComposition.status.running"),
+    pending_review: t("shotComposition.status.pendingReview"),
+    approved: t("shotComposition.status.approved"),
+    rejected: t("shotComposition.status.rejected"),
+  };
 
   const className = [
     "shot-card",
@@ -242,6 +265,12 @@ export const ShotCard = forwardRef<HTMLButtonElement, Props>(function ShotCard({
           <span className="shot-card__status-item">
             <MicIcon />
             <StatusDot has={state?.hasAudio ?? false} jobStatus={state?.jobs.tts?.status} doneTitle={t("shotCard.statusDone")} runningTitle={t("shotCard.statusRunning")} notStartedTitle={t("shotCard.statusNotStarted")} />
+          </span>
+          <span
+            className={`shot-card__status-item shot-card__composition shot-card__composition--${compositionStatus}`}
+            title={compositionTitle[compositionStatus]}
+          >
+            <CompositionIcon />
           </span>
         </span>
       </div>
