@@ -26,8 +26,8 @@ import {
   type VersionStatus,
 } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
-import type { DevDatabase } from "../common/database.types";
+import { PrismaService } from "../common/prisma.service";
+import { iso } from "../common/prisma-json";
 
 interface TeamActorContext {
   userId: string;
@@ -37,103 +37,115 @@ interface TeamActorContext {
 
 @Injectable()
 export class AdminService {
-  constructor(@Inject(DevDatabaseService) private readonly database: DevDatabaseService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async getPlatformOverview(userId: string) {
-    const user = await this.database.query((db) => db.users.find((item) => item.id === userId));
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (user?.globalRole !== "platform_super_admin") {
       throw new ForbiddenException("Only platform administrators can view this dashboard");
     }
 
-    return this.database.query((db) => ({
-      metrics: {
-        users: db.users.length,
-        teams: db.teams.length,
-        projects: db.projects.length,
-        queuedJobs: db.jobs.filter((job) => job.status === "queued" || job.status === "running").length,
-        pendingReviewVersions: db.versions.filter((version) => version.status === "pending_review" || version.status === "submitted").length,
-      },
-      recentJobs: db.jobs.slice(-10).reverse().map((job) => ({
+    const [users, teams, projects, queuedJobs, pendingReviewVersions, recentJobs, allTeams] = await this.prisma.$transaction([
+      this.prisma.user.count(),
+      this.prisma.team.count(),
+      this.prisma.project.count(),
+      this.prisma.job.count({ where: { status: { in: ["queued", "running"] } } }),
+      this.prisma.version.count({ where: { status: { in: ["pending_review", "submitted"] } } }),
+      this.prisma.job.findMany({ orderBy: { updatedAt: "desc" }, take: 10, select: { id: true, type: true, status: true, updatedAt: true } }),
+      this.prisma.team.findMany({ select: { id: true, name: true, slug: true } }),
+    ]);
+
+    return {
+      metrics: { users, teams, projects, queuedJobs, pendingReviewVersions },
+      recentJobs: recentJobs.map((job) => ({
         id: job.id,
         type: job.type,
         status: job.status,
-        updatedAt: job.updatedAt,
+        updatedAt: iso(job.updatedAt),
       })),
-      tenants: db.teams.map((team) => ({
-        id: team.id,
-        name: team.name,
-        slug: team.slug,
-      })),
+      tenants: allTeams,
       storageDriver: process.env.STORAGE_DRIVER === "s3" ? "s3" : "local",
-    }));
+    };
   }
 
   async getTeamOverview(userId: string, teamId: string): Promise<TeamAdminOverviewResponse> {
-    return this.database.query((db) => {
-      const actor = this.getTeamActor(db, userId, teamId);
-      if (!canManageTenant({
-        userId: actor.userId,
-        globalRole: actor.globalRole,
-        teamRoles: actor.teamRoles,
-        projectRoles: [],
-      })) {
-        throw new ForbiddenException("Only team administrators can view this dashboard");
-      }
+    const actor = await this.getTeamActor(userId, teamId);
+    if (!canManageTenant({
+      userId: actor.userId,
+      globalRole: actor.globalRole,
+      teamRoles: actor.teamRoles,
+      projectRoles: [],
+    })) {
+      throw new ForbiddenException("Only team administrators can view this dashboard");
+    }
 
-      const team = this.mustFindTeam(db, teamId);
-      const projects = db.projects.filter((project) => project.teamId === teamId);
-      return {
-        team: this.buildTeamSummary(db, team, actor),
-        members: this.getTeamMemberSummaries(db, teamId),
-        projects: projects.map((project) => ({
-          ...project,
-          memberCount: db.projectMembers.filter((member) => member.projectId === project.id).length,
-        })),
-        projectInvites: this.getProjectInviteSummaries(db, projects.map((project) => project.id)),
-        pendingReviews: this.getReviewQueue(db, projects.map((project) => project.id)),
-      };
-    });
+    const team = await this.mustFindTeam(teamId);
+    const projects = await this.prisma.project.findMany({ where: { teamId } });
+
+    const [teamSummary, members, projectInvites, pendingReviews] = await Promise.all([
+      Promise.resolve(this.buildTeamSummary(team, actor)),
+      this.getTeamMemberSummaries(teamId),
+      this.getProjectInviteSummaries(projects.map((p) => p.id)),
+      this.getReviewQueue(projects.map((p) => p.id)),
+    ]);
+
+    // 为每个项目获取成员数
+    const projectsWithCounts = await Promise.all(
+      projects.map(async (project) => ({
+        ...project,
+        createdAt: iso(project.createdAt),
+        updatedAt: iso(project.updatedAt),
+        memberCount: await this.prisma.projectMember.count({ where: { projectId: project.id } }),
+      })),
+    );
+
+    return {
+      team: teamSummary,
+      members,
+      projects: projectsWithCounts,
+      projectInvites,
+      pendingReviews,
+    };
   }
 
   async getTeamSettings(userId: string, teamId: string): Promise<TeamSettingsResponse> {
-    return this.database.query((db) => {
-      const actor = this.getTeamActor(db, userId, teamId);
-      if (!canManageTenant({
-        userId: actor.userId,
-        globalRole: actor.globalRole,
-        teamRoles: actor.teamRoles,
-        projectRoles: [],
-      })) {
-        throw new ForbiddenException("You do not have permission to view team settings");
-      }
+    const actor = await this.getTeamActor(userId, teamId);
+    if (!canManageTenant({
+      userId: actor.userId,
+      globalRole: actor.globalRole,
+      teamRoles: actor.teamRoles,
+      projectRoles: [],
+    })) {
+      throw new ForbiddenException("You do not have permission to view team settings");
+    }
 
-      return this.buildTeamSettingsResponse(db, this.mustFindTeam(db, teamId), actor);
-    });
+    const team = await this.mustFindTeam(teamId);
+    return this.buildTeamSettingsResponse(team, actor);
   }
 
-  private getTeamActor(db: DevDatabase, userId: string, teamId: string): TeamActorContext {
-    const user = this.mustFindUser(db, userId);
+  private async getTeamActor(userId: string, teamId: string): Promise<TeamActorContext> {
+    const user = await this.mustFindUser(userId);
+    const teamMembers = await this.prisma.teamMember.findMany({
+      where: { teamId, userId },
+    });
     return {
       userId,
       globalRole: user.globalRole,
-      teamRoles: db.teamMembers
-        .filter((member) => member.teamId === teamId && member.userId === userId)
-        .map((member) => member.role),
+      teamRoles: teamMembers.map((member) => member.role),
     };
   }
 
   private buildTeamSummary(
-    db: DevDatabase,
-    team: DevDatabase["teams"][number],
+    team: { id: string; name: string; slug: string; defaultReviewPolicy: string; createdAt: Date; updatedAt: Date },
     actor: TeamActorContext,
   ): TeamSummary {
     return {
       id: team.id,
       name: team.name,
       slug: team.slug,
-      defaultReviewPolicy: team.defaultReviewPolicy,
-      createdAt: team.createdAt,
-      updatedAt: team.updatedAt,
+      defaultReviewPolicy: team.defaultReviewPolicy as TeamSummary["defaultReviewPolicy"],
+      createdAt: iso(team.createdAt),
+      updatedAt: iso(team.updatedAt),
       currentUserRole: actor.teamRoles[0] ?? null,
       canManage: canManageTenant({
         userId: actor.userId,
@@ -145,18 +157,34 @@ export class AdminService {
   }
 
   private buildTeamSettingsResponse(
-    db: DevDatabase,
-    team: DevDatabase["teams"][number],
+    team: {
+      id: string; name: string; slug: string; defaultReviewPolicy: string;
+      createdAt: Date; updatedAt: Date; llmConfig: unknown; imageGenerationConfig: unknown;
+    },
     actor: TeamActorContext,
   ): TeamSettingsResponse {
     return {
-      ...this.buildTeamSummary(db, team, actor),
-      llmConfig: this.buildTeamSettingsLlmConfig(team.llmConfig),
-      imageGenerationConfig: this.buildImageGenerationSettingsConfig(team.imageGenerationConfig),
+      ...this.buildTeamSummary(team, actor),
+      llmConfig: this.buildTeamSettingsLlmConfig(team.llmConfig as Record<string, unknown> | undefined | null),
+      imageGenerationConfig: this.buildImageGenerationSettingsConfig(team.imageGenerationConfig as ImageGenerationConfig | undefined | null),
     };
   }
 
-  private buildTeamSettingsLlmConfig(config?: DevDatabase["teams"][number]["llmConfig"]): TeamSettingsLlmConfig | undefined {
+  private buildTeamSettingsLlmConfig(config?: Record<string, unknown> | null): TeamSettingsLlmConfig | undefined {
+    if (!config) {
+      return undefined;
+    }
+
+    return {
+      provider: config.provider as string,
+      baseUrl: config.baseUrl as string | undefined,
+      model: config.model as string | undefined,
+      stream: config.stream as boolean | undefined,
+      hasApiKey: Boolean(config.apiKey),
+    };
+  }
+
+  private buildImageGenerationSettingsConfig(config?: ImageGenerationConfig | null): ImageGenerationSettingsConfig | undefined {
     if (!config) {
       return undefined;
     }
@@ -165,46 +193,40 @@ export class AdminService {
       provider: config.provider,
       baseUrl: config.baseUrl,
       model: config.model,
-      stream: config.stream,
       hasApiKey: Boolean(config.apiKey),
     };
   }
 
-  private buildImageGenerationSettingsConfig(config?: ImageGenerationConfig): ImageGenerationSettingsConfig | undefined {
-    if (!config) {
-      return undefined;
-    }
+  private async getTeamMemberSummaries(teamId: string): Promise<TeamMemberSummary[]> {
+    const teamMembers = await this.prisma.teamMember.findMany({ where: { teamId } });
 
-    return {
-      provider: config.provider,
-      baseUrl: config.baseUrl,
-      model: config.model,
-      hasApiKey: Boolean(config.apiKey),
-    };
-  }
-
-  private getTeamMemberSummaries(db: DevDatabase, teamId: string): TeamMemberSummary[] {
-    return db.teamMembers
-      .filter((member) => member.teamId === teamId)
-      .map((member) => {
-        const user = this.mustFindUser(db, member.userId);
+    const summaries = await Promise.all(
+      teamMembers.map(async (member) => {
+        const user = await this.prisma.user.findUnique({ where: { id: member.userId } });
         return {
           id: member.id,
           userId: member.userId,
           role: member.role,
-          createdAt: member.createdAt,
-          displayName: user.displayName,
-          email: user.email,
+          createdAt: iso(member.createdAt),
+          displayName: user?.displayName ?? "Unknown",
+          email: user?.email ?? "Unknown",
         } satisfies TeamMemberSummary;
-      })
-      .sort((left, right) => left.displayName.localeCompare(right.displayName));
+      }),
+    );
+
+    return summaries.sort((left, right) => left.displayName.localeCompare(right.displayName));
   }
 
-  private getProjectInviteSummaries(db: DevDatabase, projectIds: string[]): ProjectInviteSummary[] {
-    return db.projectInvites
-      .filter((invite) => projectIds.includes(invite.projectId))
-      .map((invite) => {
-        const project = this.mustFindProject(db, invite.projectId);
+  private async getProjectInviteSummaries(projectIds: string[]): Promise<ProjectInviteSummary[]> {
+    if (projectIds.length === 0) return [];
+
+    const invites = await this.prisma.projectInvite.findMany({
+      where: { projectId: { in: projectIds } },
+    });
+
+    const summaries = await Promise.all(
+      invites.map(async (invite) => {
+        const project = await this.mustFindProject(invite.projectId);
         return {
           id: invite.id,
           projectId: invite.projectId,
@@ -212,65 +234,80 @@ export class AdminService {
           email: invite.email,
           role: invite.role,
           status: invite.status,
-          createdAt: invite.createdAt,
+          createdAt: iso(invite.createdAt),
           createdBy: invite.createdBy,
         } satisfies ProjectInviteSummary;
-      })
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      }),
+    );
+
+    return summaries.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
-  private getReviewQueue(db: DevDatabase, projectIds: string[]): ReviewQueueVersionSummary[] {
-    return db.versions
-      .filter((version) => this.isReviewQueueStatus(version.status))
-      .map((version) => {
-        const document = this.mustFindDocument(db, version.documentId);
-        const project = this.mustFindProject(db, document.projectId);
-        return {
-          id: version.id,
-          title: version.title,
-          status: version.status,
-          versionNumber: version.versionNumber,
-          createdAt: version.createdAt,
-          documentId: document.id,
-          documentTitle: document.title,
-          projectId: project.id,
-          projectName: project.name,
-        } satisfies ReviewQueueVersionSummary;
-      })
-      .filter((version) => projectIds.includes(version.projectId))
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  private async getReviewQueue(projectIds: string[]): Promise<ReviewQueueVersionSummary[]> {
+    if (projectIds.length === 0) return [];
+
+    const versions = await this.prisma.version.findMany({
+      where: {
+        status: { in: ["pending_review", "submitted"] },
+      },
+    });
+
+    // 过滤出属于目标项目的版本
+    const results: ReviewQueueVersionSummary[] = [];
+    for (const version of versions) {
+      const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+      if (!document) continue;
+      if (!projectIds.includes(document.projectId)) continue;
+
+      const project = await this.prisma.project.findUnique({ where: { id: document.projectId } });
+      if (!project) continue;
+
+      results.push({
+        id: version.id,
+        title: version.title,
+        status: version.status,
+        versionNumber: version.versionNumber,
+        createdAt: iso(version.createdAt),
+        documentId: document.id,
+        documentTitle: document.title,
+        projectId: project.id,
+        projectName: project.name,
+      } satisfies ReviewQueueVersionSummary);
+    }
+
+    return results.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
   private isReviewQueueStatus(status: VersionStatus) {
     return status === "pending_review" || status === "submitted";
   }
 
-  private mustFindDocument(db: DevDatabase, documentId: string) {
-    const document = db.documents.find((item) => item.id === documentId);
+  private async mustFindDocument(documentId: string) {
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
     if (!document) {
       throw new NotFoundException("Document not found");
     }
     return document;
   }
 
-  private mustFindProject(db: DevDatabase, projectId: string) {
-    const project = db.projects.find((item) => item.id === projectId);
+  private async mustFindProject(projectId: string) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!project) {
       throw new NotFoundException("Project not found");
     }
     return project;
   }
 
-  private mustFindTeam(db: DevDatabase, teamId: string) {
-    const team = db.teams.find((item) => item.id === teamId);
+  private async mustFindTeam(teamId: string) {
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
     if (!team) {
       throw new NotFoundException("Team not found");
     }
     return team;
   }
 
-  private mustFindUser(db: DevDatabase, userId: string) {
-    const user = db.users.find((item) => item.id === userId);
+  private async mustFindUser(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException("User not found");
     }

@@ -50,8 +50,9 @@ import type {
   VideoReferenceMode,
 } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
-import type { DevDatabase } from "../common/database.types";
+import { PrismaService } from "../common/prisma.service";
+import { Prisma } from "@prisma/client";
+import { jsonOutput, jsonInput, optionalJsonInput, iso, optionalIso } from "../common/prisma-json";
 import { createId } from "../common/id";
 import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
@@ -151,7 +152,7 @@ interface ResolvedImageExecution {
 @Injectable()
 export class JobsService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
     @Inject(StorageService) private readonly storageService: StorageService,
     @Inject(OpenAiCompatTextProvider) private readonly textProvider: OpenAiCompatTextProvider,
@@ -168,6 +169,37 @@ export class JobsService {
     @Inject(NovelImportService) private readonly novelImportService: NovelImportService,
     @Inject(ImpactService) private readonly impactService: ImpactService,
   ) {}
+
+  private toJobRecord<TInput = Record<string, unknown>, TResult = Record<string, unknown>>(job: any): JobRecord<TInput, TResult> {
+    return {
+      id: job.id, type: job.type, status: job.status,
+      projectId: job.projectId,
+      documentId: job.documentId ?? undefined,
+      shotId: job.shotId ?? undefined,
+      input: jsonOutput<TInput>(job.input),
+      result: job.result == null ? undefined : jsonOutput<TResult>(job.result),
+      error: job.error ?? undefined,
+      progress: job.progress ?? undefined,
+      retryCount: job.retryCount ?? undefined,
+      maxRetries: job.maxRetries ?? undefined,
+      priority: job.priority ?? undefined,
+      cancelledAt: optionalIso(job.cancelledAt),
+      batchId: job.batchId ?? undefined,
+      createdBy: job.createdBy,
+      createdAt: iso(job.createdAt),
+      updatedAt: iso(job.updatedAt),
+    };
+  }
+
+  private async updateJobState(jobId: string, data: any): Promise<JobRecord> {
+    const job = await this.prisma.job.update({
+      where: { id: jobId },
+      data: { ...data, updatedAt: new Date() },
+    });
+    const record = this.toJobRecord(job);
+    this.emitJobUpdated(record);
+    return record;
+  }
 
   async createScriptJob(userId: string, projectId: string, input: ScriptJobInput) {
     await this.assertProjectReadable(userId, projectId);
@@ -283,12 +315,12 @@ export class JobsService {
   }
 
   async getJob(userId: string, jobId: string) {
-    const job = await this.database.query((db) => db.jobs.find((item) => item.id === jobId));
+    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
     if (!job) {
       throw new NotFoundException("Job not found");
     }
     await this.assertProjectReadable(userId, job.projectId);
-    return job;
+    return this.toJobRecord(job);
   }
 
   async listProjectJobs(
@@ -298,32 +330,29 @@ export class JobsService {
   ): Promise<{ jobs: JobRecord[]; total: number }> {
     await this.assertProjectReadable(userId, projectId);
 
-    return this.database.query((db) => {
-      let items = db.jobs.filter((j) => j.projectId === projectId);
+    const where: any = { projectId };
+    if (options.status) where.status = options.status;
+    if (options.type) where.type = options.type;
+    if (options.batchId) where.batchId = options.batchId;
 
-      if (options.status) {
-        items = items.filter((j) => j.status === options.status);
-      }
-      if (options.type) {
-        items = items.filter((j) => j.type === options.type);
-      }
-      if (options.batchId) {
-        items = items.filter((j) => j.batchId === options.batchId);
-      }
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 50;
 
-      items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const [rows, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      this.prisma.job.count({ where }),
+    ]);
 
-      const total = items.length;
-      const offset = options.offset ?? 0;
-      const limit = options.limit ?? 50;
-      const jobs = items.slice(offset, offset + limit);
-
-      return { jobs, total };
-    });
+    return { jobs: rows.map((j) => this.toJobRecord(j)), total };
   }
 
   async cancelJob(userId: string, jobId: string): Promise<JobRecord> {
-    const job = await this.database.query((db) => db.jobs.find((item) => item.id === jobId));
+    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
     if (!job) {
       throw new NotFoundException("Job not found");
     }
@@ -338,19 +367,16 @@ export class JobsService {
       throw new BadRequestException("Only queued jobs can be cancelled");
     }
 
-    const cancelled = await this.mutateJobState(jobId, (liveJob) => {
-      liveJob.status = "failed";
-      liveJob.error = "Cancelled by user";
-      liveJob.cancelledAt = new Date().toISOString();
+    const record = await this.updateJobState(jobId, {
+      status: "failed",
+      error: "Cancelled by user",
+      cancelledAt: new Date(),
     });
-    if (cancelled.changed) {
-      this.emitJobUpdated(cancelled.job);
-    }
-    return cancelled.job;
+    return record;
   }
 
   async retryJob(userId: string, jobId: string): Promise<JobRecord> {
-    const job = await this.database.query((db) => db.jobs.find((item) => item.id === jobId));
+    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
     if (!job) {
       throw new NotFoundException("Job not found");
     }
@@ -371,17 +397,14 @@ export class JobsService {
       throw new BadRequestException(`Maximum retry count (${maxRetries}) exceeded`);
     }
 
-    const retried = await this.mutateJobState(jobId, (liveJob) => {
-      liveJob.status = "queued";
-      liveJob.error = undefined;
-      liveJob.progress = undefined;
-      liveJob.retryCount = retryCount;
-      liveJob.cancelledAt = undefined;
+    const record = await this.updateJobState(jobId, {
+      status: "queued",
+      error: null,
+      progress: null,
+      retryCount,
+      cancelledAt: null,
     });
-    if (retried.changed) {
-      this.emitJobUpdated(retried.job);
-    }
-    return retried.job;
+    return record;
   }
 
   async createBatchImageJobs(
@@ -417,7 +440,7 @@ export class JobsService {
       }
     }
 
-    const batchResult = await this.database.mutate((db) => {
+    const batchResult = await this.prisma.$transaction(async (tx) => {
       const batchId = createId("batch");
       const group: BatchJobGroupRecord = {
         id: batchId,
@@ -427,17 +450,24 @@ export class JobsService {
         createdBy: userId,
         createdAt: new Date().toISOString(),
       };
-      const updatedJobs: JobRecord[] = [];
-      db.batchJobs.push(group);
 
-      // Tag each job with the batchId
-      for (const jobId of jobIds) {
-        const job = db.jobs.find((j) => j.id === jobId);
-        if (job) {
-          job.batchId = batchId;
-          job.priority = job.priority ?? "normal";
-          updatedJobs.push(job);
-        }
+      await tx.batchJobGroup.create({
+        data: {
+          id: batchId,
+          projectId,
+          jobIds,
+          status: "running",
+          createdBy: userId,
+        },
+      });
+
+      const updatedJobs: JobRecord[] = [];
+      for (const jId of jobIds) {
+        const updated = await tx.job.update({
+          where: { id: jId },
+          data: { batchId, priority: "normal", updatedAt: new Date() },
+        });
+        updatedJobs.push(this.toJobRecord(updated));
       }
 
       return { group, updatedJobs };
@@ -451,23 +481,19 @@ export class JobsService {
    * 查找分镜当前采用的图片资产 ID
    * 通过查找该分镜关联的 image 类型文档的当前版本获取 assetId
    */
-  private findCurrentImageAssetIdForShot(
-    db: DevDatabase,
+  private async findCurrentImageAssetIdForShot(
     projectId: string,
     shotId: string,
-  ): string | undefined {
-    const imageDoc = db.documents.find(
-      (doc) =>
-        doc.projectId === projectId &&
-        doc.type === "image" &&
-        doc.shotId === shotId,
-    );
+  ): Promise<string | undefined> {
+    const imageDoc = await this.prisma.document.findFirst({
+      where: { projectId, type: "image", shotId },
+    });
     const versionId = imageDoc?.currentVersionId;
     if (!versionId) return undefined;
-    const version = db.versions.find((item) => item.id === versionId);
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
     if (!version?.content || typeof version.content !== "object")
       return undefined;
-    const content = version.content as { assetId?: unknown };
+    const content = jsonOutput<{ assetId?: unknown }>(version.content);
     return typeof content.assetId === "string" && content.assetId.trim()
       ? content.assetId
       : undefined;
@@ -494,14 +520,11 @@ export class JobsService {
     }
 
     // 查找每个分镜当前采用的图片资产，用于视频参考图推断
-    const imageAssetByShot = await this.database.query((db) => {
-      const map = new Map<string, string>();
-      for (const shotId of uniqueShotIds) {
-        const assetId = this.findCurrentImageAssetIdForShot(db, projectId, shotId);
-        if (assetId) map.set(shotId, assetId);
-      }
-      return map;
-    });
+    const imageAssetByShot = new Map<string, string>();
+    for (const sId of uniqueShotIds) {
+      const assetId = await this.findCurrentImageAssetIdForShot(projectId, sId);
+      if (assetId) imageAssetByShot.set(sId, assetId);
+    }
 
     const jobIds: string[] = [];
     for (const shotId of uniqueShotIds) {
@@ -524,7 +547,7 @@ export class JobsService {
       jobIds.push(job.id);
     }
 
-    const batchResult = await this.database.mutate((db) => {
+    const batchResult = await this.prisma.$transaction(async (tx) => {
       const batchId = createId("batch");
       const group: BatchJobGroupRecord = {
         id: batchId,
@@ -534,16 +557,24 @@ export class JobsService {
         createdBy: userId,
         createdAt: new Date().toISOString(),
       };
-      const updatedJobs: JobRecord[] = [];
-      db.batchJobs.push(group);
 
-      for (const jobId of jobIds) {
-        const job = db.jobs.find((j) => j.id === jobId);
-        if (job) {
-          job.batchId = batchId;
-          job.priority = job.priority ?? "normal";
-          updatedJobs.push(job);
-        }
+      await tx.batchJobGroup.create({
+        data: {
+          id: batchId,
+          projectId,
+          jobIds,
+          status: "running",
+          createdBy: userId,
+        },
+      });
+
+      const updatedJobs: JobRecord[] = [];
+      for (const jId of jobIds) {
+        const updated = await tx.job.update({
+          where: { id: jId },
+          data: { batchId, priority: "normal", updatedAt: new Date() },
+        });
+        updatedJobs.push(this.toJobRecord(updated));
       }
 
       return { group, updatedJobs };
@@ -554,80 +585,85 @@ export class JobsService {
   }
 
   async getBatchStatus(userId: string, batchId: string) {
-    return this.database.query((db) => {
-      const batch = db.batchJobs.find((b) => b.id === batchId);
-      if (!batch) {
-        throw new NotFoundException("Batch not found");
-      }
+    const batch = await this.prisma.batchJobGroup.findUnique({ where: { id: batchId } });
+    if (!batch) {
+      throw new NotFoundException("Batch not found");
+    }
 
-      const jobs = db.jobs.filter((j) => batch.jobIds.includes(j.id));
-      const completedCount = jobs.filter((j) => j.status === "completed").length;
-      const failedCount = jobs.filter((j) => j.status === "failed").length;
-      const runningCount = jobs.filter((j) => j.status === "running").length;
-      const totalCount = batch.jobIds.length;
-
-      let status: BatchJobGroupRecord["status"] = "running";
-      if (completedCount + failedCount === totalCount) {
-        status = failedCount > 0 ? "partial_failure" : "completed";
-      }
-
-      return {
-        id: batch.id,
-        projectId: batch.projectId,
-        jobIds: batch.jobIds,
-        status,
-        createdAt: batch.createdAt,
-        totalCount,
-        completedCount,
-        failedCount,
-        runningCount,
-      };
+    const jobs = await this.prisma.job.findMany({
+      where: { id: { in: batch.jobIds } },
     });
+    const completedCount = jobs.filter((j) => j.status === "completed").length;
+    const failedCount = jobs.filter((j) => j.status === "failed").length;
+    const runningCount = jobs.filter((j) => j.status === "running").length;
+    const totalCount = batch.jobIds.length;
+
+    let status: BatchJobGroupRecord["status"] = "running";
+    if (completedCount + failedCount === totalCount) {
+      status = failedCount > 0 ? "partial_failure" : "completed";
+    }
+
+    return {
+      id: batch.id,
+      projectId: batch.projectId,
+      jobIds: batch.jobIds,
+      status,
+      createdAt: iso(batch.createdAt),
+      totalCount,
+      completedCount,
+      failedCount,
+      runningCount,
+    };
   }
 
   async claimNextJob() {
-    const result = await this.database.mutate((db) => {
-      const now = new Date().toISOString();
-
-      // Sort queued jobs by priority (high > normal > low), then by createdAt (oldest first)
-      const priorityOrder: Record<string, number> = { high: 0, normal: 1, low: 2 };
-      const queuedJobs = db.jobs
-        .filter((item) => item.status === "queued")
-        .sort((a, b) => {
-          const pa = priorityOrder[a.priority ?? "normal"] ?? 1;
-          const pb = priorityOrder[b.priority ?? "normal"] ?? 1;
-          if (pa !== pb) return pa - pb;
-          return a.createdAt.localeCompare(b.createdAt);
-        });
-
-      const queuedJob = queuedJobs[0];
-      if (queuedJob) {
-        queuedJob.status = "running";
-        queuedJob.updatedAt = now;
-        return { job: queuedJob, shouldEmit: true };
-      }
-
-      const runningVideoJob = db.jobs.find((item) => item.type === "video_generation" && item.status === "running" && this.shouldPollVideoJob(item));
-      if (!runningVideoJob) {
-        return null;
-      }
-
-      runningVideoJob.updatedAt = now;
-      return { job: runningVideoJob, shouldEmit: false };
-    });
-
-    if (result?.shouldEmit) {
-      this.emitJobUpdated(result.job);
+    // Sort queued jobs by priority (high > normal > low), then by createdAt (oldest first)
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Job"
+      WHERE status = 'queued'
+      ORDER BY
+        CASE COALESCE(priority, 'normal')
+          WHEN 'high' THEN 0
+          WHEN 'normal' THEN 1
+          WHEN 'low' THEN 2
+        END,
+        "createdAt" ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `;
+    const queuedJobId = rows[0]?.id;
+    if (queuedJobId) {
+      const updated = await this.prisma.job.update({
+        where: { id: queuedJobId },
+        data: { status: "running", updatedAt: new Date() },
+      });
+      const record = this.toJobRecord(updated);
+      this.emitJobUpdated(record);
+      return record;
     }
 
-    return result?.job ?? null;
+    // Poll running video jobs
+    const runningVideoJobs = await this.prisma.job.findMany({
+      where: { type: "video_generation", status: "running" },
+      orderBy: { updatedAt: "asc" },
+      take: 20,
+    });
+    const pollable = runningVideoJobs.map((j) => this.toJobRecord(j)).find((j) => this.shouldPollVideoJob(j));
+    if (!pollable) return null;
+
+    const touched = await this.prisma.job.update({
+      where: { id: pollable.id },
+      data: { updatedAt: new Date() },
+    });
+    return this.toJobRecord(touched);
   }
 
   async processJob(jobId: string) {
-    const job = await this.database.query((db) => db.jobs.find((item) => item.id === jobId));
-    if (!job) {
+    const rawJob = await this.prisma.job.findUnique({ where: { id: jobId } });
+    if (!rawJob) {
       throw new NotFoundException("Job not found");
     }
+    const job = this.toJobRecord(rawJob);
 
     try {
       switch (job.type) {
@@ -841,27 +877,29 @@ export class JobsService {
     const resolvedModel = this.resolveTextModel(config);
 
     // Gather full context: script + storyboard + world bible
-    const { script, storyboard, worldBible, targetShot, prevShot, nextShot } = await this.database.query((db) => {
-      const scriptDoc = db.documents.find((d) => d.projectId === job.projectId && d.type === "script");
-      const scriptVer = scriptDoc ? db.versions.find((v) => v.id === scriptDoc.currentVersionId) : undefined;
-      const script = scriptVer?.content as ScriptContent | undefined;
+    const scriptDoc = await this.prisma.document.findFirst({ where: { projectId: job.projectId, type: "script" } });
+    const scriptVer = scriptDoc?.currentVersionId
+      ? await this.prisma.version.findUnique({ where: { id: scriptDoc.currentVersionId } })
+      : undefined;
+    const script = scriptVer ? jsonOutput<ScriptContent>(scriptVer.content) : undefined;
 
-      const sbDoc = db.documents.find((d) => d.projectId === job.projectId && d.type === "storyboard");
-      const sbVer = sbDoc ? db.versions.find((v) => v.id === sbDoc.currentVersionId) : undefined;
-      const storyboard = sbVer?.content as StoryboardContent | undefined;
+    const sbDoc = await this.prisma.document.findFirst({ where: { projectId: job.projectId, type: "storyboard" } });
+    const sbVer = sbDoc?.currentVersionId
+      ? await this.prisma.version.findUnique({ where: { id: sbDoc.currentVersionId } })
+      : undefined;
+    const storyboard = sbVer ? jsonOutput<StoryboardContent>(sbVer.content) : undefined;
 
-      const wbDoc = db.documents.find((d) => d.projectId === job.projectId && d.type === "world_bible");
-      const wbVer = wbDoc ? db.versions.find((v) => v.id === wbDoc.currentVersionId) : undefined;
-      const worldBible = wbVer?.content as WorldBibleContent | undefined;
+    const wbDoc = await this.prisma.document.findFirst({ where: { projectId: job.projectId, type: "world_bible" } });
+    const wbVer = wbDoc?.currentVersionId
+      ? await this.prisma.version.findUnique({ where: { id: wbDoc.currentVersionId } })
+      : undefined;
+    const worldBible = wbVer ? jsonOutput<WorldBibleContent>(wbVer.content) : undefined;
 
-      const shots = storyboard?.shots ?? [];
-      const targetIndex = shots.findIndex((s) => s.id === job.shotId);
-      const targetShot = shots[targetIndex] ?? null;
-      const prevShot = targetIndex > 0 ? shots[targetIndex - 1] : null;
-      const nextShot = targetIndex < shots.length - 1 ? shots[targetIndex + 1] : null;
-
-      return { script, storyboard, worldBible, targetShot, prevShot, nextShot };
-    });
+    const shots = storyboard?.shots ?? [];
+    const targetIndex = shots.findIndex((s) => s.id === job.shotId);
+    const targetShot = shots[targetIndex] ?? null;
+    const prevShot = targetIndex > 0 ? shots[targetIndex - 1] : null;
+    const nextShot = targetIndex < shots.length - 1 ? shots[targetIndex + 1] : null;
 
     if (!targetShot) {
       throw new NotFoundException(`Shot ${job.shotId} not found in storyboard`);
@@ -943,12 +981,12 @@ export class JobsService {
   }
 
   private async processStoryboardJob(job: JobRecord<StoryboardJobInput>) {
-    const scriptVersion = await this.database.query((db) =>
-      db.versions.find((item) => item.id === job.input.versionId),
-    );
-    if (!scriptVersion) {
+    const rawScriptVersion = await this.prisma.version.findUnique({ where: { id: job.input.versionId } });
+    if (!rawScriptVersion) {
       throw new NotFoundException("Source script version not found");
     }
+
+    const scriptVersion = jsonOutput<VersionRecord>(rawScriptVersion);
 
     const script = scriptVersion.content as ScriptContent;
     const config = await this.resolveTextLlmConfig(job.createdBy, job.projectId, job.input.llmConfigSource);
@@ -1111,14 +1149,15 @@ export class JobsService {
 
     const systemPrompt = typeInstructions[type] ?? typeInstructions.character;
 
-    const config = await this.database.query((db) => {
-      const project = db.projects.find((p) => p.id === projectId);
+    const config = await (async () => {
+      const project = await this.prisma.project.findUnique({ where: { id: projectId } });
       if (configSource === "personal") {
-        return db.users.find((u) => u.id === userId)?.llmConfig as LlmProviderConfig | undefined;
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        return jsonOutput<LlmProviderConfig | undefined>(user?.llmConfig);
       }
-      const team = project ? db.teams.find((t) => t.id === project.teamId) : undefined;
-      return team?.llmConfig as LlmProviderConfig | undefined;
-    });
+      const team = project ? await this.prisma.team.findUnique({ where: { id: project.teamId } }) : undefined;
+      return jsonOutput<LlmProviderConfig | undefined>(team?.llmConfig);
+    })();
 
     if (!config?.apiKey || !config?.baseUrl) {
       throw new BadRequestException("LLM provider not configured for prompt enhancement");
@@ -1377,10 +1416,8 @@ export class JobsService {
           const adapter = getVideoProviderAdapter(videoEntry.provider as VideoGenerationProvider);
           const config = this.providerEntryToVideoProviderConfig(videoEntry);
           const references = await this.resolveVideoReferences(job, videoEntry.provider as VideoReferenceProviderKey);
-          const currentState = await this.database.query((db) => {
-            const liveJob = db.jobs.find((item) => item.id === job.id);
-            return liveJob ? this.toVideoJobState(liveJob.result, prompt, job.input) : null;
-          });
+          const liveJob = await this.prisma.job.findUnique({ where: { id: job.id } });
+          const currentState = liveJob ? this.toVideoJobState(jsonOutput(liveJob.result), prompt, job.input) : null;
           const adapterState = currentState?.providerVideoId && adapter.pollJob
             ? await adapter.pollJob(currentState.providerVideoId, {
                 prompt,
@@ -1460,10 +1497,8 @@ export class JobsService {
   ) {
     const providerInput = await this.buildVideoProviderInput(job, prompt, providerKey);
 
-    const currentState = await this.database.query((db) => {
-      const liveJob = db.jobs.find((item) => item.id === job.id);
-      return liveJob ? this.toVideoJobState(liveJob.result, prompt, job.input) : null;
-    });
+    const liveJob = await this.prisma.job.findUnique({ where: { id: job.id } });
+    const currentState = liveJob ? this.toVideoJobState(jsonOutput(liveJob.result), prompt, job.input) : null;
 
     if (!currentState?.providerVideoId) {
       const created = this.toVideoJobState(await this.mediaProvider.createVideoJob(providerInput, config), prompt, job.input);
@@ -1559,18 +1594,18 @@ export class JobsService {
     generated: GeneratedMediaResult,
   ) {
     // 查找当前分镜版本和对应镜头信息，用于记录依赖元数据
-    const storyboardRef = await this.database.query((db) => {
-      const storyboardDocument = db.documents.find((item) => item.projectId === job.projectId && item.type === "storyboard");
-      const storyboardVersion = storyboardDocument?.currentVersionId
-        ? db.versions.find((item) => item.id === storyboardDocument.currentVersionId)
-        : undefined;
-      const storyboardContent = storyboardVersion?.content as StoryboardContent | undefined;
-      const sourceShot = storyboardContent?.shots?.find((shot) => shot.id === job.shotId);
-      return {
-        versionId: storyboardVersion?.id,
-        shotHash: sourceShot ? this.impactService.stableHash(sourceShot) : undefined,
-      };
-    });
+    const storyboardDocument = await this.prisma.document.findFirst({ where: { projectId: job.projectId, type: "storyboard" } });
+    const storyboardVersion = storyboardDocument?.currentVersionId
+      ? await this.prisma.version.findUnique({ where: { id: storyboardDocument.currentVersionId } })
+      : undefined;
+    const storyboardContent = storyboardVersion
+      ? jsonOutput<StoryboardContent | undefined>(storyboardVersion.content)
+      : undefined;
+    const sourceShot = storyboardContent?.shots?.find((shot) => shot.id === job.shotId);
+    const storyboardRef = {
+      versionId: storyboardVersion?.id,
+      shotHash: sourceShot ? this.impactService.stableHash(sourceShot) : undefined,
+    };
 
     const assetReference = await this.persistMediaArtifact(job, generated, mediaType);
     const document = await this.workspaceService.ensureDocumentForProject({
@@ -1666,8 +1701,9 @@ export class JobsService {
       };
     }
 
-    const asset = await this.database.mutate((db) => {
-      const record = {
+    const now = new Date();
+    const asset = await this.prisma.asset.create({
+      data: {
         id: createId("asset"),
         projectId: job.projectId,
         storageDriver: this.storageService.getDriver(),
@@ -1676,10 +1712,8 @@ export class JobsService {
         mimeType: generated.mimeType,
         sizeInBytes: 0,
         createdBy: job.createdBy,
-        createdAt: new Date().toISOString(),
-      };
-      db.assets.push(record);
-      return record;
+        createdAt: now,
+      },
     });
 
     return {
@@ -1689,123 +1723,120 @@ export class JobsService {
   }
 
   private async updateVideoJobProgress(jobId: string, state: VideoJobState) {
-    const updated = await this.mutateJobState(jobId, (liveJob) => {
-      liveJob.status = "running";
-      liveJob.progress = state.progress;
-      liveJob.result = {
-        ...state,
-      };
-      liveJob.error = undefined;
+    const record = await this.updateJobState(jobId, {
+      status: "running",
+      progress: state.progress,
+      result: jsonInput({ ...state }),
+      error: null,
     });
-    if (updated.changed) {
-      this.emitJobUpdated(updated.job);
-    }
-    return updated.job;
+    return record;
   }
 
   private async enqueueJob(
     userId: string,
     input: Pick<JobRecord, "type" | "projectId" | "documentId" | "shotId"> & { input: unknown },
   ) {
-    const job = await this.database.mutate((db) => {
-      const now = new Date().toISOString();
-      const createdJob: JobRecord = {
+    const now = new Date();
+    const job = await this.prisma.job.create({
+      data: {
         id: createId("job"),
         type: input.type,
         status: "queued",
         projectId: input.projectId,
         documentId: input.documentId,
         shotId: input.shotId,
-        input: input.input as Record<string, unknown>,
+        input: jsonInput(input.input ?? {}),
+        retryCount: 0,
+        maxRetries: 3,
+        priority: "normal",
         createdBy: userId,
         createdAt: now,
         updatedAt: now,
-      };
-      db.jobs.push(createdJob);
-      return createdJob;
+      },
     });
-
-    this.emitJobUpdated(job);
-    return job;
+    const record = this.toJobRecord(job);
+    this.emitJobUpdated(record);
+    return record;
   }
 
   private async completeJob(jobId: string, result: Record<string, unknown>) {
-    const completed = await this.mutateJobState(jobId, (liveJob) => {
-      liveJob.status = "completed";
-      liveJob.result = result;
-      liveJob.progress = 100;
-      liveJob.error = undefined;
+    const record = await this.updateJobState(jobId, {
+      status: "completed",
+      result: jsonInput(result),
+      progress: 100,
+      error: null,
     });
-
-    if (completed.changed) {
-      this.emitJobUpdated(completed.job);
-    }
 
     // Notify job creator of completion
     this.notificationService.createNotification({
-      userId: completed.job.createdBy,
-      projectId: completed.job.projectId,
+      userId: record.createdBy,
+      projectId: record.projectId,
       type: "task_completed",
       title: "Generation task completed",
-      body: `${completed.job.type} task completed successfully`,
+      body: `${record.type} task completed successfully`,
       referenceId: jobId,
       referenceType: "job",
     }).catch(() => {});
 
-    return completed.job;
+    return record;
   }
 
   private async markJobRunning(
     jobId: string,
     options: { progress?: number; result?: Record<string, unknown> } = {},
   ) {
-    const updated = await this.mutateJobState(jobId, (liveJob) => {
-      liveJob.status = "running";
-      if (options.progress !== undefined) {
-        liveJob.progress = options.progress;
-      }
-      if (options.result !== undefined) {
-        liveJob.result = options.result;
-      }
-      liveJob.error = undefined;
-    });
-
-    if (updated.changed) {
-      this.emitJobUpdated(updated.job);
+    const data: any = { status: "running", error: null };
+    if (options.progress !== undefined) {
+      data.progress = options.progress;
     }
-
-    return updated.job;
+    if (options.result !== undefined) {
+      data.result = jsonInput(options.result);
+    }
+    const record = await this.updateJobState(jobId, data);
+    return record;
   }
 
   private async failJob(jobId: string, message: string) {
-    const failed = await this.mutateJobState(jobId, (liveJob) => {
-      liveJob.status = "failed";
-      liveJob.error = message;
+    const record = await this.updateJobState(jobId, {
+      status: "failed",
+      error: message,
     });
-
-    if (failed.changed) {
-      this.emitJobUpdated(failed.job);
-    }
-
-    return failed.job;
+    return record;
   }
 
   private async mutateJobState(jobId: string, mutate: (liveJob: JobRecord) => void) {
-    return this.database.mutate((db) => {
-      const liveJob = db.jobs.find((item) => item.id === jobId);
-      if (!liveJob) {
-        throw new NotFoundException("Job not found");
-      }
+    const rawJob = await this.prisma.job.findUnique({ where: { id: jobId } });
+    if (!rawJob) {
+      throw new NotFoundException("Job not found");
+    }
 
-      const before = this.createJobSnapshot(liveJob);
-      mutate(liveJob);
-      liveJob.updatedAt = new Date().toISOString();
-      const after = this.createJobSnapshot(liveJob);
-      return {
-        job: liveJob,
-        changed: before !== after,
-      };
-    });
+    const liveJob = this.toJobRecord(rawJob);
+    const before = this.createJobSnapshot(liveJob);
+    mutate(liveJob);
+    liveJob.updatedAt = new Date().toISOString();
+    const after = this.createJobSnapshot(liveJob);
+
+    const changed = before !== after;
+    if (changed) {
+      const updated = await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: liveJob.status,
+          error: liveJob.error ?? null,
+          progress: liveJob.progress ?? null,
+          result: liveJob.result ? jsonInput(liveJob.result) : Prisma.JsonNull,
+          retryCount: liveJob.retryCount ?? null,
+          cancelledAt: liveJob.cancelledAt ? new Date(liveJob.cancelledAt) : null,
+          batchId: liveJob.batchId ?? null,
+          updatedAt: new Date(),
+        },
+      });
+      const record = this.toJobRecord(updated);
+      this.emitJobUpdated(record);
+      return { job: record, changed };
+    }
+
+    return { job: liveJob, changed: false };
   }
 
   private emitJobUpdated(job: JobRecord | null | undefined) {
@@ -1828,15 +1859,11 @@ export class JobsService {
     });
   }
   private async autoMatchWorldBible(projectId: string, content: ScriptContent): Promise<ScriptContent> {
-    const worldBible = await this.database.query((db) => {
-      const wbDoc = db.documents.find(
-        (doc) => doc.projectId === projectId && doc.type === "world_bible",
-      );
-      if (!wbDoc || !wbDoc.currentVersionId) return null;
-      const version = db.versions.find((v) => v.id === wbDoc.currentVersionId);
-      if (!version?.content || typeof version.content !== "object") return null;
-      return version.content as WorldBibleContent;
-    });
+    const wbDoc = await this.prisma.document.findFirst({ where: { projectId, type: "world_bible" } });
+    if (!wbDoc?.currentVersionId) return content;
+    const version = await this.prisma.version.findUnique({ where: { id: wbDoc.currentVersionId } });
+    if (!version?.content || typeof version.content !== "object") return content;
+    const worldBible = jsonOutput<WorldBibleContent>(version.content);
 
     if (!worldBible) return content;
 
@@ -2004,30 +2031,24 @@ export class JobsService {
   }
 
   private async resolveLlmConfig(userId: string, projectId: string, configSource?: LlmConfigSource): Promise<LlmProviderConfig | undefined> {
-    return this.database.query((db) => {
-      const project = db.projects.find((p) => p.id === projectId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    const [user, team] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: userId } }),
+      project ? this.prisma.team.findUnique({ where: { id: project.teamId } }) : Promise.resolve(null),
+    ]);
 
-      if (configSource === "personal") {
-        return this.normalizeLlmConfig(
-          db.users.find((u) => u.id === userId)?.llmConfig as LlmProviderConfig | undefined,
-        );
-      }
+    if (configSource === "personal") {
+      return this.normalizeLlmConfig(jsonOutput<LlmProviderConfig | undefined>(user?.llmConfig));
+    }
 
-      if (configSource === "team") {
-        return project
-          ? this.normalizeLlmConfig(db.teams.find((t) => t.id === project.teamId)?.llmConfig as LlmProviderConfig | undefined)
-          : undefined;
-      }
+    if (configSource === "team") {
+      return this.normalizeLlmConfig(jsonOutput<LlmProviderConfig | undefined>(team?.llmConfig));
+    }
 
-      const teamConfig = project
-        ? this.normalizeLlmConfig(db.teams.find((t) => t.id === project.teamId)?.llmConfig as LlmProviderConfig | undefined)
-        : undefined;
-      const userConfig = this.normalizeLlmConfig(
-        db.users.find((u) => u.id === userId)?.llmConfig as LlmProviderConfig | undefined,
-      );
+    const teamConfig = this.normalizeLlmConfig(jsonOutput<LlmProviderConfig | undefined>(team?.llmConfig));
+    const userConfig = this.normalizeLlmConfig(jsonOutput<LlmProviderConfig | undefined>(user?.llmConfig));
 
-      return this.mergeLlmConfig(userConfig, teamConfig);
-    });
+    return this.mergeLlmConfig(userConfig, teamConfig);
   }
 
   public async resolveTextLlmConfig(
@@ -2082,22 +2103,22 @@ export class JobsService {
     projectId: string,
     configSource: ImageConfigSource,
   ): Promise<ImageGenerationConfig | undefined> {
-    return this.database.query((db) => {
-      if (configSource === "personal") {
-        return this.normalizeImageGenerationConfig(
-          db.users.find((user) => user.id === userId)?.imageGenerationConfig,
-        );
-      }
-
-      const project = db.projects.find((item) => item.id === projectId);
-      if (!project) {
-        throw new NotFoundException("Project not found");
-      }
-
+    if (configSource === "personal") {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
       return this.normalizeImageGenerationConfig(
-        db.teams.find((team) => team.id === project.teamId)?.imageGenerationConfig,
+        jsonOutput<ImageGenerationConfig | undefined>(user?.imageGenerationConfig),
       );
-    });
+    }
+
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      throw new NotFoundException("Project not found");
+    }
+
+    const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+    return this.normalizeImageGenerationConfig(
+      jsonOutput<ImageGenerationConfig | undefined>(team?.imageGenerationConfig),
+    );
   }
 
   /** 从新的 provider 列表中解析 ProviderEntry */
@@ -2108,33 +2129,45 @@ export class JobsService {
     projectId: string,
     configSource: ImageConfigSource,
   ): Promise<ProviderEntry | undefined> {
-    return this.database.query((db) => {
-      const isPersonal = configSource === "personal";
-      const record = isPersonal
-        ? db.users.find((user) => user.id === userId)
-        : (() => {
-            const project = db.projects.find((item) => item.id === projectId);
-            if (!project) throw new NotFoundException("Project not found");
-            return db.teams.find((team) => team.id === project.teamId);
-          })();
+    const isPersonal = configSource === "personal";
+    let record: { imageProviders?: any; videoProviders?: any; defaultImageProvider?: string | null; defaultVideoProvider?: string | null } | null;
 
-      if (!record) return undefined;
+    if (isPersonal) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      record = user ? {
+        imageProviders: jsonOutput<any>(user.imageProviders),
+        videoProviders: jsonOutput<any>(user.videoProviders),
+        defaultImageProvider: user.defaultImageProvider,
+        defaultVideoProvider: user.defaultVideoProvider,
+      } : null;
+    } else {
+      const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+      if (!project) throw new NotFoundException("Project not found");
+      const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+      record = team ? {
+        imageProviders: jsonOutput<any>(team.imageProviders),
+        videoProviders: jsonOutput<any>(team.videoProviders),
+        defaultImageProvider: team.defaultImageProvider,
+        defaultVideoProvider: team.defaultVideoProvider,
+      } : null;
+    }
 
-      const providers = type === "image" ? record.imageProviders : record.videoProviders;
-      const defaultId = type === "image" ? record.defaultImageProvider : record.defaultVideoProvider;
+    if (!record) return undefined;
 
-      if (!providers?.length) return undefined;
+    const providers: ProviderEntry[] | undefined = type === "image" ? record.imageProviders : record.videoProviders;
+    const defaultId = type === "image" ? record.defaultImageProvider : record.defaultVideoProvider;
 
-      if (providerId) {
-        return providers.find((p) => p.id === providerId);
-      }
+    if (!providers?.length) return undefined;
 
-      if (defaultId) {
-        return providers.find((p) => p.id === defaultId);
-      }
+    if (providerId) {
+      return providers.find((p) => p.id === providerId);
+    }
 
-      return providers[0];
-    });
+    if (defaultId) {
+      return providers.find((p) => p.id === defaultId);
+    }
+
+    return providers[0];
   }
 
   /** 将 ProviderEntry 转换为 ImageGenerationConfig（兼容现有 provider 实例） */
@@ -2384,31 +2417,29 @@ export class JobsService {
   ): Promise<BatchJobGroupRecord> {
     await this.assertProjectReadable(userId, input.projectId);
 
-    const sceneShots = await this.database.query((db) => {
-      const storyboardDoc = db.documents.find((document) => document.projectId === input.projectId && document.type === "storyboard");
-      const storyboardVersionId = storyboardDoc?.currentVersionId ?? storyboardDoc?.draftVersionId;
-      if (!storyboardVersionId) {
-        throw new NotFoundException("Storyboard not found for this project");
-      }
+    const storyboardDoc = await this.prisma.document.findFirst({ where: { projectId: input.projectId, type: "storyboard" } });
+    const storyboardVersionId = storyboardDoc?.currentVersionId ?? storyboardDoc?.draftVersionId;
+    if (!storyboardVersionId) {
+      throw new NotFoundException("Storyboard not found for this project");
+    }
 
-      const storyboardVersion = db.versions.find((version) => version.id === storyboardVersionId);
-      if (!storyboardVersion?.content || typeof storyboardVersion.content !== "object") {
-        throw new NotFoundException("Storyboard content is not available");
-      }
+    const storyboardVersion = await this.prisma.version.findUnique({ where: { id: storyboardVersionId } });
+    if (!storyboardVersion?.content || typeof storyboardVersion.content !== "object") {
+      throw new NotFoundException("Storyboard content is not available");
+    }
 
-      const storyboard = storyboardVersion.content as StoryboardContent;
-      const sceneShots = (storyboard.shots ?? []).filter((shot) => shot.sceneId === sceneId);
-      if (sceneShots.length === 0) {
-        throw new NotFoundException("No storyboard shots found for this scene");
-      }
+    const storyboard = jsonOutput<StoryboardContent>(storyboardVersion.content);
+    const allSceneShots = (storyboard.shots ?? []).filter((shot) => shot.sceneId === sceneId);
+    if (allSceneShots.length === 0) {
+      throw new NotFoundException("No storyboard shots found for this scene");
+    }
 
-      const requestedShotIds = input.shotIds?.length
-        ? new Set(input.shotIds.filter(Boolean))
-        : null;
-      return requestedShotIds
-        ? sceneShots.filter((shot) => requestedShotIds.has(shot.id))
-        : sceneShots;
-    });
+    const requestedShotIds = input.shotIds?.length
+      ? new Set(input.shotIds.filter(Boolean))
+      : null;
+    const sceneShots = requestedShotIds
+      ? allSceneShots.filter((shot) => requestedShotIds.has(shot.id))
+      : allSceneShots;
 
     const eligibleShots = sceneShots.filter((shot) => shot.dialogue?.trim() && shot.characterIds?.[0]);
     if (eligibleShots.length === 0) {
@@ -2425,7 +2456,7 @@ export class JobsService {
       jobIds.push(job.id);
     }
 
-    const batchResult = await this.database.mutate((db) => {
+    const batchResult = await this.prisma.$transaction(async (tx) => {
       const batchId = createId("batch");
       const group: BatchJobGroupRecord = {
         id: batchId,
@@ -2435,16 +2466,24 @@ export class JobsService {
         createdBy: userId,
         createdAt: new Date().toISOString(),
       };
-      const updatedJobs: JobRecord[] = [];
-      db.batchJobs.push(group);
 
-      for (const jobId of jobIds) {
-        const job = db.jobs.find((item) => item.id === jobId);
-        if (job) {
-          job.batchId = batchId;
-          job.priority = job.priority ?? "normal";
-          updatedJobs.push(job);
-        }
+      await tx.batchJobGroup.create({
+        data: {
+          id: batchId,
+          projectId: input.projectId,
+          jobIds,
+          status: "running",
+          createdBy: userId,
+        },
+      });
+
+      const updatedJobs: JobRecord[] = [];
+      for (const jId of jobIds) {
+        const updated = await tx.job.update({
+          where: { id: jId },
+          data: { batchId, priority: "normal", updatedAt: new Date() },
+        });
+        updatedJobs.push(this.toJobRecord(updated));
       }
 
       return { group, updatedJobs };
@@ -2526,13 +2565,10 @@ export class JobsService {
 
   /** 根据项目ID和文档类型查找当前版本引用 */
   private async getCurrentVersionReference(projectId: string, type: DocumentType) {
-    return this.database.query((db) => {
-      const document = db.documents.find((item) => item.projectId === projectId && item.type === type);
-      const version = document?.currentVersionId
-        ? db.versions.find((item) => item.id === document.currentVersionId)
-        : undefined;
-      return document && version ? { document, version } : null;
-    });
+    const document = await this.prisma.document.findFirst({ where: { projectId, type } });
+    if (!document?.currentVersionId) return null;
+    const version = await this.prisma.version.findUnique({ where: { id: document.currentVersionId } });
+    return document && version ? { document, version } : null;
   }
 
   private async resolveTTSVoice(
@@ -2540,20 +2576,17 @@ export class JobsService {
     characterId: string,
     llmConfig?: LlmProviderConfig,
   ) {
-    const [worldBible, availableVoices] = await Promise.all([
-      this.database.query((db) => {
-        const worldBibleDoc = db.documents.find((document) => document.projectId === projectId && document.type === "world_bible");
-        if (!worldBibleDoc?.currentVersionId) {
-          return null;
-        }
-        const version = db.versions.find((item) => item.id === worldBibleDoc.currentVersionId);
-        if (!version?.content || typeof version.content !== "object") {
-          return null;
-        }
-        return version.content as WorldBibleContent;
-      }),
+    const [rawWorldBible, availableVoices] = await Promise.all([
+      (async () => {
+        const worldBibleDoc = await this.prisma.document.findFirst({ where: { projectId, type: "world_bible" } });
+        if (!worldBibleDoc?.currentVersionId) return null;
+        const version = await this.prisma.version.findUnique({ where: { id: worldBibleDoc.currentVersionId } });
+        if (!version?.content || typeof version.content !== "object") return null;
+        return jsonOutput<WorldBibleContent>(version.content);
+      })(),
       this.ttsProvider.listVoices(llmConfig),
     ]);
+    const worldBible = rawWorldBible;
 
     const savedVoice = worldBible?.voiceConfigs?.find((config) => config.characterId === characterId);
     if (savedVoice) {
@@ -2626,37 +2659,41 @@ export class JobsService {
   }
 
   private async resolveShotCompositionInput(projectId: string, shotId: string): Promise<ResolvedShotCompositionInput> {
-    return this.database.query((db) => {
-      const storyboardDocument = db.documents.find((document) => document.projectId === projectId && document.type === "storyboard");
-      const storyboardVersionId = storyboardDocument?.currentVersionId ?? storyboardDocument?.draftVersionId;
-      const storyboardVersion = storyboardVersionId ? db.versions.find((version) => version.id === storyboardVersionId) : undefined;
-      const storyboard = storyboardVersion?.content as StoryboardContent | undefined;
-      const shot = storyboard?.shots?.find((item) => item.id === shotId);
-      if (!shot) {
-        throw new NotFoundException("Storyboard shot not found");
-      }
+    const storyboardDocument = await this.prisma.document.findFirst({ where: { projectId, type: "storyboard" } });
+    const storyboardVersionId = storyboardDocument?.currentVersionId ?? storyboardDocument?.draftVersionId;
+    const storyboardVersion = storyboardVersionId
+      ? await this.prisma.version.findUnique({ where: { id: storyboardVersionId } })
+      : undefined;
+    const storyboard = storyboardVersion ? jsonOutput<StoryboardContent | undefined>(storyboardVersion.content) : undefined;
+    const shot = storyboard?.shots?.find((item) => item.id === shotId);
+    if (!shot) {
+      throw new NotFoundException("Storyboard shot not found");
+    }
 
-      const binding = (storyboard?.mediaBindings?.[shotId] ?? {}) as ShotMediaBinding;
-      const videoDocument = db.documents.find((document) => document.projectId === projectId && document.type === "video" && document.shotId === shotId);
-      const audioDocument = db.documents.find((document) => document.projectId === projectId && document.type === "audio" && document.shotId === shotId);
-      const videoVersionId = binding.videoVersionId ?? videoDocument?.currentVersionId;
-      const audioVersionId = binding.audioVersionId ?? audioDocument?.currentVersionId;
-      const videoVersion = videoVersionId ? db.versions.find((version) => version.id === videoVersionId) : undefined;
-      const audioVersion = audioVersionId ? db.versions.find((version) => version.id === audioVersionId) : undefined;
-      const videoContent = videoVersion?.content as MediaContent | undefined;
-      const audioContent = audioVersion?.content as { assetUrl?: string; duration?: number } | undefined;
+    const binding = (storyboard?.mediaBindings?.[shotId] ?? {}) as ShotMediaBinding;
+    const [videoDocument, audioDocument] = await Promise.all([
+      this.prisma.document.findFirst({ where: { projectId, type: "video", shotId } }),
+      this.prisma.document.findFirst({ where: { projectId, type: "audio", shotId } }),
+    ]);
+    const videoVersionId = binding.videoVersionId ?? videoDocument?.currentVersionId;
+    const audioVersionId = binding.audioVersionId ?? audioDocument?.currentVersionId;
+    const [videoVersion, audioVersion] = await Promise.all([
+      videoVersionId ? this.prisma.version.findUnique({ where: { id: videoVersionId } }) : Promise.resolve(null),
+      audioVersionId ? this.prisma.version.findUnique({ where: { id: audioVersionId } }) : Promise.resolve(null),
+    ]);
+    const videoContent = videoVersion ? jsonOutput<MediaContent | undefined>(videoVersion.content) : undefined;
+    const audioContent = audioVersion ? jsonOutput<{ assetUrl?: string; duration?: number } | undefined>(audioVersion.content) : undefined;
 
-      return {
-        storyboardVersionId: storyboardVersion?.id,
-        shotHash: this.impactService.stableHash(shot),
-        duration: Number(shot.durationSeconds || audioContent?.duration || 3),
-        subtitleText: binding.subtitle?.trim() || shot.dialogue?.trim() || undefined,
-        videoVersionId,
-        videoAssetUrl: typeof videoContent?.assetUrl === "string" ? videoContent.assetUrl : undefined,
-        audioVersionId,
-        audioAssetUrl: typeof audioContent?.assetUrl === "string" ? audioContent.assetUrl : undefined,
-      };
-    });
+    return {
+      storyboardVersionId: storyboardVersion?.id,
+      shotHash: this.impactService.stableHash(shot),
+      duration: Number(shot.durationSeconds || audioContent?.duration || 3),
+      subtitleText: binding.subtitle?.trim() || shot.dialogue?.trim() || undefined,
+      videoVersionId: videoVersionId ?? undefined,
+      videoAssetUrl: typeof videoContent?.assetUrl === "string" ? videoContent.assetUrl : undefined,
+      audioVersionId: audioVersionId ?? undefined,
+      audioAssetUrl: typeof audioContent?.assetUrl === "string" ? audioContent.assetUrl : undefined,
+    };
   }
 
   private async processShotCompositionJob(job: JobRecord<ComposeShotInput>) {
@@ -2816,9 +2853,7 @@ export class JobsService {
       // Inject synopsis context if a source version was provided
       const enrichedInput = { ...input };
       if (input.sourceSynopsisVersionId) {
-        const synopsisVersion = await this.database.query((db) =>
-          db.versions.find((v: VersionRecord) => v.id === input.sourceSynopsisVersionId),
-        );
+        const synopsisVersion = await this.prisma.version.findUnique({ where: { id: input.sourceSynopsisVersionId } });
         if (synopsisVersion) {
           const synopsisContent = typeof synopsisVersion.content === "string"
             ? synopsisVersion.content
@@ -3002,12 +3037,12 @@ export class JobsService {
     await this.markJobRunning(job.id);
 
     try {
-      const scriptVersion = await this.database.query((db) =>
-        db.versions.find((item) => item.id === input.versionId),
-      );
-      if (!scriptVersion) {
+      const rawScriptVersion = await this.prisma.version.findUnique({ where: { id: input.versionId } });
+      if (!rawScriptVersion) {
         throw new Error("Source script version not found");
       }
+
+      const scriptVersion = jsonOutput<VersionRecord>(rawScriptVersion);
 
       const script = scriptVersion.content as ScriptContent;
       const config = await this.resolveTextLlmConfig(userId, projectId, llmConfigSource);

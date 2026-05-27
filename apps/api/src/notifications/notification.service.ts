@@ -8,7 +8,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { NotificationRecord, NotificationType } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
+import { iso } from "../common/prisma-json";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { createId } from "../common/id";
 
@@ -28,14 +29,14 @@ export interface CreateNotificationParams {
 @Injectable()
 export class NotificationService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RealtimeEventsService) private readonly realtimeEvents: RealtimeEventsService,
   ) {}
 
   async createNotification(params: CreateNotificationParams): Promise<NotificationRecord | null> {
     try {
-      const notification = await this.database.mutate((db) => {
-        const record: NotificationRecord = {
+      const notification = await this.prisma.notification.create({
+        data: {
           id: createId("ntf"),
           userId: params.userId,
           projectId: params.projectId,
@@ -45,17 +46,22 @@ export class NotificationService {
           referenceId: params.referenceId,
           referenceType: params.referenceType,
           isRead: false,
-          createdAt: new Date().toISOString(),
-        };
-
-        db.notifications.push(record);
-        this.pruneUserNotifications(db.notifications, params.userId);
-        return record;
+        },
       });
 
+      await this.pruneUserNotifications(params.userId);
+
+      const record: NotificationRecord = {
+        ...notification,
+        projectId: notification.projectId ?? undefined,
+        referenceId: notification.referenceId ?? undefined,
+        referenceType: (notification.referenceType as "job" | "version" | "comment") ?? undefined,
+        createdAt: iso(notification.createdAt),
+      };
+
       const unreadCount = await this.getUnreadCount(params.userId);
-      this.realtimeEvents.emitNotificationCreated(notification, unreadCount);
-      return notification;
+      this.realtimeEvents.emitNotificationCreated(record, unreadCount);
+      return record;
     } catch {
       // fire-and-forget: notification failures must not block primary operations
       return null;
@@ -69,75 +75,75 @@ export class NotificationService {
   }
 
   async listNotifications(userId: string, options: { unreadOnly?: boolean; limit?: number; offset?: number } = {}): Promise<{ notifications: NotificationRecord[]; total: number }> {
-    return this.database.query((db) => {
-      let items = db.notifications.filter((n) => n.userId === userId);
+    const where = {
+      userId,
+      ...(options.unreadOnly ? { isRead: false } : {}),
+    };
 
-      if (options.unreadOnly) {
-        items = items.filter((n) => !n.isRead);
-      }
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: options.offset ?? 0,
+        take: options.limit ?? 20,
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
 
-      items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const notifications: NotificationRecord[] = items.map((n) => ({
+      ...n,
+      projectId: n.projectId ?? undefined,
+      referenceId: n.referenceId ?? undefined,
+      referenceType: (n.referenceType as "job" | "version" | "comment") ?? undefined,
+      createdAt: iso(n.createdAt),
+    }));
 
-      const total = items.length;
-      const offset = options.offset ?? 0;
-      const limit = options.limit ?? 20;
-      const notifications = items.slice(offset, offset + limit);
-
-      return { notifications, total };
-    });
+    return { notifications, total };
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.database.query((db) =>
-      db.notifications.filter((n) => n.userId === userId && !n.isRead).length,
-    );
+    return this.prisma.notification.count({
+      where: { userId, isRead: false },
+    });
   }
 
   async markRead(userId: string, notificationId: string): Promise<void> {
-    await this.database.mutate((db) => {
-      const notification = db.notifications.find(
-        (n) => n.id === notificationId && n.userId === userId,
-      );
-      if (notification) {
-        notification.isRead = true;
-      }
+    await this.prisma.notification.updateMany({
+      where: { id: notificationId, userId },
+      data: { isRead: true },
     });
   }
 
   async markAllRead(userId: string): Promise<void> {
-    await this.database.mutate((db) => {
-      for (const notification of db.notifications) {
-        if (notification.userId === userId && !notification.isRead) {
-          notification.isRead = true;
-        }
-      }
+    await this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
     });
   }
 
-  private pruneUserNotifications(notifications: NotificationRecord[], userId: string): void {
-    const now = Date.now();
-    const cutoff = now - PRUNE_AGE_MS;
+  private async pruneUserNotifications(userId: string): Promise<void> {
+    const cutoff = new Date(Date.now() - PRUNE_AGE_MS);
 
-    for (let i = notifications.length - 1; i >= 0; i--) {
-      const n = notifications[i];
-      if (n.userId === userId && new Date(n.createdAt).getTime() < cutoff) {
-        notifications.splice(i, 1);
-      }
-    }
+    // 删除超过保留期限的通知
+    await this.prisma.notification.deleteMany({
+      where: {
+        userId,
+        createdAt: { lt: cutoff },
+      },
+    });
 
-    const userNotifications = notifications
-      .map((n, idx) => ({ n, idx }))
-      .filter(({ n }) => n.userId === userId);
+    // 如果用户通知数量超过上限，删除最旧的
+    const userNotifications = await this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
 
     if (userNotifications.length > MAX_NOTIFICATIONS_PER_USER) {
-      userNotifications.sort((a, b) => b.n.createdAt.localeCompare(a.n.createdAt));
       const toRemove = userNotifications.slice(MAX_NOTIFICATIONS_PER_USER);
-      const removeIndices = new Set(toRemove.map(({ idx }) => idx));
-      for (let i = notifications.length - 1; i >= 0; i--) {
-        if (removeIndices.has(i)) {
-          notifications.splice(i, 1);
-        }
-      }
+      await this.prisma.notification.deleteMany({
+        where: { id: { in: toRemove.map((n) => n.id) } },
+      });
     }
   }
 }

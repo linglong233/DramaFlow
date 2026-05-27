@@ -24,7 +24,7 @@ import type {
 } from "@dramaflow/shared";
 import type { Server, Socket } from "socket.io";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
 
 @Injectable()
 @WebSocketGateway({
@@ -40,7 +40,7 @@ export class RealtimeGateway implements OnGatewayConnection {
 
   constructor(
     @Inject(JwtService) private readonly jwtService: JwtService,
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -55,7 +55,7 @@ export class RealtimeGateway implements OnGatewayConnection {
         secret: process.env.JWT_ACCESS_SECRET ?? "dramaflow-access-secret",
       });
 
-      const user = await this.database.query((db) => db.users.find((item) => item.id === payload.sub));
+      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
       if (!user) {
         client.disconnect(true);
         return;
@@ -130,25 +130,18 @@ export class RealtimeGateway implements OnGatewayConnection {
   }
 
   private async canAccessProject(userId: string, projectId: string): Promise<boolean> {
-    return this.database.query((db) => {
-      const project = db.projects.find((item) => item.id === projectId);
-      if (!project) {
-        return false;
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return false;
+    if (user.globalRole === "platform_super_admin") return true;
 
-      const user = db.users.find((item) => item.id === userId);
-      if (!user) {
-        return false;
-      }
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return false;
 
-      if (user.globalRole === "platform_super_admin") {
-        return true;
-      }
-
-      const hasTeamAccess = db.teamMembers.some((member) => member.teamId === project.teamId && member.userId === userId);
-      const hasProjectAccess = db.projectMembers.some((member) => member.projectId === projectId && member.userId === userId);
-      return hasTeamAccess || hasProjectAccess;
-    });
+    const [teamMember, projectMember] = await this.prisma.$transaction([
+      this.prisma.teamMember.findFirst({ where: { teamId: project.teamId, userId } }),
+      this.prisma.projectMember.findFirst({ where: { projectId, userId } }),
+    ]);
+    return Boolean(teamMember || projectMember);
   }
 
   private getUserRoom(userId: string): string {

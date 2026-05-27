@@ -14,7 +14,8 @@ import {
 } from "@nestjs/common";
 import type { StorageProvider } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
+import { iso } from "../common/prisma-json";
 import { createId } from "../common/id";
 import { LocalStorageProvider } from "./local-storage.provider";
 import { S3StorageProvider } from "./s3-storage.provider";
@@ -22,7 +23,7 @@ import { S3StorageProvider } from "./s3-storage.provider";
 @Injectable()
 export class StorageService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(LocalStorageProvider) private readonly localStorage: LocalStorageProvider,
     @Inject(S3StorageProvider) private readonly s3Storage: S3StorageProvider,
   ) {}
@@ -40,8 +41,8 @@ export class StorageService {
       contentType: input.contentType,
     });
 
-    const asset = await this.database.mutate((db) => {
-      const record = {
+    const asset = await this.prisma.asset.create({
+      data: {
         id: createId("asset"),
         projectId: input.projectId,
         documentId: input.documentId,
@@ -52,13 +53,10 @@ export class StorageService {
         mimeType: input.contentType,
         sizeInBytes: input.sizeInBytes ?? 0,
         createdBy: userId,
-        createdAt: new Date().toISOString(),
-      };
-      db.assets.push(record);
-      return record;
+      },
     });
 
-    return { asset, target };
+    return { asset: { ...asset, createdAt: iso(asset.createdAt) }, target };
   }
 
   async finalizeDirectUpload(key: string, contentType: string, body: Buffer) {
@@ -67,14 +65,17 @@ export class StorageService {
     }
 
     const stored = await this.localStorage.putObject({ key, body, contentType });
-    await this.database.mutate((db) => {
-      const asset = db.assets.find((item) => item.storageKey === key);
-      if (asset) {
-        asset.publicUrl = stored.publicUrl;
-        asset.sizeInBytes = body.byteLength;
-        asset.mimeType = contentType;
-      }
-    });
+    const asset = await this.prisma.asset.findFirst({ where: { storageKey: key } });
+    if (asset) {
+      await this.prisma.asset.update({
+        where: { id: asset.id },
+        data: {
+          publicUrl: stored.publicUrl,
+          sizeInBytes: body.byteLength,
+          mimeType: contentType,
+        },
+      });
+    }
 
     return stored;
   }
@@ -95,8 +96,8 @@ export class StorageService {
       ? input.body.byteLength
       : Buffer.byteLength(input.body);
 
-    const asset = await this.database.mutate((db) => {
-      const record = {
+    const asset = await this.prisma.asset.create({
+      data: {
         id: createId("asset"),
         projectId: input.projectId,
         documentId: input.documentId,
@@ -107,29 +108,28 @@ export class StorageService {
         mimeType: input.contentType,
         sizeInBytes,
         createdBy: userId,
-        createdAt: new Date().toISOString(),
-      };
-      db.assets.push(record);
-      return record;
+      },
     });
 
-    return { asset, url: stored.publicUrl };
+    return { asset: { ...asset, createdAt: iso(asset.createdAt) }, url: stored.publicUrl };
   }
 
   async getAssetUrl(userId: string, assetId: string) {
-    const asset = await this.database.query((db) => db.assets.find((item) => item.id === assetId));
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId } });
     if (!asset) {
       throw new NotFoundException("Asset not found");
     }
     await this.assertProjectReadable(userId, asset.projectId);
+
+    const mappedAsset = { ...asset, createdAt: iso(asset.createdAt) };
     return {
-      asset,
-      url: asset.publicUrl ?? (await this.getProvider(asset.storageDriver).getObjectUrl(asset.storageKey)),
+      asset: mappedAsset,
+      url: asset.publicUrl ?? (await this.getProvider(asset.storageDriver as "local" | "s3").getObjectUrl(asset.storageKey)),
     };
   }
 
   async getAssetBuffer(userId: string, assetId: string) {
-    const asset = await this.database.query((db) => db.assets.find((item) => item.id === assetId));
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId } });
     if (!asset) {
       throw new NotFoundException("Asset not found");
     }
@@ -140,9 +140,9 @@ export class StorageService {
     }
 
     try {
-      const body = await this.getProvider(asset.storageDriver).readObject(asset.storageKey);
+      const body = await this.getProvider(asset.storageDriver as "local" | "s3").readObject(asset.storageKey);
       return {
-        asset,
+        asset: { ...asset, createdAt: iso(asset.createdAt) },
         body,
         mimeType: asset.mimeType,
       };
@@ -155,7 +155,7 @@ export class StorageService {
         }
 
         return {
-          asset,
+          asset: { ...asset, createdAt: iso(asset.createdAt) },
           body: new Uint8Array(await response.arrayBuffer()),
           mimeType: response.headers.get("content-type") ?? asset.mimeType,
         };
@@ -175,18 +175,19 @@ export class StorageService {
   }
 
   private async assertProjectReadable(userId: string, projectId: string) {
-    const allowed = await this.database.query((db) => {
-      const project = db.projects.find((item) => item.id === projectId);
-      if (!project) {
-        throw new NotFoundException("Project not found");
-      }
-      const user = db.users.find((item) => item.id === userId);
-      const hasTeamAccess = db.teamMembers.some((member) => member.teamId === project.teamId && member.userId === userId);
-      const hasProjectAccess = db.projectMembers.some((member) => member.projectId === projectId && member.userId === userId);
-      return user?.globalRole === "platform_super_admin" || hasTeamAccess || hasProjectAccess;
-    });
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      throw new NotFoundException("Project not found");
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.globalRole === "platform_super_admin") return;
 
-    if (!allowed) {
+    const [teamMember, projectMember] = await this.prisma.$transaction([
+      this.prisma.teamMember.findFirst({ where: { teamId: project.teamId, userId } }),
+      this.prisma.projectMember.findFirst({ where: { projectId, userId } }),
+    ]);
+
+    if (!teamMember && !projectMember) {
       throw new ForbiddenException("You do not have access to this asset");
     }
   }

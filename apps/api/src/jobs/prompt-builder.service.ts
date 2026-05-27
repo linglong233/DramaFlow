@@ -17,7 +17,8 @@ import type {
   WorldBibleContent,
 } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
+import { jsonOutput } from "../common/prisma-json";
 import { buildMediaImagePrompt, buildMediaVideoPrompt } from "./prompting/media-prompt-builder";
 
 const FRAMING_PROMPT_MAP: Record<string, string> = {
@@ -53,7 +54,7 @@ const CAMERA_MOVE_PROMPT_MAP: Record<string, string> = {
 @Injectable()
 export class PromptBuilderService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
 
   async buildImagePrompt(
@@ -115,40 +116,38 @@ export class PromptBuilderService {
   }
 
   async previewPrompt(projectId: string, shotId: string): Promise<PromptPreviewResult> {
-    return this.database.query((db) => {
-      const worldBible = this.extractWorldBibleFromDb(db, projectId);
-      const shot = this.findShotInVersions(db, projectId, shotId);
+    const worldBible = await this.extractWorldBible(projectId);
+    const shot = await this.findShotInVersions(projectId, shotId);
 
-      if (!shot) {
-        return {
-          positivePrompt: "",
-          negativePrompt: worldBible.styleGuide?.negativePrompt ?? "blurry, low quality, distorted, deformed",
-          shotId,
-          injectedCharacters: [],
-        };
-      }
-
-      const characters = this.resolveCharacters(shot, worldBible);
-      const sceneLocationId = this.resolveSceneLocationId(db, projectId, shot.sceneId);
-      const location = this.findMatchingLocation(shot, worldBible, sceneLocationId);
-      const style = worldBible.styleGuide;
-
-      const mediaPrompt = buildMediaImagePrompt({
-        shot,
-        characters,
-        location: location ?? undefined,
-        styleGuide: style ?? undefined,
-      });
-
+    if (!shot) {
       return {
-        positivePrompt: mediaPrompt.positivePrompt,
-        negativePrompt: mediaPrompt.negativePrompt,
+        positivePrompt: "",
+        negativePrompt: worldBible.styleGuide?.negativePrompt ?? "blurry, low quality, distorted, deformed",
         shotId,
-        injectedCharacters: mediaPrompt.metadata.injectedCharacters,
-        injectedLocation: mediaPrompt.metadata.injectedLocation,
-        injectedStyle: mediaPrompt.metadata.injectedStyle,
+        injectedCharacters: [],
       };
+    }
+
+    const characters = this.resolveCharacters(shot, worldBible);
+    const sceneLocationId = await this.resolveSceneLocationId(projectId, shot.sceneId);
+    const location = this.findMatchingLocation(shot, worldBible, sceneLocationId);
+    const style = worldBible.styleGuide;
+
+    const mediaPrompt = buildMediaImagePrompt({
+      shot,
+      characters,
+      location: location ?? undefined,
+      styleGuide: style ?? undefined,
     });
+
+    return {
+      positivePrompt: mediaPrompt.positivePrompt,
+      negativePrompt: mediaPrompt.negativePrompt,
+      shotId,
+      injectedCharacters: mediaPrompt.metadata.injectedCharacters,
+      injectedLocation: mediaPrompt.metadata.injectedLocation,
+      injectedStyle: mediaPrompt.metadata.injectedStyle,
+    };
   }
 
   async buildVideoPrompt(
@@ -184,41 +183,39 @@ export class PromptBuilderService {
     shotId: string,
     videoReferenceMode: VideoReferenceMode = "none",
   ): Promise<PromptPreviewResult> {
-    return this.database.query((db) => {
-      const worldBible = this.extractWorldBibleFromDb(db, projectId);
-      const shot = this.findShotInVersions(db, projectId, shotId);
+    const worldBible = await this.extractWorldBible(projectId);
+    const shot = await this.findShotInVersions(projectId, shotId);
 
-      if (!shot) {
-        return {
-          positivePrompt: "",
-          negativePrompt: worldBible.styleGuide?.negativePrompt ?? "blurry, low quality, distorted, deformed",
-          shotId,
-          injectedCharacters: [],
-        };
-      }
-
-      const characters = this.resolveCharacters(shot, worldBible);
-      const sceneLocationId = this.resolveSceneLocationId(db, projectId, shot.sceneId);
-      const location = this.findMatchingLocation(shot, worldBible, sceneLocationId);
-      const style = worldBible.styleGuide;
-
-      const mediaPrompt = buildMediaVideoPrompt({
-        shot,
-        characters,
-        location: location ?? undefined,
-        styleGuide: style ?? undefined,
-        videoReferenceMode,
-      });
-
+    if (!shot) {
       return {
-        positivePrompt: mediaPrompt.positivePrompt,
-        negativePrompt: mediaPrompt.negativePrompt,
+        positivePrompt: "",
+        negativePrompt: worldBible.styleGuide?.negativePrompt ?? "blurry, low quality, distorted, deformed",
         shotId,
-        injectedCharacters: mediaPrompt.metadata.injectedCharacters,
-        injectedLocation: mediaPrompt.metadata.injectedLocation,
-        injectedStyle: mediaPrompt.metadata.injectedStyle,
+        injectedCharacters: [],
       };
+    }
+
+    const characters = this.resolveCharacters(shot, worldBible);
+    const sceneLocationId = await this.resolveSceneLocationId(projectId, shot.sceneId);
+    const location = this.findMatchingLocation(shot, worldBible, sceneLocationId);
+    const style = worldBible.styleGuide;
+
+    const mediaPrompt = buildMediaVideoPrompt({
+      shot,
+      characters,
+      location: location ?? undefined,
+      styleGuide: style ?? undefined,
+      videoReferenceMode,
     });
+
+    return {
+      positivePrompt: mediaPrompt.positivePrompt,
+      negativePrompt: mediaPrompt.negativePrompt,
+      shotId,
+      injectedCharacters: mediaPrompt.metadata.injectedCharacters,
+      injectedLocation: mediaPrompt.metadata.injectedLocation,
+      injectedStyle: mediaPrompt.metadata.injectedStyle,
+    };
   }
 
   private resolveCharacters(shot: StoryboardShot, worldBible: WorldBibleContent): CharacterProfile[] {
@@ -241,20 +238,19 @@ export class PromptBuilderService {
     );
   }
 
-  private resolveSceneLocationId(
-    db: import("../common/database.types").DevDatabase,
+  private async resolveSceneLocationId(
     projectId: string,
     sceneId?: string,
-  ): string | undefined {
+  ): Promise<string | undefined> {
     if (!sceneId) return undefined;
-    const scriptDocs = db.documents.filter(
-      (doc) => doc.projectId === projectId && doc.type === "script",
-    );
+    const scriptDocs = await this.prisma.document.findMany({
+      where: { projectId, type: "script" },
+    });
     for (const doc of scriptDocs) {
       if (!doc.currentVersionId) continue;
-      const version = db.versions.find((v) => v.id === doc.currentVersionId);
+      const version = await this.prisma.version.findUnique({ where: { id: doc.currentVersionId } });
       if (!version?.content || typeof version.content !== "object") continue;
-      const content = version.content as ScriptContent;
+      const content = jsonOutput<ScriptContent>(version.content);
       if (!Array.isArray(content.scenes)) continue;
       const scene = content.scenes.find((s) => s.id === sceneId);
       if (scene?.locationId) return scene.locationId;
@@ -262,69 +258,62 @@ export class PromptBuilderService {
     return undefined;
   }
 
-  private extractWorldBibleFromDb(db: import("../common/database.types").DevDatabase, projectId: string): WorldBibleContent {
-    const wbDoc = db.documents.find(
-      (doc) => doc.projectId === projectId && doc.type === "world_bible",
-    );
-    if (!wbDoc || !wbDoc.currentVersionId) {
-      return { characters: [], locations: [] };
-    }
+  private async extractWorldBible(projectId: string): Promise<WorldBibleContent> {
+    const wbDoc = await this.prisma.document.findFirst({
+      where: { projectId, type: "world_bible" },
+    });
+    if (!wbDoc?.currentVersionId) return { characters: [], locations: [] };
 
-    const version = db.versions.find((v) => v.id === wbDoc.currentVersionId);
-    if (!version || !version.content || typeof version.content !== "object") {
-      return { characters: [], locations: [] };
-    }
+    const version = await this.prisma.version.findUnique({ where: { id: wbDoc.currentVersionId } });
+    if (!version?.content || typeof version.content !== "object") return { characters: [], locations: [] };
 
-    const content = version.content as Record<string, unknown>;
+    const content = jsonOutput<Record<string, unknown>>(version.content);
     return {
       characters: Array.isArray(content.characters) ? content.characters as WorldBibleContent["characters"] : [],
       locations: Array.isArray(content.locations) ? content.locations as WorldBibleContent["locations"] : [],
       styleGuide: content.styleGuide && typeof content.styleGuide === "object"
-        ? content.styleGuide as WorldBibleContent["styleGuide"]
-        : undefined,
+        ? content.styleGuide as WorldBibleContent["styleGuide"] : undefined,
     };
   }
 
-  private getStoryboardVersionCandidates(
-    db: import("../common/database.types").DevDatabase,
+  private async getStoryboardVersionCandidates(
     documentId: string,
     currentVersionId?: string,
     draftVersionId?: string,
   ) {
     const candidateIds = [currentVersionId, draftVersionId].filter((id): id is string => Boolean(id));
-    const versions = candidateIds
-      .map((id) => db.versions.find((version) => version.id === id && version.documentId === documentId))
-      .filter((version): version is NonNullable<typeof version> => Boolean(version));
-    const seen = new Set(versions.map((version) => version.id));
-
-    const newestVersions = db.versions
-      .filter((version) => version.documentId === documentId && !seen.has(version.id))
-      .sort((left, right) => right.versionNumber - left.versionNumber);
-
+    const versions = [];
+    for (const id of candidateIds) {
+      const version = await this.prisma.version.findUnique({ where: { id } });
+      if (version && version.documentId === documentId) versions.push(version);
+    }
+    const seen = new Set(versions.map((v) => v.id));
+    const newestVersions = await this.prisma.version.findMany({
+      where: { documentId, id: { notIn: [...seen] } },
+      orderBy: { versionNumber: "desc" },
+    });
     return [...versions, ...newestVersions];
   }
 
-  private findShotInVersions(
-    db: import("../common/database.types").DevDatabase,
+  private async findShotInVersions(
     projectId: string,
     shotId: string,
-  ): StoryboardShot | undefined {
-    const storyboardDocs = db.documents.filter(
-      (doc) => doc.projectId === projectId && doc.type === "storyboard",
-    );
+  ): Promise<StoryboardShot | undefined> {
+    const storyboardDocs = await this.prisma.document.findMany({
+      where: { projectId, type: "storyboard" },
+    });
 
     for (const doc of storyboardDocs) {
-      const versions = this.getStoryboardVersionCandidates(
-        db,
+      const versions = await this.getStoryboardVersionCandidates(
         doc.id,
-        doc.currentVersionId,
-        doc.draftVersionId,
+        doc.currentVersionId ?? undefined,
+        doc.draftVersionId ?? undefined,
       );
 
       for (const version of versions) {
         if (!version.content || typeof version.content !== "object") continue;
 
-        const content = version.content as { shots?: StoryboardShot[] };
+        const content = jsonOutput<{ shots?: StoryboardShot[] }>(version.content);
         if (!Array.isArray(content.shots)) continue;
 
         const found = content.shots.find((s) => s.id === shotId);

@@ -15,7 +15,7 @@ import { isAbsolute, join } from "node:path";
 
 import { Prisma, PrismaClient } from "@prisma/client";
 
-import type { DevDatabase } from "../src/common/database.types";
+import type { DevDatabase } from "./legacy-database.types";
 
 const prisma = new PrismaClient();
 
