@@ -27,6 +27,17 @@ enum ProjectRole {
   viewer
 }
 
+enum ProjectPermission {
+  project_view
+  project_edit
+  version_review
+  job_manage
+  timeline_edit
+  export_create
+  member_manage
+  permission_manage
+}
+
 enum ReviewPolicyMode {
   inherit
   required
@@ -75,6 +86,10 @@ enum JobType {
   rewrite_segment
   tts_generation
   export_video
+  shot_regenerate
+  novel_import
+  impact_suggestion
+  shot_composition
 }
 
 enum JobStatus {
@@ -99,8 +114,12 @@ enum AuditContentType {
 
 enum AuditAction {
   submitted
+  advanced
   approved
   rejected
+  adopted
+  restored
+  deleted
 }
 
 enum NotificationType {
@@ -117,6 +136,63 @@ enum NotificationType {
 enum ProjectInviteStatus {
   pending
   accepted
+}
+
+enum DependencyType {
+  world_bible_to_synopsis
+  world_bible_to_script
+  world_bible_to_storyboard
+  synopsis_to_script
+  script_to_storyboard
+  storyboard_to_media
+  manual_inherited
+  manual_unlinked
+}
+
+enum DependencyAnchorType {
+  document
+  scene
+  shot
+  asset
+}
+
+enum ImpactIssueStatus {
+  open
+  suggested
+  accepted
+  ignored
+  resolved
+}
+
+enum ImpactSeverity {
+  low
+  medium
+  high
+}
+
+enum ImpactTargetType {
+  version
+  scene
+  shot
+  media_candidate
+  timeline_clip
+}
+
+enum ImpactSuggestionStatus {
+  generated
+  accepted
+  acceptance_reverted
+}
+
+enum ImpactIssueEventType {
+  created
+  ignored
+  reopened
+  suggestion_created
+  suggestion_accepted
+  acceptance_reverted
+  resolved
+  assigned
 }
 
 enum BatchJobStatus {
@@ -138,16 +214,41 @@ enum ExportStatus {
   failed
 }
 
+enum NovelImportStatus {
+  draft
+  queued
+  running
+  needs_review
+  failed
+  cancelled
+  written
+}
+
+enum NovelImportStage {
+  setup
+  chunking
+  adaptationPlan
+  worldBible
+  synopsis
+  script
+  review
+  write
+}
+
 model User {
-  id                    String          @id
-  email                 String          @unique
+  id                    String     @id
+  email                 String     @unique
   displayName           String
   passwordHash          String
   globalRole            GlobalRole
   llmConfig             Json?
   imageGenerationConfig Json?
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  imageProviders        Json?
+  videoProviders        Json?
+  defaultImageProvider  String?
+  defaultVideoProvider  String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
   refreshTokens  RefreshToken[]
   teamMembers    TeamMember[]
@@ -165,19 +266,24 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model Team {
-  id                            String           @id
-  name                          String
-  slug                          String           @unique
-  defaultReviewPolicy           ReviewPolicyMode
-  createdBy                     String
-  llmConfig                     Json?
-  imageGenerationConfig         Json?
+  id                             String           @id
+  name                           String
+  slug                           String           @unique
+  defaultReviewPolicy            ReviewPolicyMode
+  createdBy                      String
+  llmConfig                      Json?
+  imageGenerationConfig          Json?
+  imageProviders                 Json?
+  videoProviders                 Json?
+  defaultImageProvider           String?
+  defaultVideoProvider           String?
   projectRolePermissionTemplates Json?
-  createdAt                     DateTime         @default(now())
-  updatedAt                     DateTime         @updatedAt
+  createdAt                      DateTime         @default(now())
+  updatedAt                      DateTime         @updatedAt
 
   members     TeamMember[]
   inviteLinks TeamInviteLink[]
@@ -212,6 +318,7 @@ model TeamInviteLink {
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId])
+  @@index([expiresAt])
 }
 
 model Project {
@@ -227,21 +334,29 @@ model Project {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  team         Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  members      ProjectMember[]
-  invites      ProjectInvite[]
-  documents    Document[]
-  jobs         Job[]
-  assets       Asset[]
-  auditConfigs AuditConfig[]
-  auditRecords AuditRecord[]
-  batchJobs    BatchJobGroup[]
-  timeline     Timeline?
-  exports      Export[]
-  notifications Notification[]
+  team                 Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members              ProjectMember[]
+  invites              ProjectInvite[]
+  documents            Document[]
+  jobs                 Job[]
+  assets               Asset[]
+  auditConfigs         AuditConfig[]
+  auditRecords         AuditRecord[]
+  versionDependencies  VersionDependency[]
+  impactIssues         ImpactIssue[]
+  impactTargets        ImpactTarget[]
+  impactSuggestions    ImpactSuggestion[]
+  impactIssueEvents    ImpactIssueEvent[]
+  batchJobs            BatchJobGroup[]
+  timeline             Timeline?
+  exports              Export[]
+  notifications        Notification[]
+  conversationSessions ConversationSession[]
+  novelImportSessions  NovelImportSession[]
 
   @@index([teamId])
   @@index([status])
+  @@index([updatedAt])
 }
 
 model ProjectInvite {
@@ -260,11 +375,11 @@ model ProjectInvite {
 }
 
 model ProjectMember {
-  id                String      @id
-  createdAt         DateTime    @default(now())
-  role              ProjectRole
-  projectId         String
-  userId            String
+  id                 String      @id
+  createdAt          DateTime    @default(now())
+  role               ProjectRole
+  projectId          String
+  userId             String
   permissionOverride Json?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -281,6 +396,7 @@ model Document {
   title            String
   shotId           String?
   currentVersionId String?
+  draftVersionId   String?
   createdBy        String
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -290,6 +406,8 @@ model Document {
 
   @@index([projectId, type])
   @@index([shotId])
+  @@index([currentVersionId])
+  @@index([draftVersionId])
 }
 
 model Version {
@@ -304,14 +422,16 @@ model Version {
   createdBy       String
   createdAt       DateTime      @default(now())
 
-  document       Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  parentVersion  Version?  @relation("VersionTree", fields: [parentVersionId], references: [id])
-  childVersions  Version[] @relation("VersionTree")
-  comments       Comment[]
-  auditRecords   AuditRecord[]
+  document      Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parentVersion Version?      @relation("VersionTree", fields: [parentVersionId], references: [id])
+  childVersions Version[]     @relation("VersionTree")
+  comments      Comment[]
+  auditRecords  AuditRecord[]
 
   @@unique([documentId, versionNumber])
+  @@index([documentId, status, createdAt])
   @@index([createdAt])
+  @@index([parentVersionId])
 }
 
 model Comment {
@@ -335,7 +455,7 @@ model Comment {
 }
 
 model Job {
-  id          String      @id
+  id          String       @id
   type        JobType
   status      JobStatus
   projectId   String
@@ -351,12 +471,13 @@ model Job {
   cancelledAt DateTime?
   batchId     String?
   createdBy   String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status, updatedAt])
+  @@index([status, priority, createdAt])
   @@index([documentId])
   @@index([shotId])
   @@index([batchId])
@@ -377,6 +498,7 @@ model Asset {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  @@index([projectId])
   @@index([documentId])
   @@index([versionId])
 }
@@ -396,14 +518,14 @@ model AuditConfig {
 }
 
 model AuditRecord {
-  id           String      @id
+  id           String       @id
   projectId    String
   versionId    String
   documentType DocumentType
   action       AuditAction
   reviewerId   String
   comment      String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime     @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   version Version @relation(fields: [versionId], references: [id], onDelete: Cascade)
@@ -477,4 +599,176 @@ model Export {
 
   @@index([projectId, createdAt])
   @@index([taskId])
+}
+
+model VersionDependency {
+  id                 String                @id
+  projectId          String
+  sourceDocumentId   String?
+  sourceVersionId    String?
+  sourceDocumentType DocumentType?
+  targetDocumentId   String
+  targetVersionId    String
+  targetDocumentType DocumentType
+  dependencyType     DependencyType
+  targetAnchorType   DependencyAnchorType?
+  targetAnchorId     String?
+  sourceSnapshotHash String?
+  targetSnapshotHash String?
+  promptSnapshot     Json?
+  provider           String?
+  model              String?
+  configSource       String?
+  createdBy          String
+  createdAt          DateTime              @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([sourceVersionId])
+  @@index([targetVersionId])
+  @@index([targetDocumentId])
+}
+
+model ImpactIssue {
+  id                      String            @id
+  projectId               String
+  dependencyId            String?
+  sourceDocumentId        String?
+  previousSourceVersionId String?
+  changedSourceVersionId  String
+  targetDocumentId        String
+  targetVersionId         String
+  dependencyType          DependencyType
+  status                  ImpactIssueStatus
+  severity                ImpactSeverity
+  title                   String
+  summary                 String
+  assignedTo              String?
+  latestSuggestionId      String?
+  acceptedSuggestionId    String?
+  ignoredBy               String?
+  ignoredAt               DateTime?
+  ignoreReason            String?
+  resolvedBy              String?
+  resolvedAt              DateTime?
+  resolveNote             String?
+  createdBy               String
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  targets     ImpactTarget[]
+  suggestions ImpactSuggestion[]
+  events      ImpactIssueEvent[]
+
+  @@index([projectId, status, updatedAt])
+  @@index([targetVersionId])
+  @@index([changedSourceVersionId])
+}
+
+model ImpactTarget {
+  id         String           @id
+  issueId    String
+  projectId  String
+  targetType ImpactTargetType
+  documentId String?
+  versionId  String?
+  anchorId   String?
+  label      String?
+  createdAt  DateTime         @default(now())
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issue   ImpactIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([projectId])
+}
+
+model ImpactSuggestion {
+  id                String                 @id
+  issueId           String
+  projectId         String
+  status            ImpactSuggestionStatus
+  summary           String
+  suggestedContent  Json?
+  promptSnapshot    Json?
+  provider          String?
+  model             String?
+  createdVersionId  String?
+  createdDocumentId String?
+  createdJobId      String?
+  acceptedBy        String?
+  acceptedAt        DateTime?
+  revertedBy        String?
+  revertedAt        DateTime?
+  createdBy         String
+  createdAt         DateTime               @default(now())
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issue   ImpactIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([projectId])
+  @@index([createdJobId])
+}
+
+model ImpactIssueEvent {
+  id        String               @id
+  issueId   String
+  projectId String
+  type      ImpactIssueEventType
+  actorId   String
+  note      String?
+  createdAt DateTime             @default(now())
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issue   ImpactIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId, createdAt])
+  @@index([projectId])
+}
+
+model ConversationSession {
+  id              String   @id
+  projectId       String
+  messages        Json
+  brief           Json
+  dimensionStatus Json
+  targetDocType   String
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, updatedAt])
+  @@index([createdBy])
+}
+
+model NovelImportSession {
+  id             String            @id
+  projectId      String
+  createdBy      String
+  status         NovelImportStatus
+  stage          NovelImportStage
+  progress       Int
+  sourceText     String
+  options        Json
+  chunks         Json
+  adaptationPlan String?
+  worldBible     Json?
+  synopsis       String?
+  scriptPreview  Json?
+  writeResult    Json?
+  lastJobId      String?
+  error          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, updatedAt])
+  @@index([createdBy])
+  @@index([lastJobId])
 }
