@@ -18,7 +18,8 @@ import type {
   WorldBibleContent,
 } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
+import { jsonOutput, jsonInput, iso } from "../common/prisma-json";
 import { createId } from "../common/id";
 import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provider";
 import { WorkspaceService } from "../workspace/workspace.service";
@@ -70,7 +71,7 @@ export class ConversationService {
   private readonly logger = new Logger(ConversationService.name);
 
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(OpenAiCompatTextProvider) private readonly textProvider: OpenAiCompatTextProvider,
     @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
   ) {}
@@ -92,24 +93,18 @@ export class ConversationService {
       return this.getSessionForProject(userId, projectId, sessionId, "project.view");
     }
 
-    const now = new Date().toISOString();
-    const session: ConversationSession = {
-      id: createId("conv"),
-      projectId,
-      messages: [],
-      brief: emptyBrief(),
-      dimensionStatus: emptyDimensionStatus(),
-      targetDocType,
-      createdBy: userId,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await this.database.mutate((db) => {
-      db.conversationSessions.push(session);
+    const session = await this.prisma.conversationSession.create({
+      data: {
+        id: createId("conv"),
+        projectId,
+        messages: jsonInput([]),
+        brief: jsonInput(emptyBrief()),
+        dimensionStatus: jsonInput(emptyDimensionStatus()),
+        targetDocType,
+        createdBy: userId,
+      },
     });
-
-    return session;
+    return this.toConversationSession(session);
   }
 
   async getSessionForProject(
@@ -127,19 +122,19 @@ export class ConversationService {
         : "You do not have permission to view this project",
     );
 
-    const session = await this.database.query((db) =>
-      db.conversationSessions.find((s) => s.id === sessionId && s.projectId === projectId),
-    );
+    const session = await this.prisma.conversationSession.findFirst({
+      where: { id: sessionId, projectId },
+    });
     if (!session) {
       throw new NotFoundException("Conversation session not found");
     }
-    return session;
+    return this.toConversationSession(session);
   }
 
   async getSession(userId: string, sessionId: string): Promise<ConversationSession> {
-    const session = await this.database.query((db) =>
-      db.conversationSessions.find((s) => s.id === sessionId),
-    );
+    const session = await this.prisma.conversationSession.findUnique({
+      where: { id: sessionId },
+    });
     if (!session) {
       throw new NotFoundException("Conversation session not found");
     }
@@ -149,7 +144,7 @@ export class ConversationService {
       "project.view",
       "You do not have permission to view this project",
     );
-    return session;
+    return this.toConversationSession(session);
   }
 
   async listSessions(userId: string, projectId: string): Promise<ConversationSessionSummary[]> {
@@ -160,37 +155,43 @@ export class ConversationService {
       "You do not have permission to view this project",
     );
 
-    const db = await this.database.query((d) => d);
-    return db.conversationSessions
-      .filter((s) => s.projectId === projectId)
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .map((s) => ({
+    const sessions = await this.prisma.conversationSession.findMany({
+      where: { projectId },
+      orderBy: { updatedAt: "desc" },
+    });
+    return sessions.map((s) => {
+      const messages = jsonOutput<ConversationMessage[]>(s.messages);
+      return {
         id: s.id,
-        firstUserMessage: s.messages.find((m) => m.role === "user")?.content?.slice(0, 20) ?? "新会话",
-        messageCount: s.messages.length,
-        dimensionStatus: s.dimensionStatus,
-        targetDocType: s.targetDocType,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-      }));
+        firstUserMessage: messages.find((m) => m.role === "user")?.content?.slice(0, 20) ?? "新会话",
+        messageCount: messages.length,
+        dimensionStatus: jsonOutput<Record<ConversationDimension, ConversationDimensionStatus>>(s.dimensionStatus),
+        targetDocType: s.targetDocType as "synopsis" | "script",
+        createdAt: iso(s.createdAt),
+        updatedAt: iso(s.updatedAt),
+      };
+    });
   }
 
   async deleteSession(userId: string, projectId: string, sessionId: string): Promise<void> {
     await this.getSessionForProject(userId, projectId, sessionId, "project.edit");
-    await this.database.mutate((db) => {
-      const idx = db.conversationSessions.findIndex((s) => s.id === sessionId && s.projectId === projectId);
-      if (idx >= 0) db.conversationSessions.splice(idx, 1);
+    await this.prisma.conversationSession.delete({
+      where: { id: sessionId },
     });
   }
 
   async appendMessage(sessionId: string, message: ConversationMessage): Promise<ConversationSession> {
-    return this.database.mutate((db) => {
-      const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) throw new NotFoundException("Conversation session not found");
-      session.messages.push(message);
-      session.updatedAt = new Date().toISOString();
-      return { ...session, messages: [...session.messages] };
+    const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
+    if (!existing) throw new NotFoundException("Conversation session not found");
+    const messages = jsonOutput<ConversationMessage[]>(existing.messages);
+    messages.push(message);
+    const updated = await this.prisma.conversationSession.update({
+      where: { id: sessionId },
+      data: {
+        messages: jsonInput(messages),
+      },
     });
+    return this.toConversationSession(updated);
   }
 
   async mergeBrief(
@@ -198,19 +199,20 @@ export class ConversationService {
     brief: ConversationBrief | undefined,
   ): Promise<ConversationSession> {
     const filtered = this.filterBrief(brief);
-    return this.database.mutate((db) => {
-      const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) throw new NotFoundException("Conversation session not found");
-      session.brief = { ...session.brief, ...filtered };
-      session.dimensionStatus = this.confirmDimensionsForBrief(session.dimensionStatus, filtered);
-      session.updatedAt = new Date().toISOString();
-      return {
-        ...session,
-        brief: { ...session.brief },
-        dimensionStatus: { ...session.dimensionStatus },
-        messages: [...session.messages],
-      };
+    const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
+    if (!existing) throw new NotFoundException("Conversation session not found");
+    const currentBrief = jsonOutput<ConversationBrief>(existing.brief);
+    const currentDimensionStatus = jsonOutput<Record<ConversationDimension, ConversationDimensionStatus>>(existing.dimensionStatus);
+    const mergedBrief = { ...currentBrief, ...filtered };
+    const mergedDimensionStatus = this.confirmDimensionsForBrief(currentDimensionStatus, filtered);
+    const updated = await this.prisma.conversationSession.update({
+      where: { id: sessionId },
+      data: {
+        brief: jsonInput(mergedBrief),
+        dimensionStatus: jsonInput(mergedDimensionStatus),
+      },
     });
+    return this.toConversationSession(updated);
   }
 
   async updateSessionState(
@@ -218,19 +220,31 @@ export class ConversationService {
     briefUpdates: ConversationBrief,
     dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
   ): Promise<ConversationSession> {
-    return this.database.mutate((db) => {
-      const session = db.conversationSessions.find((s) => s.id === sessionId);
-      if (!session) throw new NotFoundException("Conversation session not found");
-      session.brief = { ...session.brief, ...briefUpdates };
-      session.dimensionStatus = { ...dimensionStatus };
-      session.updatedAt = new Date().toISOString();
-      return {
-        ...session,
-        brief: { ...session.brief },
-        dimensionStatus: { ...session.dimensionStatus },
-        messages: [...session.messages],
-      };
+    const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
+    if (!existing) throw new NotFoundException("Conversation session not found");
+    const currentBrief = jsonOutput<ConversationBrief>(existing.brief);
+    const updated = await this.prisma.conversationSession.update({
+      where: { id: sessionId },
+      data: {
+        brief: jsonInput({ ...currentBrief, ...briefUpdates }),
+        dimensionStatus: jsonInput({ ...dimensionStatus }),
+      },
     });
+    return this.toConversationSession(updated);
+  }
+
+  private toConversationSession(session: any): ConversationSession {
+    return {
+      id: session.id,
+      projectId: session.projectId,
+      messages: jsonOutput<ConversationMessage[]>(session.messages),
+      brief: jsonOutput<ConversationBrief>(session.brief),
+      dimensionStatus: jsonOutput<Record<ConversationDimension, ConversationDimensionStatus>>(session.dimensionStatus),
+      targetDocType: session.targetDocType as "synopsis" | "script",
+      createdBy: session.createdBy,
+      createdAt: iso(session.createdAt),
+      updatedAt: iso(session.updatedAt),
+    };
   }
 
   private filterBrief(brief?: ConversationBrief): ConversationBrief {
@@ -472,32 +486,34 @@ export class ConversationService {
     projectId: string,
     configSource?: LlmConfigSource,
   ): Promise<LlmProviderConfig | undefined> {
-    const config = await this.database.query((db) => {
-      const project = db.projects.find((p) => p.id === projectId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
 
-      if (configSource === "personal") {
-        const userConfig = db.users.find((u) => u.id === userId)?.llmConfig as LlmProviderConfig | undefined;
-        return this.normalizeLlmConfig(userConfig);
+    if (configSource === "personal") {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const userConfig = user?.llmConfig as LlmProviderConfig | undefined;
+      return this.normalizeLlmConfig(userConfig);
+    }
+
+    if (configSource === "team") {
+      let teamConfig: LlmProviderConfig | undefined;
+      if (project) {
+        const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+        teamConfig = this.normalizeLlmConfig(team?.llmConfig as LlmProviderConfig | undefined);
       }
+      return teamConfig;
+    }
 
-      if (configSource === "team") {
-        const teamConfig = project
-          ? this.normalizeLlmConfig(db.teams.find((t) => t.id === project.teamId)?.llmConfig as LlmProviderConfig | undefined)
-          : undefined;
-        return teamConfig;
-      }
+    let teamConfig: LlmProviderConfig | undefined;
+    if (project) {
+      const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+      teamConfig = this.normalizeLlmConfig(team?.llmConfig as LlmProviderConfig | undefined);
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const userConfig = this.normalizeLlmConfig(
+      user?.llmConfig as LlmProviderConfig | undefined,
+    );
 
-      const teamConfig = project
-        ? this.normalizeLlmConfig(db.teams.find((t) => t.id === project.teamId)?.llmConfig as LlmProviderConfig | undefined)
-        : undefined;
-      const userConfig = this.normalizeLlmConfig(
-        db.users.find((u) => u.id === userId)?.llmConfig as LlmProviderConfig | undefined,
-      );
-
-      return this.mergeLlmConfig(userConfig, teamConfig);
-    });
-
-    return config;
+    return this.mergeLlmConfig(userConfig, teamConfig);
   }
 
   private normalizeLlmConfig(config?: LlmProviderConfig): LlmProviderConfig | undefined {

@@ -16,12 +16,13 @@ import type {
 } from "@dramaflow/shared";
 import { normalizeScriptContent, normalizeScriptScene, normalizeWorldBibleContent } from "@dramaflow/shared";
 import { createId } from "../common/id";
+import { PrismaService } from "../common/prisma.service";
+import { jsonOutput, jsonInput, iso } from "../common/prisma-json";
 import {
   NOVEL_CHUNK_SCENES_CONTRACT,
   WORLD_BIBLE_EXTRACTION_CONTRACT,
 } from "./prompting/text-contracts";
 import { extractJsonObject, validatePromptSchema } from "./prompting/structured-output";
-import { DevDatabaseService } from "../common/dev-database.service";
 import type { StreamChunk } from "./text-generation.provider";
 import { WorkspaceService } from "../workspace/workspace.service";
 
@@ -47,7 +48,7 @@ export class NovelImportService {
   private readonly logger = new Logger(NovelImportService.name);
 
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(WorkspaceService) private readonly workspaceService: WorkspaceService,
   ) {}
 
@@ -69,7 +70,6 @@ export class NovelImportService {
     }
 
     await this.assertProjectEditable(userId, projectId);
-    const now = new Date().toISOString();
     const options: NovelImportOptions = {
       targetEpisodeCount,
       episodeDurationMinutes,
@@ -82,43 +82,42 @@ export class NovelImportService {
       throw new BadRequestException("Novel text could not be split into chunks");
     }
 
-    const session: NovelImportSession = {
-      id: createId("novel_import"),
-      projectId,
-      createdBy: userId,
-      status: "draft",
-      stage: "setup",
-      progress: 0,
-      sourceText: text,
-      options,
-      chunks,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    return this.database.mutate((db) => {
-      db.novelImportSessions.push(session);
-      return session;
+    const session = await this.prisma.novelImportSession.create({
+      data: {
+        id: createId("novel_import"),
+        projectId,
+        createdBy: userId,
+        status: "draft",
+        stage: "setup",
+        progress: 0,
+        sourceText: text,
+        options: jsonInput(options),
+        chunks: jsonInput(chunks),
+      },
     });
+    return this.toNovelImportSession(session);
   }
 
   async getLatestSession(userId: string, projectId: string) {
     await this.assertProjectReadable(userId, projectId);
-    return this.database.query((db) => {
-      const sessions = db.novelImportSessions
-        .filter((session) => session.projectId === projectId && session.createdBy === userId && session.status !== "written")
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-      return sessions[0] ?? null;
+    const session = await this.prisma.novelImportSession.findFirst({
+      where: {
+        projectId,
+        createdBy: userId,
+        status: { not: "written" },
+      },
+      orderBy: { updatedAt: "desc" },
     });
+    return session ? this.toNovelImportSession(session) : null;
   }
 
   async getSession(userId: string, sessionId: string) {
-    const session = await this.database.query((db) => db.novelImportSessions.find((item) => item.id === sessionId));
+    const session = await this.prisma.novelImportSession.findUnique({ where: { id: sessionId } });
     if (!session) {
       throw new NotFoundException("Novel import session not found");
     }
     await this.assertProjectReadable(userId, session.projectId);
-    return session;
+    return this.toNovelImportSession(session);
   }
 
   async attachJob(userId: string, sessionId: string, jobId: string) {
@@ -126,14 +125,15 @@ export class NovelImportService {
     if (session.status === "queued" || session.status === "running" || session.status === "written") {
       throw new BadRequestException(`Cannot start a session with status "${session.status}"`);
     }
-    return this.database.mutate((db) => {
-      const live = this.mustFindSession(db, session.id);
-      live.status = "queued";
-      live.lastJobId = jobId;
-      live.error = undefined;
-      live.updatedAt = new Date().toISOString();
-      return live;
+    const updated = await this.prisma.novelImportSession.update({
+      where: { id: session.id },
+      data: {
+        status: "queued",
+        lastJobId: jobId,
+        error: null,
+      },
     });
+    return this.toNovelImportSession(updated);
   }
 
   async cancelSession(userId: string, sessionId: string) {
@@ -141,13 +141,14 @@ export class NovelImportService {
     if (session.status === "written") {
       throw new BadRequestException("Written sessions cannot be cancelled");
     }
-    return this.database.mutate((db) => {
-      const live = this.mustFindSession(db, session.id);
-      live.status = "cancelled";
-      live.error = undefined;
-      live.updatedAt = new Date().toISOString();
-      return live;
+    const updated = await this.prisma.novelImportSession.update({
+      where: { id: session.id },
+      data: {
+        status: "cancelled",
+        error: null,
+      },
     });
+    return this.toNovelImportSession(updated);
   }
 
   async writeDrafts(userId: string, sessionId: string) {
@@ -241,8 +242,8 @@ export class NovelImportService {
     return { sessionId: session.id, status: session.status, chunkIndex: job.input.chunkIndex };
   }
 
-  private mustFindSession(db: { novelImportSessions: NovelImportSession[] }, sessionId: string) {
-    const session = db.novelImportSessions.find((item) => item.id === sessionId);
+  private async mustFindSessionDb(sessionId: string) {
+    const session = await this.prisma.novelImportSession.findUnique({ where: { id: sessionId } });
     if (!session) {
       throw new NotFoundException("Novel import session not found");
     }
@@ -392,17 +393,33 @@ export class NovelImportService {
   }
 
   private async updateSession(sessionId: string, mutate: (session: NovelImportSession) => void) {
-    return this.database.mutate((db) => {
-      const live = this.mustFindSession(db, sessionId);
-      mutate(live);
-      live.updatedAt = new Date().toISOString();
-      return live;
+    const existing = await this.mustFindSessionDb(sessionId);
+    const live = this.toNovelImportSession(existing);
+    mutate(live);
+    const data: Record<string, any> = {
+      status: live.status,
+      stage: live.stage,
+      progress: live.progress,
+      options: jsonInput(live.options),
+      chunks: jsonInput(live.chunks),
+      error: live.error ?? null,
+      lastJobId: live.lastJobId ?? null,
+    };
+    if (live.adaptationPlan !== undefined) data.adaptationPlan = live.adaptationPlan;
+    if (live.worldBible !== undefined) data.worldBible = jsonInput(live.worldBible);
+    if (live.synopsis !== undefined) data.synopsis = live.synopsis;
+    if (live.scriptPreview !== undefined) data.scriptPreview = jsonInput(live.scriptPreview);
+    if (live.writeResult !== undefined) data.writeResult = jsonInput(live.writeResult);
+    const updated = await this.prisma.novelImportSession.update({
+      where: { id: sessionId },
+      data,
     });
+    return this.toNovelImportSession(updated);
   }
 
   private async assertNotCancelled(sessionId: string) {
-    const status = await this.database.query((db) => this.mustFindSession(db, sessionId).status);
-    if (status === "cancelled") {
+    const session = await this.prisma.novelImportSession.findUnique({ where: { id: sessionId } });
+    if (!session || session.status === "cancelled") {
       throw new Error("Novel import session was cancelled");
     }
   }
@@ -557,7 +574,7 @@ export class NovelImportService {
     streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
     includeFollowing: boolean,
   ) {
-    let session = await this.database.query((db) => this.mustFindSession(db, sessionId));
+    let session = this.toNovelImportSession(await this.mustFindSessionDb(sessionId));
     let previousSummary = startIndex > 0 ? session.chunks[startIndex - 1]?.summary ?? "" : "";
     const endExclusive = includeFollowing ? session.chunks.length : Math.min(startIndex + 1, session.chunks.length);
 
@@ -605,7 +622,7 @@ export class NovelImportService {
       }
     }
 
-    return this.database.query((db) => this.mustFindSession(db, sessionId));
+    return this.toNovelImportSession(await this.mustFindSessionDb(sessionId));
   }
 
   private buildPreview(session: NovelImportSession): ScriptContent {
@@ -620,6 +637,29 @@ export class NovelImportService {
       characters,
       scenes: session.chunks.flatMap((chunk) => chunk.scenes),
     });
+  }
+
+  private toNovelImportSession(session: any): NovelImportSession {
+    return {
+      id: session.id,
+      projectId: session.projectId,
+      createdBy: session.createdBy,
+      status: session.status,
+      stage: session.stage,
+      progress: session.progress,
+      sourceText: session.sourceText,
+      options: jsonOutput<NovelImportOptions>(session.options),
+      chunks: jsonOutput<NovelImportChunkRecord[]>(session.chunks),
+      adaptationPlan: session.adaptationPlan ?? undefined,
+      worldBible: session.worldBible ? jsonOutput<WorldBibleContent>(session.worldBible) : undefined,
+      synopsis: session.synopsis ?? undefined,
+      scriptPreview: session.scriptPreview ? jsonOutput<ScriptContent>(session.scriptPreview) : undefined,
+      writeResult: session.writeResult ? jsonOutput<NovelImportWriteResult>(session.writeResult) : undefined,
+      lastJobId: session.lastJobId ?? undefined,
+      error: session.error ?? undefined,
+      createdAt: iso(session.createdAt),
+      updatedAt: iso(session.updatedAt),
+    };
   }
 
   chunkSourceText(text: string): NovelImportChunkRecord[] {
@@ -668,24 +708,27 @@ export class NovelImportService {
   }
 
   private async assertProjectReadable(userId: string, projectId: string) {
-    const allowed = await this.database.query((db) => {
-      const project = db.projects.find((item) => item.id === projectId);
-      if (!project) return false;
-      return db.projectMembers.some((member) => member.projectId === projectId && member.userId === userId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      throw new ForbiddenException("You do not have permission to access this project");
+    }
+    const member = await this.prisma.projectMember.findFirst({
+      where: { projectId, userId },
     });
-    if (!allowed) {
+    if (!member) {
       throw new ForbiddenException("You do not have permission to access this project");
     }
   }
 
   private async assertProjectEditable(userId: string, projectId: string) {
-    const allowed = await this.database.query((db) => {
-      const project = db.projects.find((item) => item.id === projectId);
-      if (!project) return false;
-      const member = db.projectMembers.find((item) => item.projectId === projectId && item.userId === userId);
-      return Boolean(member && member.role !== "viewer");
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      throw new ForbiddenException("You do not have permission to edit this project");
+    }
+    const member = await this.prisma.projectMember.findFirst({
+      where: { projectId, userId },
     });
-    if (!allowed) {
+    if (!member || member.role === "viewer") {
       throw new ForbiddenException("You do not have permission to edit this project");
     }
   }

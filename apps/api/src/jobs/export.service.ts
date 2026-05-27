@@ -15,7 +15,8 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import type { ExportRecord, ExportTimelineInput, TimelineRecord, TimelineTrackRecord, TimelineClipRecord } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
+import { jsonOutput, jsonInput, iso, optionalIso } from "../common/prisma-json";
 import { createId } from "../common/id";
 import { StorageService } from "../storage/storage.service";
 
@@ -57,7 +58,7 @@ export interface ShotCompositionRenderResult {
 @Injectable()
 export class ExportService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(StorageService) private readonly storageService: StorageService,
   ) {}
 
@@ -90,33 +91,27 @@ export class ExportService {
       );
     }
 
-    const now = new Date().toISOString();
     const exportId = createId("export");
 
     // Create initial export record as processing
-    const exportRecord: ExportRecord = {
-      id: exportId,
-      projectId: config.projectId,
-      taskId,
-      resolution: config.resolution,
-      fps: config.fps,
-      bitrate: config.bitrate,
-      format: config.format,
-      outputUrl: undefined,
-      fileSize: undefined,
-      duration: timeline.duration,
-      status: "processing",
-      createdBy: userId,
-      createdAt: now,
-    };
-
-    await this.database.mutate((db) => {
-      db.exports.push(exportRecord);
+    const exportRow = await this.prisma.export.create({
+      data: {
+        id: exportId,
+        projectId: config.projectId,
+        taskId,
+        resolution: config.resolution,
+        fps: config.fps,
+        bitrate: config.bitrate ?? null,
+        format: config.format,
+        duration: timeline.duration,
+        status: "processing",
+        createdBy: userId,
+      },
     });
 
     // Use mock if ffmpeg is not available
     if (!ffmpegAvailable) {
-      return this.mockExport(userId, exportRecord, timeline, config);
+      return this.mockExport(userId, this.toExportRecord(exportRow), timeline, config);
     }
 
     // Real FFmpeg export
@@ -162,29 +157,27 @@ export class ExportService {
       onProgress?.(95);
 
       // Step 4: Update export record
-      await this.database.mutate((db) => {
-        const record = db.exports.find((e) => e.id === exportId);
-        if (record) {
-          record.status = "completed";
-          record.outputUrl = stored.url;
-          record.fileSize = fileStat.size;
-          record.completedAt = new Date().toISOString();
-        }
+      await this.prisma.export.update({
+        where: { id: exportId },
+        data: {
+          status: "completed",
+          outputUrl: stored.url,
+          fileSize: fileStat.size,
+          completedAt: new Date(),
+        },
       });
 
       onProgress?.(100);
 
-      return this.database.query((db) =>
-        db.exports.find((e) => e.id === exportId)!,
-      );
+      return this.toExportRecord(await this.prisma.export.findUniqueOrThrow({ where: { id: exportId } }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown export error";
-      await this.database.mutate((db) => {
-        const record = db.exports.find((e) => e.id === exportId);
-        if (record) {
-          record.status = "failed";
-          record.completedAt = new Date().toISOString();
-        }
+      await this.prisma.export.update({
+        where: { id: exportId },
+        data: {
+          status: "failed",
+          completedAt: new Date(),
+        },
       });
       throw error;
     } finally {
@@ -374,19 +367,17 @@ export class ExportService {
       body: svg,
     });
 
-    await this.database.mutate((db) => {
-      const record = db.exports.find((e) => e.id === exportRecord.id);
-      if (record) {
-        record.status = "completed";
-        record.outputUrl = stored.url;
-        record.fileSize = Buffer.byteLength(svg);
-        record.completedAt = new Date().toISOString();
-      }
+    await this.prisma.export.update({
+      where: { id: exportRecord.id },
+      data: {
+        status: "completed",
+        outputUrl: stored.url,
+        fileSize: Buffer.byteLength(svg),
+        completedAt: new Date(),
+      },
     });
 
-    return this.database.query((db) =>
-      db.exports.find((e) => e.id === exportRecord.id)!,
-    );
+    return this.toExportRecord(await this.prisma.export.findUniqueOrThrow({ where: { id: exportRecord.id } }));
   }
 
   /** 单镜头合成 mock 模式：FFmpeg 不可用时生成占位文件 */
@@ -748,17 +739,35 @@ export class ExportService {
     return "aac";
   }
 
+  private toExportRecord(exp: any): ExportRecord {
+    return {
+      id: exp.id,
+      projectId: exp.projectId,
+      taskId: exp.taskId,
+      resolution: exp.resolution,
+      fps: exp.fps,
+      bitrate: exp.bitrate ?? undefined,
+      format: exp.format,
+      outputUrl: exp.outputUrl ?? undefined,
+      fileSize: exp.fileSize ?? undefined,
+      duration: exp.duration ?? undefined,
+      status: exp.status,
+      createdBy: exp.createdBy,
+      createdAt: iso(exp.createdAt),
+      completedAt: optionalIso(exp.completedAt),
+    };
+  }
+
   async listExports(projectId: string): Promise<ExportRecord[]> {
-    return this.database.query((db) => {
-      return db.exports
-        .filter((e) => e.projectId === projectId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const exports = await this.prisma.export.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
     });
+    return exports.map((e) => this.toExportRecord(e));
   }
 
   async getExport(exportId: string): Promise<ExportRecord | undefined> {
-    return this.database.query((db) => {
-      return db.exports.find((e) => e.id === exportId);
-    });
+    const exp = await this.prisma.export.findUnique({ where: { id: exportId } });
+    return exp ? this.toExportRecord(exp) : undefined;
   }
 }
