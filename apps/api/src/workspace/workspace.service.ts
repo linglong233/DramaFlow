@@ -36,6 +36,7 @@ import {
   resolveProjectPermissions,
   type AccessContext,
   type AnchorType,
+  type AuditConfigResponse,
   type AuditContentType,
   type CharacterProfile,
   type CharacterVoiceConfig,
@@ -48,6 +49,7 @@ import {
   type LlmProviderConfig,
   type LocationProfile,
   type PermissionOverride,
+  type ProviderEntry,
   type ProjectInviteSummary,
   type ProjectMemberPermissionsResponse,
   type ProjectMemberRecord,
@@ -87,10 +89,21 @@ import {
 
 import { randomBytes } from "node:crypto";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
 import { LlmProviderService } from "../common/llm-provider.service";
-import type { DevDatabase, ProjectInviteRecord } from "../common/database.types";
+import { jsonOutput, jsonInput, optionalJsonInput, iso, optionalIso } from "../common/prisma-json";
 import { createId } from "../common/id";
+
+/** 项目邀请记录（Prisma 模式下的本地类型） */
+export interface ProjectInviteRecord {
+  id: string;
+  projectId: string;
+  email: string;
+  role: ProjectRole;
+  createdBy: string;
+  status: "pending" | "accepted";
+  createdAt: string;
+}
 import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { AuditService } from "./audit.service";
@@ -109,7 +122,7 @@ function applyPagination<T>(items: T[], limit?: number, offset?: number): T[] {
 @Injectable()
 export class WorkspaceService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(LlmProviderService) private readonly llmProviderService: LlmProviderService,
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(NotificationService) private readonly notificationService: NotificationService,
@@ -117,28 +130,82 @@ export class WorkspaceService {
     @Inject(ImpactService) private readonly impactService: ImpactService,
   ) {}
 
-  async listTeams(userId: string): Promise<TeamSummary[]> {
-    return this.database.query((db) => {
-      const user = this.mustFindUser(db, userId);
-      const visibleTeams = user.globalRole === "platform_super_admin"
-        ? [...db.teams]
-        : db.teams.filter((team) => db.teamMembers.some((member) => member.teamId === team.id && member.userId === userId));
+  // ===== Record Mappers (Prisma → shared types) =====
 
-      return visibleTeams
-        .sort((left, right) => left.name.localeCompare(right.name))
-        .map((team) => this.buildTeamSummary(db, team, userId, user.globalRole));
-    });
+  private toTeamRecord(team: any) {
+    return {
+      id: team.id, name: team.name, slug: team.slug,
+      defaultReviewPolicy: team.defaultReviewPolicy, createdBy: team.createdBy,
+      llmConfig: jsonOutput(team.llmConfig),
+      imageGenerationConfig: jsonOutput(team.imageGenerationConfig),
+      imageProviders: jsonOutput(team.imageProviders),
+      videoProviders: jsonOutput(team.videoProviders),
+      defaultImageProvider: team.defaultImageProvider ?? undefined,
+      defaultVideoProvider: team.defaultVideoProvider ?? undefined,
+      projectRolePermissionTemplates: jsonOutput(team.projectRolePermissionTemplates),
+      createdAt: iso(team.createdAt), updatedAt: iso(team.updatedAt),
+    };
+  }
+
+  private toProjectRecord(project: any) {
+    return {
+      id: project.id, teamId: project.teamId, name: project.name,
+      description: project.description, genre: project.genre ?? undefined,
+      coverUrl: project.coverUrl ?? undefined, status: project.status,
+      reviewPolicyMode: project.reviewPolicyMode, createdBy: project.createdBy,
+      createdAt: iso(project.createdAt), updatedAt: iso(project.updatedAt),
+    };
+  }
+
+  private toDocumentRecord(doc: any) {
+    return {
+      id: doc.id, projectId: doc.projectId, type: doc.type, title: doc.title,
+      shotId: doc.shotId ?? undefined, currentVersionId: doc.currentVersionId ?? undefined,
+      draftVersionId: doc.draftVersionId ?? undefined, createdBy: doc.createdBy,
+      createdAt: iso(doc.createdAt), updatedAt: iso(doc.updatedAt),
+    };
+  }
+
+  private toVersionRecord(version: any): VersionRecord {
+    return {
+      id: version.id, documentId: version.documentId,
+      versionNumber: version.versionNumber, status: version.status,
+      title: version.title, content: jsonOutput<unknown>(version.content),
+      metadata: jsonOutput<Record<string, unknown>>(version.metadata),
+      parentVersionId: version.parentVersionId ?? undefined,
+      createdBy: version.createdBy, createdAt: iso(version.createdAt),
+    };
+  }
+
+  async listTeams(userId: string): Promise<TeamSummary[]> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
+
+    const visibleTeams = user.globalRole === "platform_super_admin"
+      ? await this.prisma.team.findMany({})
+      : await this.prisma.team.findMany({
+          where: { members: { some: { userId } } },
+        });
+
+    return Promise.all(visibleTeams
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((team) => this.buildTeamSummaryFromRecord(this.toTeamRecord(team), userId, user.globalRole)));
   }
 
   async getTeam(userId: string, teamId: string): Promise<TeamSummary> {
-    return this.database.query((db) => {
-      const user = this.mustFindUser(db, userId);
-      const membership = db.teamMembers.find((item) => item.teamId === teamId && item.userId === userId);
-      if (user.globalRole !== "platform_super_admin" && !membership) {
-        throw new ForbiddenException("You do not have access to this team");
-      }
-      return this.buildTeamSummary(db, this.mustFindTeam(db, teamId), userId, user.globalRole);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
+
+    const membership = await this.prisma.teamMember.findFirst({
+      where: { teamId, userId },
     });
+    if (user.globalRole !== "platform_super_admin" && !membership) {
+      throw new ForbiddenException("You do not have access to this team");
+    }
+
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    return this.buildTeamSummaryFromRecord(this.toTeamRecord(team), userId, user.globalRole);
   }
 
   async getTeamSettings(userId: string, teamId: string): Promise<TeamSettingsResponse> {
@@ -147,7 +214,9 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to view team settings");
     }
 
-    return this.database.query((db) => this.buildTeamSettingsResponse(db, this.mustFindTeam(db, teamId), actor.userId, actor.globalRole));
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    return this.buildTeamSettingsResponseFromRecord(this.toTeamRecord(team), actor.userId, actor.globalRole);
   }
 
   async getTeamPermissionTemplates(userId: string, teamId: string): Promise<TeamPermissionTemplatesResponse> {
@@ -156,7 +225,9 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to view team permission templates");
     }
 
-    return this.database.query((db) => this.buildTeamPermissionTemplatesResponse(this.mustFindTeam(db, teamId)));
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    return this.buildTeamPermissionTemplatesResponseFromRecord(this.toTeamRecord(team));
   }
 
   async updateTeamPermissionTemplates(
@@ -171,12 +242,15 @@ export class WorkspaceService {
 
     this.assertNoInvalidProjectPermissions(findInvalidProjectRolePermissionTemplateValues(input.templates));
 
-    return this.database.mutate((db) => {
-      const team = this.mustFindTeam(db, teamId);
-      team.projectRolePermissionTemplates = normalizeProjectRolePermissionTemplates(input.templates);
-      team.updatedAt = new Date().toISOString();
-      return this.buildTeamPermissionTemplatesResponse(team);
+    const templates = normalizeProjectRolePermissionTemplates(input.templates);
+    const updated = await this.prisma.team.update({
+      where: { id: teamId },
+      data: {
+        projectRolePermissionTemplates: optionalJsonInput(templates),
+        updatedAt: new Date(),
+      },
     });
+    return this.buildTeamPermissionTemplatesResponseFromRecord(this.toTeamRecord(updated));
   }
 
   async createTeam(userId: string, input: { name: string; slug?: string; defaultReviewPolicy?: "required" | "bypass" }) {
@@ -186,34 +260,33 @@ export class WorkspaceService {
       throw new BadRequestException("Team name is required");
     }
 
-    return this.database.mutate((db) => {
-      const slug = (input.slug?.trim().toLowerCase() || name.toLowerCase().replace(/\s+/g, "-")).replace(/[^a-z0-9-]/g, "");
-      if (db.teams.some((team) => team.slug === slug)) {
-        throw new BadRequestException("Team slug already exists");
-      }
+    const slug = (input.slug?.trim().toLowerCase() || name.toLowerCase().replace(/\s+/g, "-")).replace(/[^a-z0-9-]/g, "");
+    const existing = await this.prisma.team.findFirst({ where: { slug } });
+    if (existing) {
+      throw new BadRequestException("Team slug already exists");
+    }
 
-      const now = new Date().toISOString();
-      const team = {
-        id: createId("team"),
-        name,
-        slug,
-        defaultReviewPolicy: input.defaultReviewPolicy ?? "required",
-        createdBy: actor.userId,
-        createdAt: now,
-        updatedAt: now,
-      };
-      const teamMember: TeamMemberRecord = {
-        id: createId("tm"),
-        teamId: team.id,
-        userId: actor.userId,
-        role: "tenant_owner",
-        createdAt: now,
-      };
-
-      db.teams.push(team);
-      db.teamMembers.push(teamMember);
-      return team;
+    const team = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.team.create({
+        data: {
+          id: createId("team"),
+          name,
+          slug,
+          defaultReviewPolicy: input.defaultReviewPolicy ?? "required",
+          createdBy: actor.userId,
+        },
+      });
+      await tx.teamMember.create({
+        data: {
+          id: createId("tm"),
+          teamId: created.id,
+          userId: actor.userId,
+          role: "tenant_owner",
+        },
+      });
+      return created;
     });
+    return this.toTeamRecord(team);
   }
 
   async updateTeam(
@@ -240,31 +313,36 @@ export class WorkspaceService {
       throw new BadRequestException("Team name is required");
     }
 
-    return this.database.mutate((db) => {
-      const team = this.mustFindTeam(db, teamId);
-      team.name = name;
-      team.defaultReviewPolicy = input.defaultReviewPolicy;
-      if (input.llmConfig !== undefined) {
-        team.llmConfig = this.mergePersistedLlmConfig(team.llmConfig, input.llmConfig);
-      }
-      if (input.imageGenerationConfig !== undefined) {
-        team.imageGenerationConfig = this.mergePersistedImageGenerationConfig(team.imageGenerationConfig, input.imageGenerationConfig);
-      }
-      if (input.imageProviders !== undefined) {
-        team.imageProviders = input.imageProviders;
-      }
-      if (input.videoProviders !== undefined) {
-        team.videoProviders = input.videoProviders;
-      }
-      if (input.defaultImageProvider !== undefined) {
-        team.defaultImageProvider = input.defaultImageProvider;
-      }
-      if (input.defaultVideoProvider !== undefined) {
-        team.defaultVideoProvider = input.defaultVideoProvider;
-      }
-      team.updatedAt = new Date().toISOString();
-      return this.buildTeamSettingsResponse(db, team, actor.userId, actor.globalRole);
-    });
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+
+    const currentTeam = this.toTeamRecord(team);
+    const data: Record<string, any> = {
+      name,
+      defaultReviewPolicy: input.defaultReviewPolicy,
+      updatedAt: new Date(),
+    };
+    if (input.llmConfig !== undefined) {
+      data.llmConfig = optionalJsonInput(this.mergePersistedLlmConfig(currentTeam.llmConfig as LlmProviderConfig | undefined, input.llmConfig));
+    }
+    if (input.imageGenerationConfig !== undefined) {
+      data.imageGenerationConfig = optionalJsonInput(this.mergePersistedImageGenerationConfig(currentTeam.imageGenerationConfig as ImageGenerationConfig | undefined, input.imageGenerationConfig));
+    }
+    if (input.imageProviders !== undefined) {
+      data.imageProviders = optionalJsonInput(input.imageProviders);
+    }
+    if (input.videoProviders !== undefined) {
+      data.videoProviders = optionalJsonInput(input.videoProviders);
+    }
+    if (input.defaultImageProvider !== undefined) {
+      data.defaultImageProvider = input.defaultImageProvider;
+    }
+    if (input.defaultVideoProvider !== undefined) {
+      data.defaultVideoProvider = input.defaultVideoProvider;
+    }
+
+    const updated = await this.prisma.team.update({ where: { id: teamId }, data });
+    return this.buildTeamSettingsResponseFromRecord(this.toTeamRecord(updated), actor.userId, actor.globalRole);
   }
 
   async listTeamLlmModels(
@@ -277,10 +355,12 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to view team settings");
     }
 
-    const team = await this.database.query((db) => this.mustFindTeam(db, teamId));
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    const teamRecord = this.toTeamRecord(team);
     return {
       models: await this.llmProviderService.listModels(
-        this.mergeLlmConfig(team.llmConfig, draftConfig),
+        this.mergeLlmConfig(teamRecord.llmConfig as LlmProviderConfig | undefined, draftConfig),
       ),
     };
   }
@@ -291,84 +371,76 @@ export class WorkspaceService {
       throw new ForbiddenException("Only tenant admins can add members");
     }
 
-    return this.database.mutate((db) => {
-      this.mustFindTeam(db, teamId);
-      const user = db.users.find((item) => item.email === input.email.trim().toLowerCase());
-      if (!user) {
-        throw new NotFoundException("User not found");
-      }
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
 
-      const existing = db.teamMembers.find((member) => member.teamId === teamId && member.userId === user.id);
-      if (existing) {
-        existing.role = input.role;
-        return this.buildTeamMemberSummary(db, existing);
-      }
+    const user = await this.prisma.user.findFirst({ where: { email: input.email.trim().toLowerCase() } });
+    if (!user) throw new NotFoundException("User not found");
 
-      const record: TeamMemberRecord = {
-        id: createId("tm"),
-        teamId,
-        userId: user.id,
-        role: input.role,
-        createdAt: new Date().toISOString(),
-      };
-      db.teamMembers.push(record);
-      return this.buildTeamMemberSummary(db, record);
+    const existing = await this.prisma.teamMember.findFirst({ where: { teamId, userId: user.id } });
+    if (existing) {
+      const updated = await this.prisma.teamMember.update({ where: { id: existing.id }, data: { role: input.role } });
+      return this.buildTeamMemberSummaryFromRecords(updated, user);
+    }
+
+    const record = await this.prisma.teamMember.create({
+      data: { id: createId("tm"), teamId, userId: user.id, role: input.role },
     });
+    return this.buildTeamMemberSummaryFromRecords(record, user);
   }
 
   async removeTeamMember(userId: string, teamId: string, memberId: string) {
     const actor = await this.getActor(userId, undefined, teamId);
 
-    return this.database.mutate((db) => {
-      this.mustFindTeam(db, teamId);
-      const memberIndex = db.teamMembers.findIndex((item) => item.id === memberId && item.teamId === teamId);
-      if (memberIndex === -1) {
-        throw new NotFoundException("Team member not found");
-      }
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
 
-      const member = db.teamMembers[memberIndex];
-      if (member.userId === userId) {
-        throw new BadRequestException("You cannot remove yourself from the team");
-      }
+    const member = await this.prisma.teamMember.findFirst({ where: { id: memberId, teamId } });
+    if (!member) throw new NotFoundException("Team member not found");
 
-      if (!canRemoveTeamMember(actor, member.role)) {
-        throw new ForbiddenException("You do not have permission to remove this member");
-      }
+    if (member.userId === userId) {
+      throw new BadRequestException("You cannot remove yourself from the team");
+    }
 
-      db.teamMembers.splice(memberIndex, 1);
-    });
+    if (!canRemoveTeamMember(actor, member.role as TeamRole)) {
+      throw new ForbiddenException("You do not have permission to remove this member");
+    }
+
+    await this.prisma.teamMember.delete({ where: { id: memberId } });
   }
 
   async updateTeamMemberRole(userId: string, teamId: string, memberId: string, newRole: TeamRole) {
     const actor = await this.getActor(userId, undefined, teamId);
 
-    return this.database.mutate((db) => {
-      this.mustFindTeam(db, teamId);
-      const member = db.teamMembers.find((item) => item.id === memberId && item.teamId === teamId);
-      if (!member) {
-        throw new NotFoundException("Team member not found");
-      }
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
 
-      if (member.role === newRole) {
-        return this.buildTeamMemberSummary(db, member);
-      }
+    const member = await this.prisma.teamMember.findFirst({ where: { id: memberId, teamId } });
+    if (!member) throw new NotFoundException("Team member not found");
 
-      if (!canChangeTeamMemberRole(actor, member.role, newRole)) {
-        throw new ForbiddenException("You do not have permission to change this member's role");
-      }
+    if (member.role === newRole) {
+      const user = await this.prisma.user.findUnique({ where: { id: member.userId } });
+      if (!user) throw new NotFoundException("User not found");
+      return this.buildTeamMemberSummaryFromRecords(member, user);
+    }
 
-      if (member.role === "tenant_owner") {
-        const otherOwners = db.teamMembers.filter(
-          (item) => item.teamId === teamId && item.role === "tenant_owner" && item.id !== memberId,
-        );
-        if (otherOwners.length === 0) {
-          throw new BadRequestException("Cannot downgrade the only owner. Transfer ownership first.");
-        }
-      }
+    if (!canChangeTeamMemberRole(actor, member.role as TeamRole, newRole)) {
+      throw new ForbiddenException("You do not have permission to change this member's role");
+    }
 
-      member.role = newRole;
-      return this.buildTeamMemberSummary(db, member);
-    });
+    if (member.role === "tenant_owner") {
+      const otherOwners = await this.prisma.teamMember.findMany({
+        where: { teamId, role: "tenant_owner", id: { not: memberId } },
+      });
+      if (otherOwners.length === 0) {
+        throw new BadRequestException("Cannot downgrade the only owner. Transfer ownership first.");
+      }
+    }
+
+    const updated = await this.prisma.teamMember.update({ where: { id: memberId }, data: { role: newRole } });
+    const user = await this.prisma.user.findUnique({ where: { id: updated.userId } });
+    if (!user) throw new NotFoundException("User not found");
+    return this.buildTeamMemberSummaryFromRecords(updated, user);
   }
 
   async deleteTeam(userId: string, teamId: string) {
@@ -377,21 +449,7 @@ export class WorkspaceService {
       throw new ForbiddenException("Only the team owner can delete the team");
     }
 
-    return this.database.mutate((db) => {
-      const teamIndex = db.teams.findIndex((item) => item.id === teamId);
-      if (teamIndex === -1) {
-        throw new NotFoundException("Team not found");
-      }
-
-      db.teamMembers = db.teamMembers.filter((item) => item.teamId !== teamId);
-      db.teamInviteLinks = db.teamInviteLinks.filter((item) => item.teamId !== teamId);
-
-      const projectIds = db.projects.filter((item) => item.teamId === teamId).map((item) => item.id);
-      db.projectMembers = db.projectMembers.filter((item) => !projectIds.includes(item.projectId));
-      db.projectInvites = db.projectInvites.filter((item) => !projectIds.includes(item.projectId));
-
-      db.teams.splice(teamIndex, 1);
-    });
+    await this.prisma.team.delete({ where: { id: teamId } });
   }
 
   async createTeamInviteLink(userId: string, teamId: string, input: { role: TeamRole; maxUses?: number; expiresInHours?: number }) {
@@ -400,15 +458,17 @@ export class WorkspaceService {
       throw new ForbiddenException("Only team admins can create invite links");
     }
 
-    return this.database.mutate((db) => {
-      this.mustFindTeam(db, teamId);
-      const token = randomBytes(24).toString("base64url");
-      const now = new Date();
-      const expiresAt = input.expiresInHours
-        ? new Date(now.getTime() + input.expiresInHours * 3600_000).toISOString()
-        : null;
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
 
-      const record: TeamInviteLinkRecord = {
+    const token = randomBytes(24).toString("base64url");
+    const now = new Date();
+    const expiresAt = input.expiresInHours
+      ? new Date(now.getTime() + input.expiresInHours * 3600_000)
+      : null;
+
+    const record = await this.prisma.teamInviteLink.create({
+      data: {
         id: createId("til"),
         teamId,
         token,
@@ -417,23 +477,21 @@ export class WorkspaceService {
         uses: 0,
         expiresAt,
         createdBy: userId,
-        createdAt: now.toISOString(),
-      };
-
-      db.teamInviteLinks.push(record);
-
-      const user = this.mustFindUser(db, userId);
-      return {
-        id: record.id,
-        token: record.token,
-        role: record.role,
-        maxUses: record.maxUses,
-        uses: record.uses,
-        expiresAt: record.expiresAt,
-        createdAt: record.createdAt,
-        createdByName: user.displayName,
-      } satisfies TeamInviteLinkSummary;
+      },
     });
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
+    return {
+      id: record.id,
+      token: record.token,
+      role: record.role,
+      maxUses: record.maxUses,
+      uses: record.uses,
+      expiresAt: optionalIso(record.expiresAt) ?? null,
+      createdAt: iso(record.createdAt),
+      createdByName: user.displayName,
+    } satisfies TeamInviteLinkSummary;
   }
 
   async listTeamInviteLinks(userId: string, teamId: string): Promise<TeamInviteLinkSummary[]> {
@@ -442,23 +500,23 @@ export class WorkspaceService {
       throw new ForbiddenException("Only team admins can view invite links");
     }
 
-    return this.database.query((db) => {
-      this.mustFindTeam(db, teamId);
-      const links = db.teamInviteLinks.filter((item) => item.teamId === teamId);
-      return links.map((link) => {
-        const user = db.users.find((u) => u.id === link.createdBy);
-        return {
-          id: link.id,
-          token: link.token,
-          role: link.role,
-          maxUses: link.maxUses,
-          uses: link.uses,
-          expiresAt: link.expiresAt,
-          createdAt: link.createdAt,
-          createdByName: user?.displayName ?? "Unknown",
-        };
-      });
-    });
+    const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+
+    const links = await this.prisma.teamInviteLink.findMany({ where: { teamId } });
+    return Promise.all(links.map(async (link) => {
+      const user = await this.prisma.user.findUnique({ where: { id: link.createdBy } });
+      return {
+        id: link.id,
+        token: link.token,
+        role: link.role,
+        maxUses: link.maxUses,
+        uses: link.uses,
+        expiresAt: optionalIso(link.expiresAt) ?? null,
+        createdAt: iso(link.createdAt),
+        createdByName: user?.displayName ?? "Unknown",
+      };
+    }));
   }
 
   async revokeTeamInviteLink(userId: string, teamId: string, linkId: string) {
@@ -467,95 +525,83 @@ export class WorkspaceService {
       throw new ForbiddenException("Only team admins can revoke invite links");
     }
 
-    return this.database.mutate((db) => {
-      const index = db.teamInviteLinks.findIndex((item) => item.id === linkId && item.teamId === teamId);
-      if (index === -1) {
-        throw new NotFoundException("Invite link not found");
-      }
-      db.teamInviteLinks.splice(index, 1);
-    });
+    const link = await this.prisma.teamInviteLink.findFirst({ where: { id: linkId, teamId } });
+    if (!link) throw new NotFoundException("Invite link not found");
+    await this.prisma.teamInviteLink.delete({ where: { id: linkId } });
   }
 
   async getTeamInviteLinkInfo(token: string) {
-    return this.database.query((db) => {
-      const link = db.teamInviteLinks.find((item) => item.token === token);
-      if (!link) {
-        throw new NotFoundException("Invite link not found or has been revoked");
-      }
+    const link = await this.prisma.teamInviteLink.findFirst({ where: { token } });
+    if (!link) throw new NotFoundException("Invite link not found or has been revoked");
 
-      const team = db.teams.find((t) => t.id === link.teamId);
-      if (!team) {
-        throw new NotFoundException("The team associated with this link no longer exists");
-      }
+    const team = await this.prisma.team.findUnique({ where: { id: link.teamId } });
+    if (!team) throw new NotFoundException("The team associated with this link no longer exists");
 
-      const now = new Date();
-      const expired = link.expiresAt ? new Date(link.expiresAt) < now : false;
-      const exhausted = link.maxUses > 0 && link.uses >= link.maxUses;
+    const now = new Date();
+    const expired = link.expiresAt ? new Date(link.expiresAt) < now : false;
+    const exhausted = link.maxUses > 0 && link.uses >= link.maxUses;
 
-      return {
-        teamName: team.name,
-        teamSlug: team.slug,
-        role: link.role,
-        expired,
-        exhausted,
-      };
-    });
+    return {
+      teamName: team.name,
+      teamSlug: team.slug,
+      role: link.role,
+      expired,
+      exhausted,
+    };
   }
 
   async acceptTeamInviteLink(userId: string, token: string) {
-    return this.database.mutate((db) => {
-      const user = this.mustFindUser(db, userId);
-      const link = db.teamInviteLinks.find((item) => item.token === token);
-      if (!link) {
-        throw new NotFoundException("Invite link not found or has been revoked");
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
 
-      const team = db.teams.find((t) => t.id === link.teamId);
-      if (!team) {
-        throw new NotFoundException("The team associated with this link no longer exists");
-      }
+    const link = await this.prisma.teamInviteLink.findFirst({ where: { token } });
+    if (!link) throw new NotFoundException("Invite link not found or has been revoked");
 
-      const now = new Date();
-      if (link.expiresAt && new Date(link.expiresAt) < now) {
-        throw new BadRequestException("This invite link has expired");
-      }
-      if (link.maxUses > 0 && link.uses >= link.maxUses) {
-        throw new BadRequestException("This invite link has reached its usage limit");
-      }
+    const team = await this.prisma.team.findUnique({ where: { id: link.teamId } });
+    if (!team) throw new NotFoundException("The team associated with this link no longer exists");
 
-      const existing = db.teamMembers.find((item) => item.teamId === link.teamId && item.userId === userId);
-      if (existing) {
-        return { teamId: link.teamId, teamName: team.name, alreadyMember: true };
-      }
+    const now = new Date();
+    if (link.expiresAt && new Date(link.expiresAt) < now) {
+      throw new BadRequestException("This invite link has expired");
+    }
+    if (link.maxUses > 0 && link.uses >= link.maxUses) {
+      throw new BadRequestException("This invite link has reached its usage limit");
+    }
 
-      const record: TeamMemberRecord = {
-        id: createId("tm"),
-        teamId: link.teamId,
-        userId,
-        role: link.role,
-        createdAt: now.toISOString(),
-      };
-      db.teamMembers.push(record);
-      link.uses += 1;
+    const existing = await this.prisma.teamMember.findFirst({ where: { teamId: link.teamId, userId } });
+    if (existing) {
+      return { teamId: link.teamId, teamName: team.name, alreadyMember: true };
+    }
 
-      return { teamId: link.teamId, teamName: team.name, alreadyMember: false };
+    await this.prisma.$transaction(async (tx) => {
+      await tx.teamMember.create({
+        data: { id: createId("tm"), teamId: link.teamId, userId, role: link.role },
+      });
+      await tx.teamInviteLink.update({ where: { id: link.id }, data: { uses: { increment: 1 } } });
     });
+
+    return { teamId: link.teamId, teamName: team.name, alreadyMember: false };
   }
 
   async listProjects(userId: string) {
-    return this.database.query((db) => {
-      const user = this.mustFindUser(db, userId);
-      if (user.globalRole === "platform_super_admin") {
-        return [...db.projects].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
 
-      const teamIds = db.teamMembers.filter((member) => member.userId === userId).map((member) => member.teamId);
-      const projectIds = db.projectMembers.filter((member) => member.userId === userId).map((member) => member.projectId);
+    if (user.globalRole === "platform_super_admin") {
+      const all = await this.prisma.project.findMany({ orderBy: { updatedAt: "desc" } });
+      return all.map((p) => this.toProjectRecord(p));
+    }
 
-      return db.projects
-        .filter((project) => teamIds.includes(project.teamId) || projectIds.includes(project.id))
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    const teamMemberships = await this.prisma.teamMember.findMany({ where: { userId }, select: { teamId: true } });
+    const teamIds = teamMemberships.map((m) => m.teamId);
+    const projectMemberships = await this.prisma.projectMember.findMany({ where: { userId }, select: { projectId: true } });
+    const projectIds = projectMemberships.map((m) => m.projectId);
+
+    const projects = await this.prisma.project.findMany({
+      where: { OR: [{ teamId: { in: teamIds } }, { id: { in: projectIds } }] },
+      orderBy: { updatedAt: "desc" },
     });
+    return projects.map((p) => this.toProjectRecord(p));
   }
 
   async createProject(
@@ -573,107 +619,81 @@ export class WorkspaceService {
 
     await this.getActor(userId, undefined, teamId);
 
-    return this.database.mutate((db) => {
-      const teamMembership = db.teamMembers.find((member) => member.teamId === teamId && member.userId === userId);
-      const user = this.mustFindUser(db, userId);
+    return this.prisma.$transaction(async (tx) => {
+      const teamMembership = await tx.teamMember.findFirst({ where: { teamId, userId } });
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) throw new NotFoundException("User not found");
       if (user.globalRole !== "platform_super_admin" && !teamMembership) {
         throw new ForbiddenException("You must join the team before creating a project");
       }
 
-      const now = new Date().toISOString();
-      const project = {
-        id: createId("project"),
-        teamId,
-        name: input.name.trim(),
-        description: input.description?.trim() ?? "",
-        genre: input.genre?.trim(),
-        coverUrl: input.coverUrl?.trim(),
-        status: input.status ?? "draft" as ProjectStatus,
-        reviewPolicyMode: input.reviewPolicyMode ?? "inherit",
-        createdBy: userId,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.projects.push(project);
-      db.projectMembers.push({
-        id: createId("pm"),
-        projectId: project.id,
-        userId,
-        role: "project_admin",
-        createdAt: now,
+      const project = await tx.project.create({
+        data: {
+          id: createId("project"),
+          teamId,
+          name: input.name.trim(),
+          description: input.description?.trim() ?? "",
+          genre: input.genre?.trim(),
+          coverUrl: input.coverUrl?.trim(),
+          status: input.status ?? "draft",
+          reviewPolicyMode: input.reviewPolicyMode ?? "inherit",
+          createdBy: userId,
+        },
       });
-
-      db.documents.push(
-        {
-          id: createId("doc"),
-          projectId: project.id,
-          type: "script",
-          title: "主剧本",
-          createdBy: userId,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          id: createId("doc"),
-          projectId: project.id,
-          type: "storyboard",
-          title: "总分镜",
-          createdBy: userId,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          id: createId("doc"),
-          projectId: project.id,
-          type: "world_bible",
-          title: "世界观设定",
-          createdBy: userId,
-          createdAt: now,
-          updatedAt: now,
-        },
-      );
-
-      return project;
+      await tx.projectMember.create({
+        data: { id: createId("pm"), projectId: project.id, userId, role: "project_admin" },
+      });
+      await tx.document.createMany({
+        data: [
+          { id: createId("doc"), projectId: project.id, type: "script", title: "主剧本", createdBy: userId },
+          { id: createId("doc"), projectId: project.id, type: "storyboard", title: "总分镜", createdBy: userId },
+          { id: createId("doc"), projectId: project.id, type: "world_bible", title: "世界观设定", createdBy: userId },
+        ],
+      });
+      return this.toProjectRecord(project);
     });
   }
 
   async getProject(userId: string, projectId: string): Promise<ProjectWorkspaceSummaryPayload> {
-    return this.database.query((db) => {
-      this.assertProjectReadable(db, projectId, userId);
-      const project = this.mustFindProject(db, projectId);
-      const team = this.mustFindTeam(db, project.teamId);
-      const documents = db.documents.filter((document) => document.projectId === projectId);
+    await this.assertProjectReadableAsync(projectId, userId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+    const projectRecord = this.toProjectRecord(project);
 
-      const auditConfigs = db.auditConfigs
-        .filter((c) => c.projectId === projectId)
-        .map((c) => ({
-          id: c.id,
-          projectId: c.projectId,
-          contentType: c.contentType,
-          reviewRequired: c.reviewRequired,
-          autoApproveRoles: c.autoApproveRoles,
-        }));
+    const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+    if (!team) throw new NotFoundException("Team not found");
 
-      const currentUserPermissions = this.resolveActorProjectPermissions(
-        this.buildProjectActorContext(db, userId, projectId),
-      );
+    const documents = await this.prisma.document.findMany({ where: { projectId } });
+    const documentRecords = documents.map((d) => this.toDocumentRecord(d));
 
-      return {
-        team: {
-          id: team.id,
-          name: team.name,
-          defaultReviewPolicy: team.defaultReviewPolicy,
-        },
-        project,
-        members: this.getProjectMemberSummaries(db, projectId),
-        invites: this.getProjectInviteSummaries(db, [project.id]),
-        pendingReviews: this.getReviewQueue(db, [project.id]),
-        documents,
-        worldBible: this.extractWorldBible(db, projectId),
-        auditConfigs,
-        currentUserPermissions,
-      };
-    });
+    const auditConfigs = await this.prisma.auditConfig.findMany({ where: { projectId } });
+    const auditConfigSummaries = auditConfigs.map((c): AuditConfigResponse => ({
+      id: c.id,
+      projectId: c.projectId,
+      contentType: c.contentType as AuditContentType,
+      reviewRequired: c.reviewRequired,
+      autoApproveRoles: jsonOutput<ProjectRole[]>(c.autoApproveRoles),
+    }));
+
+    const currentUserPermissions = this.resolveActorProjectPermissions(
+      await this.buildProjectActorContext(userId, projectId),
+    );
+
+    return {
+      team: {
+        id: team.id,
+        name: team.name,
+        defaultReviewPolicy: team.defaultReviewPolicy as "required" | "bypass",
+      },
+      project: projectRecord,
+      members: await this.getProjectMemberSummariesAsync(projectId),
+      invites: await this.getProjectInviteSummariesAsync([project.id]),
+      pendingReviews: await this.getReviewQueueAsync([project.id]),
+      documents: documentRecords,
+      worldBible: await this.extractWorldBibleAsync(projectId),
+      auditConfigs: auditConfigSummaries,
+      currentUserPermissions,
+    };
   }
 
   /** 断言用户拥有指定的项目权限，否则抛出 ForbiddenException */
@@ -695,12 +715,11 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to change the project review policy");
     }
 
-    return this.database.mutate((db) => {
-      const project = this.mustFindProject(db, projectId);
-      project.reviewPolicyMode = reviewPolicyMode;
-      project.updatedAt = new Date().toISOString();
-      return project;
+    const updated = await this.prisma.project.update({
+      where: { id: projectId },
+      data: { reviewPolicyMode, updatedAt: new Date() },
     });
+    return this.toProjectRecord(updated);
   }
 
   async updateProject(
@@ -713,17 +732,16 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to update this project");
     }
 
-    return this.database.mutate((db) => {
-      const project = this.mustFindProject(db, projectId);
-      if (input.name !== undefined) project.name = input.name.trim();
-      if (input.description !== undefined) project.description = input.description.trim();
-      if (input.genre !== undefined) project.genre = input.genre.trim() || undefined;
-      if (input.coverUrl !== undefined) project.coverUrl = input.coverUrl.trim() || undefined;
-      if (input.status !== undefined) project.status = input.status;
-      if (input.reviewPolicyMode !== undefined) project.reviewPolicyMode = input.reviewPolicyMode;
-      project.updatedAt = new Date().toISOString();
-      return project;
-    });
+    const data: Record<string, any> = { updatedAt: new Date() };
+    if (input.name !== undefined) data.name = input.name.trim();
+    if (input.description !== undefined) data.description = input.description.trim();
+    if (input.genre !== undefined) data.genre = input.genre.trim() || null;
+    if (input.coverUrl !== undefined) data.coverUrl = input.coverUrl.trim() || null;
+    if (input.status !== undefined) data.status = input.status;
+    if (input.reviewPolicyMode !== undefined) data.reviewPolicyMode = input.reviewPolicyMode;
+
+    const updated = await this.prisma.project.update({ where: { id: projectId }, data });
+    return this.toProjectRecord(updated);
   }
 
   async deleteProject(userId: string, projectId: string) {
@@ -732,26 +750,7 @@ export class WorkspaceService {
       throw new ForbiddenException("Only project admins can delete a project");
     }
 
-    return this.database.mutate((db) => {
-      const projectIndex = db.projects.findIndex((item) => item.id === projectId);
-      if (projectIndex === -1) {
-        throw new NotFoundException("Project not found");
-      }
-
-      db.projectMembers = db.projectMembers.filter((item) => item.projectId !== projectId);
-      db.projectInvites = db.projectInvites.filter((item) => item.projectId !== projectId);
-
-      const documentIds = db.documents.filter((item) => item.projectId === projectId).map((item) => item.id);
-      db.versions = db.versions.filter((item) => !documentIds.includes(item.documentId));
-      db.comments = db.comments.filter((item) => {
-        const version = db.versions.find((v) => v.id === item.versionId);
-        return !version || !documentIds.includes(version.documentId);
-      });
-      db.documents = db.documents.filter((item) => item.projectId !== projectId);
-      db.jobs = db.jobs.filter((item) => item.projectId !== projectId);
-
-      db.projects.splice(projectIndex, 1);
-    });
+    await this.prisma.project.delete({ where: { id: projectId } });
   }
 
   async inviteProjectMember(userId: string, projectId: string, input: { email: string; role: ProjectRole }) {
@@ -760,40 +759,72 @@ export class WorkspaceService {
       throw new ForbiddenException("Only project member managers can assign collaborators");
     }
 
-    const result = await this.database.mutate((db) => {
-      const project = this.mustFindProject(db, projectId);
-      const email = input.email.trim().toLowerCase();
-      const invitedUser = db.users.find((item) => item.email === email);
-      if (invitedUser && db.projectMembers.some((member) => member.projectId === projectId && member.userId === invitedUser.id)) {
-        throw new BadRequestException("User is already a project member");
-      }
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
 
-      const existingPendingInvite = db.projectInvites.find((item) => item.projectId === projectId && item.email === email && item.status === "pending");
-      if (existingPendingInvite) {
-        existingPendingInvite.role = input.role;
-        return {
-          invite: existingPendingInvite,
-          invitedUserId: invitedUser?.id,
-          projectName: project.name,
-        };
-      }
+    const email = input.email.trim().toLowerCase();
+    const invitedUser = await this.prisma.user.findFirst({ where: { email } });
+    if (invitedUser) {
+      const existingMember = await this.prisma.projectMember.findFirst({ where: { projectId, userId: invitedUser.id } });
+      if (existingMember) throw new BadRequestException("User is already a project member");
+    }
 
-      const invite: ProjectInviteRecord = {
+    const existingPendingInvite = await this.prisma.projectInvite.findFirst({
+      where: { projectId, email, status: "pending" },
+    });
+
+    if (existingPendingInvite) {
+      const updated = await this.prisma.projectInvite.update({
+        where: { id: existingPendingInvite.id },
+        data: { role: input.role },
+      });
+      const result = {
+        invite: {
+          id: updated.id,
+          projectId: updated.projectId,
+          email: updated.email,
+          role: updated.role,
+          createdBy: updated.createdBy,
+          status: updated.status as "pending" | "accepted",
+          createdAt: iso(updated.createdAt),
+        },
+        invitedUserId: invitedUser?.id,
+        projectName: project.name,
+      };
+
+      if (result.invitedUserId && result.invitedUserId !== userId) {
+        this.notificationService.createNotification({
+          userId: result.invitedUserId,
+          projectId,
+          type: "member_invited",
+          title: "Project invitation received",
+          body: `You were invited to join ${result.projectName} as ${input.role}`,
+          referenceId: result.invite.id,
+        }).catch(() => {});
+      }
+      return result.invite;
+    }
+
+    const invite = await this.prisma.projectInvite.create({
+      data: {
         id: createId("invite"),
         projectId,
         email,
         role: input.role,
         createdBy: userId,
         status: "pending",
-        createdAt: new Date().toISOString(),
-      };
-      db.projectInvites.push(invite);
-      return {
-        invite,
-        invitedUserId: invitedUser?.id,
-        projectName: project.name,
-      };
+      },
     });
+    const inviteRecord: ProjectInviteRecord = {
+      id: invite.id,
+      projectId: invite.projectId,
+      email: invite.email,
+      role: invite.role,
+      createdBy: invite.createdBy,
+      status: invite.status as "pending" | "accepted",
+      createdAt: iso(invite.createdAt),
+    };
+    const result = { invite: inviteRecord, invitedUserId: invitedUser?.id, projectName: project.name };
 
     if (result.invitedUserId && result.invitedUserId !== userId) {
       this.notificationService.createNotification({
@@ -805,74 +836,66 @@ export class WorkspaceService {
         referenceId: result.invite.id,
       }).catch(() => {});
     }
-
     return result.invite;
   }
 
   async listPendingProjectInvites(userId: string) {
-    return this.database.query((db) => {
-      const user = this.mustFindUser(db, userId);
-      const invites = db.projectInvites
-        .filter((invite) => invite.status === "pending" && invite.email === user.email.toLowerCase())
-        .map((invite) => {
-          const project = this.mustFindProject(db, invite.projectId);
-          return {
-            id: invite.id,
-            projectId: invite.projectId,
-            projectName: project.name,
-            email: invite.email,
-            role: invite.role,
-            status: invite.status,
-            createdAt: invite.createdAt,
-            createdBy: invite.createdBy,
-          } satisfies ProjectInviteSummary;
-        })
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
 
-      return { invites };
+    const invites = await this.prisma.projectInvite.findMany({
+      where: { status: "pending", email: user.email.toLowerCase() },
+      orderBy: { createdAt: "desc" },
     });
+
+    const summaries = await Promise.all(invites.map(async (invite) => {
+      const project = await this.prisma.project.findUnique({ where: { id: invite.projectId } });
+      if (!project) return null;
+      return {
+        id: invite.id,
+        projectId: invite.projectId,
+        projectName: project.name,
+        email: invite.email,
+        role: invite.role as ProjectRole,
+        status: invite.status as string,
+        createdAt: iso(invite.createdAt),
+        createdBy: invite.createdBy,
+      } satisfies ProjectInviteSummary;
+    }));
+
+    return { invites: summaries.filter((s): s is ProjectInviteSummary => s !== null) };
   }
 
   async acceptProjectInvite(userId: string, inviteId: string) {
-    const result = await this.database.mutate((db) => {
-      const user = this.mustFindUser(db, userId);
-      const invite = db.projectInvites.find((item) => item.id === inviteId);
-      if (!invite) {
-        throw new NotFoundException("Project invite not found");
-      }
-      if (invite.email !== user.email.toLowerCase()) {
-        throw new ForbiddenException("This project invite is not assigned to your account");
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
 
-      const project = this.mustFindProject(db, invite.projectId);
-      let alreadyMember = false;
+    const invite = await this.prisma.projectInvite.findUnique({ where: { id: inviteId } });
+    if (!invite) throw new NotFoundException("Project invite not found");
+    if (invite.email !== user.email.toLowerCase()) {
+      throw new ForbiddenException("This project invite is not assigned to your account");
+    }
 
-      const existingTeamMember = db.teamMembers.find((member) => member.teamId === project.teamId && member.userId === userId);
+    const project = await this.prisma.project.findUnique({ where: { id: invite.projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+
+    let alreadyMember = false;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existingTeamMember = await tx.teamMember.findFirst({ where: { teamId: project.teamId, userId } });
       if (!existingTeamMember) {
-        db.teamMembers.push({
-          id: createId("tm"),
-          teamId: project.teamId,
-          userId,
-          role: "member",
-          createdAt: new Date().toISOString(),
-        });
+        await tx.teamMember.create({ data: { id: createId("tm"), teamId: project.teamId, userId, role: "member" } });
       }
 
-      const existingProjectMember = db.projectMembers.find((member) => member.projectId === project.id && member.userId === userId);
+      const existingProjectMember = await tx.projectMember.findFirst({ where: { projectId: project.id, userId } });
       if (existingProjectMember) {
         alreadyMember = true;
-        existingProjectMember.role = invite.role;
+        await tx.projectMember.update({ where: { id: existingProjectMember.id }, data: { role: invite.role } });
       } else {
-        db.projectMembers.push({
-          id: createId("pm"),
-          projectId: project.id,
-          userId,
-          role: invite.role,
-          createdAt: new Date().toISOString(),
-        });
+        await tx.projectMember.create({ data: { id: createId("pm"), projectId: project.id, userId, role: invite.role } });
       }
 
-      invite.status = "accepted";
+      await tx.projectInvite.update({ where: { id: inviteId }, data: { status: "accepted" } });
 
       return {
         inviteId: invite.id,
@@ -910,40 +933,27 @@ export class WorkspaceService {
       throw new ForbiddenException("Only project member managers can assign collaborators");
     }
 
-    return this.database.mutate((db) => {
-      const project = this.mustFindProject(db, projectId);
-      const user = db.users.find((item) => item.email === input.email.trim().toLowerCase());
-      if (!user) {
-        throw new NotFoundException("User not found");
-      }
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
 
-      const existingTeamMember = db.teamMembers.find((member) => member.teamId === project.teamId && member.userId === user.id);
-      if (!existingTeamMember) {
-        db.teamMembers.push({
-          id: createId("tm"),
-          teamId: project.teamId,
-          userId: user.id,
-          role: "member",
-          createdAt: new Date().toISOString(),
-        });
-      }
+    const user = await this.prisma.user.findFirst({ where: { email: input.email.trim().toLowerCase() } });
+    if (!user) throw new NotFoundException("User not found");
 
-      const existingProjectMember = db.projectMembers.find((member) => member.projectId === projectId && member.userId === user.id);
-      if (existingProjectMember) {
-        existingProjectMember.role = input.role;
-        return this.buildProjectMemberSummary(db, existingProjectMember);
-      }
+    const existingTeamMember = await this.prisma.teamMember.findFirst({ where: { teamId: project.teamId, userId: user.id } });
+    if (!existingTeamMember) {
+      await this.prisma.teamMember.create({ data: { id: createId("tm"), teamId: project.teamId, userId: user.id, role: "member" } });
+    }
 
-      const member: ProjectMemberRecord = {
-        id: createId("pm"),
-        projectId,
-        userId: user.id,
-        role: input.role,
-        createdAt: new Date().toISOString(),
-      };
-      db.projectMembers.push(member);
-      return this.buildProjectMemberSummary(db, member);
+    const existingProjectMember = await this.prisma.projectMember.findFirst({ where: { projectId, userId: user.id } });
+    if (existingProjectMember) {
+      const updated = await this.prisma.projectMember.update({ where: { id: existingProjectMember.id }, data: { role: input.role } });
+      return this.buildProjectMemberSummaryFromPrisma(updated);
+    }
+
+    const member = await this.prisma.projectMember.create({
+      data: { id: createId("pm"), projectId, userId: user.id, role: input.role },
     });
+    return this.buildProjectMemberSummaryFromPrisma(member);
   }
 
   async getProjectMemberPermissions(
@@ -956,11 +966,11 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to view project member permissions");
     }
 
-    return this.database.query((db) => {
-      const project = this.mustFindProject(db, projectId);
-      const member = this.mustFindProjectMember(db, projectId, memberId);
-      return this.buildMemberPermissionsResponse(db, project, member);
-    });
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+    const member = await this.prisma.projectMember.findFirst({ where: { id: memberId, projectId } });
+    if (!member) throw new NotFoundException("Project member not found");
+    return this.buildMemberPermissionsResponseFromPrisma(project, member);
   }
 
   async updateProjectMemberPermissions(
@@ -976,85 +986,85 @@ export class WorkspaceService {
 
     this.assertNoInvalidProjectPermissions(findInvalidPermissionOverrideValues(input.permissionOverride));
 
-    return this.database.mutate((db) => {
-      const project = this.mustFindProject(db, projectId);
-      const member = this.mustFindProjectMember(db, projectId, memberId);
-      const nextOverride = normalizePermissionOverride(input.permissionOverride);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+    const member = await this.prisma.projectMember.findFirst({ where: { id: memberId, projectId } });
+    if (!member) throw new NotFoundException("Project member not found");
+    const nextOverride = normalizePermissionOverride(input.permissionOverride);
 
-      if (this.removesOwnLastPermissionManager(db, project, member, userId, nextOverride)) {
-        throw new BadRequestException("You cannot remove your own last permission management path");
-      }
+    if (await this.removesOwnLastPermissionManagerAsync(project, member, userId, nextOverride)) {
+      throw new BadRequestException("You cannot remove your own last permission management path");
+    }
 
-      member.permissionOverride = nextOverride;
-      return this.buildMemberPermissionsResponse(db, project, member);
+    const updated = await this.prisma.projectMember.update({
+      where: { id: memberId },
+      data: { permissionOverride: optionalJsonInput(nextOverride) },
     });
+    return this.buildMemberPermissionsResponseFromPrisma(project, updated);
   }
 
   async listVersions(userId: string, documentId: string, limit?: number, offset?: number) {
-    return this.database.query((db) => {
-      const document = this.mustFindDocument(db, documentId);
-      this.assertProjectReadable(db, document.projectId, userId);
-      const all = db.versions
-        .filter((version) => version.documentId === documentId)
-        .sort((left, right) => right.versionNumber - left.versionNumber);
-      const versionsWithImpact = all.map((version) => ({
-        ...version,
-        impactSummary: this.impactService.buildVersionImpactSummary(db, version.id),
-      }));
-      return {
-        versions: applyPagination(versionsWithImpact, limit, offset),
-        total: all.length,
-      };
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!document) throw new NotFoundException("Document not found");
+    await this.assertProjectReadableAsync(document.projectId, userId);
+
+    const all = await this.prisma.version.findMany({
+      where: { documentId },
+      orderBy: { versionNumber: "desc" },
     });
+    const versionsWithImpact = await Promise.all(all.map(async (version) => ({
+      ...this.toVersionRecord(version),
+      impactSummary: await this.buildVersionImpactSummaryPrisma(version.id),
+    })));
+    return {
+      versions: applyPagination(versionsWithImpact, limit, offset),
+      total: all.length,
+    };
   }
 
   async listProjectVersions(userId: string, projectId: string, limit?: number, offset?: number) {
-    return this.database.query((db) => {
-      this.assertProjectReadable(db, projectId, userId);
-      const documentIds = db.documents
-        .filter((document) => document.projectId === projectId)
-        .map((document) => document.id);
+    await this.assertProjectReadableAsync(projectId, userId);
 
-      const all = db.versions
-        .filter((version) => documentIds.includes(version.documentId))
-        .sort((left, right) => {
-          if (left.documentId === right.documentId) {
-            return right.versionNumber - left.versionNumber;
-          }
-          return right.createdAt.localeCompare(left.createdAt);
-        });
+    const projectDocs = await this.prisma.document.findMany({ where: { projectId }, select: { id: true } });
+    const documentIds = projectDocs.map((d) => d.id);
 
-      const versionsWithImpact = all.map((version) => ({
-        ...version,
-        impactSummary: this.impactService.buildVersionImpactSummary(db, version.id),
-      }));
-
-      return {
-        versions: applyPagination(versionsWithImpact, limit, offset),
-        total: all.length,
-      };
+    const all = await this.prisma.version.findMany({
+      where: { documentId: { in: documentIds } },
+      orderBy: [{ documentId: "desc" }, { createdAt: "desc" }],
     });
+    const versionsWithImpact = await Promise.all(all.map(async (version) => ({
+      ...this.toVersionRecord(version),
+      impactSummary: await this.buildVersionImpactSummaryPrisma(version.id),
+    })));
+
+    return {
+      versions: applyPagination(versionsWithImpact, limit, offset),
+      total: all.length,
+    };
   }
 
   async adoptDocumentVersion(userId: string, documentId: string, versionId: string) {
-    const document = await this.database.query((db) => this.mustFindDocument(db, documentId));
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to adopt a candidate version");
     }
 
-    const result = await this.database.mutate((db) => {
-      const liveDocument = this.mustFindDocument(db, documentId);
-      const liveVersion = this.mustFindVersion(db, versionId);
-      if (liveVersion.documentId !== liveDocument.id) {
-        throw new BadRequestException("Version does not belong to the target document");
-      }
+    const liveDocument = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!liveDocument) throw new NotFoundException("Document not found");
+    const liveVersion = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!liveVersion) throw new NotFoundException("Version not found");
+    if (liveVersion.documentId !== liveDocument.id) {
+      throw new BadRequestException("Version does not belong to the target document");
+    }
 
-      const previousCurrentVersionId = liveDocument.currentVersionId;
-      liveDocument.currentVersionId = liveVersion.id;
-      liveDocument.updatedAt = new Date().toISOString();
-      return { document: liveDocument, previousCurrentVersionId };
+    const previousCurrentVersionId = liveDocument.currentVersionId;
+    await this.prisma.document.update({
+      where: { id: documentId },
+      data: { currentVersionId: liveVersion.id, updatedAt: new Date() },
     });
+    const result = { document: this.toDocumentRecord({ ...liveDocument, currentVersionId: liveVersion.id, updatedAt: new Date() }), previousCurrentVersionId };
 
     if (this.getAuditContentType(document.type)) {
       await this.auditService.recordAuditAction({
@@ -1070,7 +1080,7 @@ export class WorkspaceService {
     await this.impactService.scanAfterAdoption({
       projectId: document.projectId,
       sourceDocumentId: documentId,
-      previousSourceVersionId: result.previousCurrentVersionId,
+      previousSourceVersionId: result.previousCurrentVersionId ?? undefined,
       changedSourceVersionId: versionId,
       actorId: userId,
     });
@@ -1083,7 +1093,8 @@ export class WorkspaceService {
     documentId: string,
     input: { title: string; content: unknown; metadata?: Record<string, unknown> },
   ) {
-    const document = await this.database.query((db) => this.mustFindDocument(db, documentId));
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to create a version");
@@ -1104,85 +1115,89 @@ export class WorkspaceService {
     versionId: string,
     input: { title?: string; content?: unknown },
   ) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
-    if (version.status !== "draft") {
+    const liveVersion = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!liveVersion) throw new NotFoundException("Version not found");
+    if (liveVersion.status !== "draft") {
       throw new BadRequestException("Only draft versions can be updated");
     }
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const document = await this.prisma.document.findUnique({ where: { id: liveVersion.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to update this version");
     }
 
-    const result = await this.database.mutate((db) => {
-      const liveVersion = this.mustFindVersion(db, versionId);
-      if (liveVersion.status !== "draft") {
-        throw new BadRequestException("Only draft versions can be updated");
+    const versionData: Record<string, any> = {};
+    if (input.title !== undefined) versionData.title = input.title;
+    if (input.content !== undefined) {
+      if (document.type === "storyboard") {
+        const normalized = ensureMediaBindings(normalizeStoryboardContent(input.content));
+        const existing = ensureMediaBindings(jsonOutput<StoryboardContent>(liveVersion.content));
+        versionData.content = jsonInput({
+          ...normalized,
+          mediaBindings: { ...existing.mediaBindings, ...normalized.mediaBindings },
+          shotIdMappings: normalized.shotIdMappings ?? existing.shotIdMappings,
+        });
+      } else {
+        versionData.content = jsonInput(input.content);
       }
-      const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
-      if (input.title !== undefined) liveVersion.title = input.title;
-      if (input.content !== undefined) {
-        if (liveDocument.type === "storyboard") {
-          const normalized = ensureMediaBindings(normalizeStoryboardContent(input.content));
-          const existing = ensureMediaBindings(liveVersion.content as StoryboardContent);
-          liveVersion.content = {
-            ...normalized,
-            mediaBindings: { ...existing.mediaBindings, ...normalized.mediaBindings },
-            shotIdMappings: normalized.shotIdMappings ?? existing.shotIdMappings,
-          };
-        } else {
-          liveVersion.content = input.content;
-        }
-      }
-      liveDocument.updatedAt = new Date().toISOString();
-
-      const syncEvent = this.syncCharactersToPairedDraft(db, liveVersion, liveDocument, userId);
-      return { version: liveVersion, syncEvent };
-    });
-
-    if (result.syncEvent) {
-      this.realtimeEvents.emitCharacterSynced(result.syncEvent);
     }
 
-    return result.version;
+    const updatedVersion = await this.prisma.$transaction(async (tx) => {
+      const refreshed = await tx.version.findUnique({ where: { id: versionId } });
+      if (!refreshed || refreshed.status !== "draft") {
+        throw new BadRequestException("Only draft versions can be updated");
+      }
+      const v = await tx.version.update({ where: { id: versionId }, data: versionData });
+      await tx.document.update({ where: { id: document.id }, data: { updatedAt: new Date() } });
+
+      const syncEvent = await this.syncCharactersToPairedDraftAsync(tx, this.toVersionRecord(v), this.toDocumentRecord(document), userId);
+      return { version: v, syncEvent };
+    });
+
+    if (updatedVersion.syncEvent) {
+      this.realtimeEvents.emitCharacterSynced(updatedVersion.syncEvent);
+    }
+
+    return this.toVersionRecord(updatedVersion.version);
   }
 
   async deleteVersion(userId: string, versionId: string) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
     if (version.status !== "draft") {
       throw new BadRequestException("Only draft versions can be deleted");
     }
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to delete this version");
     }
 
-    await this.database.mutate((db) => {
-      const liveVersion = this.mustFindVersion(db, versionId);
-      if (liveVersion.status !== "draft") {
-        throw new BadRequestException("Only draft versions can be deleted");
-      }
-      const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.comment.deleteMany({ where: { versionId } });
+      await tx.version.delete({ where: { id: versionId } });
 
-      const versionIndex = db.versions.findIndex((v) => v.id === versionId);
-      if (versionIndex !== -1) db.versions.splice(versionIndex, 1);
+      const doc = await tx.document.findUnique({ where: { id: document.id } });
+      if (!doc) return;
 
-      db.comments = db.comments.filter((c) => c.versionId !== versionId);
-
-      if (liveDocument.currentVersionId === versionId) {
-        const remaining = db.versions
-          .filter((v) => v.documentId === liveDocument.id)
-          .sort((a, b) => b.versionNumber - a.versionNumber);
-        liveDocument.currentVersionId = remaining[0]?.id;
+      const updateData: Record<string, any> = { updatedAt: new Date() };
+      if (doc.currentVersionId === versionId) {
+        const latest = await tx.version.findFirst({
+          where: { documentId: doc.id },
+          orderBy: { versionNumber: "desc" },
+        });
+        updateData.currentVersionId = latest?.id ?? null;
       }
-      if (liveDocument.draftVersionId === versionId) {
-        const remaining = db.versions
-          .filter((v) => v.documentId === liveDocument.id && v.status === "draft")
-          .sort((a, b) => b.versionNumber - a.versionNumber);
-        liveDocument.draftVersionId = remaining[0]?.id;
+      if (doc.draftVersionId === versionId) {
+        const latestDraft = await tx.version.findFirst({
+          where: { documentId: doc.id, status: "draft" },
+          orderBy: { versionNumber: "desc" },
+        });
+        updateData.draftVersionId = latestDraft?.id ?? null;
       }
-      liveDocument.updatedAt = new Date().toISOString();
+      await tx.document.update({ where: { id: doc.id }, data: updateData });
     });
 
     if (this.getAuditContentType(document.type)) {
@@ -1198,8 +1213,10 @@ export class WorkspaceService {
   }
 
   async restoreVersion(userId: string, versionId: string) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to restore versions");
@@ -1210,7 +1227,7 @@ export class WorkspaceService {
       title: `${version.title} - Restored`,
       content: version.content,
       metadata: {
-        ...(version.metadata ?? {}),
+        ...(jsonOutput<Record<string, unknown>>(version.metadata) ?? {}),
         source: "restore",
         restoredFromVersionId: version.id,
       },
@@ -1233,34 +1250,37 @@ export class WorkspaceService {
   }
 
   async adoptVersionById(userId: string, versionId: string) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
     return this.adoptDocumentVersion(userId, version.documentId, versionId);
   }
 
   async advanceVersionToReview(userId: string, versionId: string, comment?: string) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "version.review")) {
       throw new ForbiddenException("You do not have permission to advance versions to review");
     }
 
-    const updatedVersion = await this.database.mutate((db) => {
-      const liveVersion = this.mustFindVersion(db, versionId);
-      if (!canTransitionVersionStatus(liveVersion.status, "pending_review")) {
-        throw new BadRequestException(`Cannot advance from ${liveVersion.status} to pending_review`);
-      }
-      liveVersion.status = "pending_review";
-      return liveVersion;
+    if (!canTransitionVersionStatus(version.status as VersionStatus, "pending_review")) {
+      throw new BadRequestException(`Cannot advance from ${version.status} to pending_review`);
+    }
+    const updatedVersion = await this.prisma.version.update({
+      where: { id: versionId },
+      data: { status: "pending_review" },
     });
 
+    const updatedVersionRecord = this.toVersionRecord(updatedVersion);
     const trimmedComment = comment?.trim() || undefined;
-    const auditContentType = this.getAuditContentType(document.type);
+    const auditContentType = this.getAuditContentType(document.type as DocumentType);
     if (auditContentType) {
       await this.auditService.recordAuditAction({
         projectId: document.projectId,
         versionId,
-        documentType: document.type,
+        documentType: document.type as DocumentType,
         action: "advanced",
         reviewerId: userId,
         comment: trimmedComment,
@@ -1271,61 +1291,68 @@ export class WorkspaceService {
       projectId: document.projectId,
       versionId,
       documentId: document.id,
-      status: updatedVersion.status,
+      status: updatedVersionRecord.status,
       action: "submitted",
     });
 
-    return updatedVersion;
+    return updatedVersionRecord;
   }
 
   async submitVersion(userId: string, versionId: string) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to submit versions");
     }
 
-    const updated = await this.database.mutate((db) => {
-      const liveVersion = this.mustFindVersion(db, versionId);
-      const liveDocument = this.mustFindDocument(db, liveVersion.documentId);
-      const project = this.mustFindProject(db, liveDocument.projectId);
-      const team = this.mustFindTeam(db, project.teamId);
-      const auditConfigs = db.auditConfigs.filter((config) => config.projectId === project.id);
-      const auditContentType = this.getAuditContentType(liveDocument.type);
-      const reviewRequired = auditContentType
-        ? resolveContentReviewRequired(team.defaultReviewPolicy, project.reviewPolicyMode, auditConfigs, auditContentType)
-        : resolveReviewRequired(team.defaultReviewPolicy, project.reviewPolicyMode);
-      const autoApproved = auditContentType
-        ? canAutoApprove(auditConfigs, auditContentType, actor.projectRoles)
-        : false;
-      const nextStatus = getSubmittedStatus(reviewRequired && !autoApproved);
-      if (!canTransitionVersionStatus(liveVersion.status, nextStatus)) {
-        throw new BadRequestException(`Cannot submit a version in status ${liveVersion.status}`);
-      }
+    const project = await this.prisma.project.findUnique({ where: { id: document.projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+    const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    const auditConfigs = await this.prisma.auditConfig.findMany({ where: { projectId: project.id } });
+    const auditContentType = this.getAuditContentType(document.type as DocumentType);
+    const reviewRequired = auditContentType
+      ? resolveContentReviewRequired(team.defaultReviewPolicy as "required" | "bypass", project.reviewPolicyMode, auditConfigs.map((c) => ({
+          id: c.id, projectId: c.projectId, contentType: c.contentType as AuditContentType,
+          reviewRequired: c.reviewRequired, autoApproveRoles: jsonOutput<ProjectRole[]>(c.autoApproveRoles),
+          createdAt: iso(c.createdAt), updatedAt: iso(c.updatedAt),
+        })), auditContentType)
+      : resolveReviewRequired(team.defaultReviewPolicy as "required" | "bypass", project.reviewPolicyMode);
+    const autoApproved = auditContentType
+      ? canAutoApprove(auditConfigs.map((c) => ({
+          id: c.id, projectId: c.projectId, contentType: c.contentType as AuditContentType,
+          reviewRequired: c.reviewRequired, autoApproveRoles: jsonOutput<ProjectRole[]>(c.autoApproveRoles),
+          createdAt: iso(c.createdAt), updatedAt: iso(c.updatedAt),
+        })), auditContentType, actor.projectRoles)
+      : false;
+    const nextStatus = getSubmittedStatus(reviewRequired && !autoApproved);
+    if (!canTransitionVersionStatus(version.status as VersionStatus, nextStatus)) {
+      throw new BadRequestException(`Cannot submit a version in status ${version.status}`);
+    }
 
-      liveVersion.status = nextStatus;
-      return {
-        version: liveVersion,
-        auditContentType,
-        autoApproved,
-      };
+    const updatedVersion = await this.prisma.version.update({
+      where: { id: versionId },
+      data: { status: nextStatus },
     });
+    const updatedVersionRecord = this.toVersionRecord(updatedVersion);
 
-    if (updated.auditContentType) {
+    if (auditContentType) {
       await this.auditService.recordAuditAction({
         projectId: document.projectId,
         versionId,
-        documentType: document.type,
+        documentType: document.type as DocumentType,
         action: "submitted",
         reviewerId: userId,
       });
 
-      if (updated.autoApproved) {
+      if (autoApproved) {
         await this.auditService.recordAuditAction({
           projectId: document.projectId,
           versionId,
-          documentType: document.type,
+          documentType: document.type as DocumentType,
           action: "approved",
           reviewerId: userId,
           comment: "Auto-approved by audit role policy.",
@@ -1337,11 +1364,11 @@ export class WorkspaceService {
       projectId: document.projectId,
       versionId,
       documentId: document.id,
-      status: updated.version.status,
-      action: updated.autoApproved ? "approved" : "submitted",
+      status: updatedVersionRecord.status,
+      action: autoApproved ? "approved" : "submitted",
     });
 
-    return updated.version;
+    return updatedVersionRecord;
   }
 
   async approveVersion(userId: string, versionId: string, comment?: string) {
@@ -1353,22 +1380,33 @@ export class WorkspaceService {
   }
 
   async listComments(userId: string, versionId: string) {
-    return this.database.query((db) => {
-      const version = this.mustFindVersion(db, versionId);
-      const document = this.mustFindDocument(db, version.documentId);
-      this.assertProjectReadable(db, document.projectId, userId);
-      return db.comments
-        .filter((comment) => comment.versionId === versionId)
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-        .map((comment) => {
-          const author = this.mustFindUser(db, comment.authorId);
-          return {
-            ...comment,
-            authorDisplayName: author.displayName,
-            authorEmail: author.email,
-          };
-        });
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
+    await this.assertProjectReadableAsync(document.projectId, userId);
+
+    const comments = await this.prisma.comment.findMany({
+      where: { versionId },
+      orderBy: { createdAt: "asc" },
     });
+    return Promise.all(comments.map(async (comment) => {
+      const author = await this.prisma.user.findUnique({ where: { id: comment.authorId } });
+      return {
+        id: comment.id,
+        versionId: comment.versionId,
+        authorId: comment.authorId,
+        body: comment.body,
+        parentId: comment.parentId ?? undefined,
+        anchorType: comment.anchorType as AnchorType,
+        anchorId: comment.anchorId ?? undefined,
+        resolved: comment.resolved,
+        createdAt: iso(comment.createdAt),
+        updatedAt: iso(comment.updatedAt),
+        authorDisplayName: author?.displayName ?? "Unknown",
+        authorEmail: author?.email ?? "",
+      };
+    }));
   }
 
   async addComment(
@@ -1381,22 +1419,23 @@ export class WorkspaceService {
       throw new BadRequestException("Comment body is required");
     }
 
-    const result = await this.database.mutate((db) => {
-      const version = this.mustFindVersion(db, versionId);
-      const document = this.mustFindDocument(db, version.documentId);
-      this.assertProjectReadable(db, document.projectId, userId);
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
+    await this.assertProjectReadableAsync(document.projectId, userId);
 
-      let parentAuthorId: string | undefined;
-      if (input.parentId) {
-        const parent = db.comments.find((comment) => comment.id === input.parentId);
-        if (!parent || parent.versionId !== versionId) {
-          throw new BadRequestException("Parent comment does not belong to this version");
-        }
-        parentAuthorId = parent.authorId;
+    let parentAuthorId: string | undefined;
+    if (input.parentId) {
+      const parent = await this.prisma.comment.findUnique({ where: { id: input.parentId } });
+      if (!parent || parent.versionId !== versionId) {
+        throw new BadRequestException("Parent comment does not belong to this version");
       }
+      parentAuthorId = parent.authorId;
+    }
 
-      const now = new Date().toISOString();
-      const comment = {
+    const comment = await this.prisma.comment.create({
+      data: {
         id: createId("comment"),
         versionId,
         authorId: userId,
@@ -1405,25 +1444,31 @@ export class WorkspaceService {
         anchorType: input.anchorType,
         anchorId: input.anchorId,
         resolved: false,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      db.comments.push(comment);
-      const author = this.mustFindUser(db, userId);
-      return {
-        comment: {
-          ...comment,
-          authorDisplayName: author.displayName,
-          authorEmail: author.email,
-        },
-        projectId: document.projectId,
-        documentId: document.id,
-        versionTitle: version.title,
-        versionAuthorId: version.createdBy,
-        parentAuthorId,
-      };
+      },
     });
+
+    const author = await this.prisma.user.findUnique({ where: { id: userId } });
+    const result = {
+      comment: {
+        id: comment.id,
+        versionId: comment.versionId,
+        authorId: comment.authorId,
+        body: comment.body,
+        parentId: comment.parentId ?? undefined,
+        anchorType: comment.anchorType as AnchorType,
+        anchorId: comment.anchorId ?? undefined,
+        resolved: comment.resolved,
+        createdAt: iso(comment.createdAt),
+        updatedAt: iso(comment.updatedAt),
+        authorDisplayName: author?.displayName ?? "Unknown",
+        authorEmail: author?.email ?? "",
+      },
+      projectId: document.projectId,
+      documentId: document.id,
+      versionTitle: version.title,
+      versionAuthorId: version.createdBy,
+      parentAuthorId,
+    };
 
     const notificationType = input.parentId ? "comment_reply" : "comment_added";
     const recipients = new Set<string>();
@@ -1459,10 +1504,8 @@ export class WorkspaceService {
   }
 
   async getWorldBible(userId: string, projectId: string): Promise<WorldBibleContent> {
-    return this.database.query((db) => {
-      this.assertProjectReadable(db, projectId, userId);
-      return this.extractWorldBible(db, projectId);
-    });
+    await this.assertProjectReadableAsync(projectId, userId);
+    return this.extractWorldBibleAsync(projectId);
   }
 
   async updateWorldBible(
@@ -1475,17 +1518,15 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to update the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const existing = this.extractWorldBible(db, projectId);
-      const merged: WorldBibleContent = {
-        characters: content.characters ?? existing.characters,
-        locations: content.locations ?? existing.locations,
-        styleGuide: content.styleGuide !== undefined ? content.styleGuide : existing.styleGuide,
-        voiceConfigs: content.voiceConfigs ?? existing.voiceConfigs,
-      };
-      this.persistWorldBible(db, projectId, userId, merged);
-      return merged;
-    });
+    const existing = await this.extractWorldBibleAsync(projectId);
+    const merged: WorldBibleContent = {
+      characters: content.characters ?? existing.characters,
+      locations: content.locations ?? existing.locations,
+      styleGuide: content.styleGuide !== undefined ? content.styleGuide : existing.styleGuide,
+      voiceConfigs: content.voiceConfigs ?? existing.voiceConfigs,
+    };
+    await this.persistWorldBibleAsync(projectId, userId, merged);
+    return merged;
   }
 
   async addCharacter(
@@ -1498,22 +1539,20 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const character: CharacterProfile = {
-        id: createId("char"),
-        name: input.name.trim(),
-        appearance: input.appearance.trim(),
-        personality: input.personality?.trim(),
-        tags: input.tags ?? [],
-        referenceImages: input.referenceImages ?? [],
-        costumes: input.costumes,
-        sortOrder: wb.characters.length,
-      };
-      wb.characters.push(character);
-      this.persistWorldBible(db, projectId, userId, wb);
-      return character;
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const character: CharacterProfile = {
+      id: createId("char"),
+      name: input.name.trim(),
+      appearance: input.appearance.trim(),
+      personality: input.personality?.trim(),
+      tags: input.tags ?? [],
+      referenceImages: input.referenceImages ?? [],
+      costumes: input.costumes,
+      sortOrder: wb.characters.length,
+    };
+    wb.characters.push(character);
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    return character;
   }
 
   async updateCharacter(
@@ -1527,25 +1566,23 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const character = wb.characters.find((c) => c.id === characterId);
-      if (!character) {
-        throw new NotFoundException("Character not found");
-      }
-      const oldName = character.name;
-      if (input.name !== undefined) character.name = input.name.trim();
-      if (input.appearance !== undefined) character.appearance = input.appearance.trim();
-      if (input.personality !== undefined) character.personality = input.personality?.trim();
-      if (input.tags !== undefined) character.tags = input.tags;
-      if (input.referenceImages !== undefined) character.referenceImages = input.referenceImages;
-      if (input.costumes !== undefined) character.costumes = input.costumes;
-      this.persistWorldBible(db, projectId, userId, wb);
-      if (input.name !== undefined && character.name !== oldName) {
-        this.syncCharacterNameToScripts(db, projectId, userId, characterId, oldName, character.name);
-      }
-      return character;
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const character = wb.characters.find((c) => c.id === characterId);
+    if (!character) {
+      throw new NotFoundException("Character not found");
+    }
+    const oldName = character.name;
+    if (input.name !== undefined) character.name = input.name.trim();
+    if (input.appearance !== undefined) character.appearance = input.appearance.trim();
+    if (input.personality !== undefined) character.personality = input.personality?.trim();
+    if (input.tags !== undefined) character.tags = input.tags;
+    if (input.referenceImages !== undefined) character.referenceImages = input.referenceImages;
+    if (input.costumes !== undefined) character.costumes = input.costumes;
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    if (input.name !== undefined && character.name !== oldName) {
+      await this.syncCharacterNameToScriptsAsync(projectId, userId, characterId, oldName, character.name);
+    }
+    return character;
   }
 
   async deleteCharacter(userId: string, projectId: string, characterId: string) {
@@ -1554,16 +1591,14 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const index = wb.characters.findIndex((c) => c.id === characterId);
-      if (index === -1) {
-        throw new NotFoundException("Character not found");
-      }
-      wb.characters.splice(index, 1);
-      this.persistWorldBible(db, projectId, userId, wb);
-      this.clearCharacterRefsInScripts(db, projectId, userId, characterId);
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const index = wb.characters.findIndex((c) => c.id === characterId);
+    if (index === -1) {
+      throw new NotFoundException("Character not found");
+    }
+    wb.characters.splice(index, 1);
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    await this.clearCharacterRefsInScriptsAsync(projectId, userId, characterId);
   }
 
   async addLocation(
@@ -1576,21 +1611,19 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const location: LocationProfile = {
-        id: createId("loc"),
-        name: input.name.trim(),
-        description: input.description.trim(),
-        lighting: input.lighting?.trim(),
-        timeOfDay: input.timeOfDay?.trim(),
-        referenceImages: input.referenceImages ?? [],
-        sortOrder: wb.locations.length,
-      };
-      wb.locations.push(location);
-      this.persistWorldBible(db, projectId, userId, wb);
-      return location;
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const location: LocationProfile = {
+      id: createId("loc"),
+      name: input.name.trim(),
+      description: input.description.trim(),
+      lighting: input.lighting?.trim(),
+      timeOfDay: input.timeOfDay?.trim(),
+      referenceImages: input.referenceImages ?? [],
+      sortOrder: wb.locations.length,
+    };
+    wb.locations.push(location);
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    return location;
   }
 
   async updateLocation(
@@ -1604,20 +1637,18 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const location = wb.locations.find((l) => l.id === locationId);
-      if (!location) {
-        throw new NotFoundException("Location not found");
-      }
-      if (input.name !== undefined) location.name = input.name.trim();
-      if (input.description !== undefined) location.description = input.description.trim();
-      if (input.lighting !== undefined) location.lighting = input.lighting?.trim();
-      if (input.timeOfDay !== undefined) location.timeOfDay = input.timeOfDay?.trim();
-      if (input.referenceImages !== undefined) location.referenceImages = input.referenceImages;
-      this.persistWorldBible(db, projectId, userId, wb);
-      return location;
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const location = wb.locations.find((l) => l.id === locationId);
+    if (!location) {
+      throw new NotFoundException("Location not found");
+    }
+    if (input.name !== undefined) location.name = input.name.trim();
+    if (input.description !== undefined) location.description = input.description.trim();
+    if (input.lighting !== undefined) location.lighting = input.lighting?.trim();
+    if (input.timeOfDay !== undefined) location.timeOfDay = input.timeOfDay?.trim();
+    if (input.referenceImages !== undefined) location.referenceImages = input.referenceImages;
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    return location;
   }
 
   async deleteLocation(userId: string, projectId: string, locationId: string) {
@@ -1626,16 +1657,14 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const index = wb.locations.findIndex((l) => l.id === locationId);
-      if (index === -1) {
-        throw new NotFoundException("Location not found");
-      }
-      wb.locations.splice(index, 1);
-      this.persistWorldBible(db, projectId, userId, wb);
-      this.clearLocationRefsInScripts(db, projectId, userId, locationId);
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const locIndex = wb.locations.findIndex((l) => l.id === locationId);
+    if (locIndex === -1) {
+      throw new NotFoundException("Location not found");
+    }
+    wb.locations.splice(locIndex, 1);
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    await this.clearLocationRefsInScriptsAsync(projectId, userId, locationId);
   }
 
   async updateStyleGuide(
@@ -1648,19 +1677,17 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the world bible");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const guide: StyleGuideProfile = {
-        visualStyle: input.visualStyle.trim(),
-        colorPalette: input.colorPalette?.trim(),
-        compositionNote: input.compositionNote?.trim(),
-        negativePrompt: input.negativePrompt?.trim(),
-        referenceImages: input.referenceImages ?? [],
-      };
-      wb.styleGuide = guide;
-      this.persistWorldBible(db, projectId, userId, wb);
-      return guide;
-    });
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const guide: StyleGuideProfile = {
+      visualStyle: input.visualStyle.trim(),
+      colorPalette: input.colorPalette?.trim(),
+      compositionNote: input.compositionNote?.trim(),
+      negativePrompt: input.negativePrompt?.trim(),
+      referenceImages: input.referenceImages ?? [],
+    };
+    wb.styleGuide = guide;
+    await this.persistWorldBibleAsync(projectId, userId, wb);
+    return guide;
   }
 
   async ensureDocumentForProject(options: {
@@ -1670,31 +1697,22 @@ export class WorkspaceService {
     createdBy: string;
     shotId?: string;
   }): Promise<DocumentRecord> {
-    return this.database.mutate((db) => {
-      const existing = db.documents.find(
-        (document) =>
-          document.projectId === options.projectId &&
-          document.type === options.type &&
-          document.shotId === options.shotId,
-      );
-      if (existing) {
-        return existing;
-      }
+    const existing = await this.prisma.document.findFirst({
+      where: { projectId: options.projectId, type: options.type, shotId: options.shotId ?? null },
+    });
+    if (existing) return this.toDocumentRecord(existing);
 
-      const now = new Date().toISOString();
-      const document: DocumentRecord = {
+    const document = await this.prisma.document.create({
+      data: {
         id: createId("doc"),
         projectId: options.projectId,
         type: options.type,
         title: options.title,
         shotId: options.shotId,
         createdBy: options.createdBy,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.documents.push(document);
-      return document;
+      },
     });
+    return this.toDocumentRecord(document);
   }
 
   async bindMediaToStoryboardDraft(
@@ -1704,53 +1722,59 @@ export class WorkspaceService {
     mediaVersionId: string,
     createdBy: string,
   ): Promise<void> {
-    return this.database.mutate((db) => {
-      const sbDoc = db.documents.find(
-        (d) => d.projectId === projectId && d.type === "storyboard",
-      );
-      if (!sbDoc) return;
-
-      const draft = db.versions.find(
-        (v) => v.documentId === sbDoc.id && v.status === "draft",
-      );
-
-      if (draft) {
-        const content = ensureMediaBindings(draft.content as StoryboardContent);
-        content.mediaBindings[shotId] = {
-          ...(content.mediaBindings[shotId] ?? {}),
-          [`${mediaType}VersionId`]: mediaVersionId,
-        };
-        draft.content = content;
-      } else {
-        const currentVersion = sbDoc.currentVersionId
-          ? db.versions.find((v) => v.id === sbDoc.currentVersionId)
-          : undefined;
-        const content = ensureMediaBindings(
-          (currentVersion?.content as StoryboardContent) ?? { overview: "", shots: [] },
-        );
-        content.mediaBindings[shotId] = {
-          ...(content.mediaBindings[shotId] ?? {}),
-          [`${mediaType}VersionId`]: mediaVersionId,
-        };
-        const now = new Date().toISOString();
-        const siblingVersions = db.versions.filter((v) => v.documentId === sbDoc.id);
-        const version: VersionRecord = {
-          id: createId("version"),
-          documentId: sbDoc.id,
-          versionNumber: getNextVersionNumber(siblingVersions),
-          status: "draft",
-          title: "Auto draft (media binding)",
-          content,
-          metadata: { source: "auto-media-binding" },
-          parentVersionId: currentVersion?.id,
-          createdBy,
-          createdAt: now,
-        };
-        sbDoc.draftVersionId = version.id;
-        sbDoc.updatedAt = now;
-        db.versions.push(version);
-      }
+    const sbDoc = await this.prisma.document.findFirst({
+      where: { projectId, type: "storyboard" },
     });
+    if (!sbDoc) return;
+
+    const draft = await this.prisma.version.findFirst({
+      where: { documentId: sbDoc.id, status: "draft" },
+      orderBy: { versionNumber: "desc" },
+    });
+
+    if (draft) {
+      const content = ensureMediaBindings(jsonOutput<StoryboardContent>(draft.content));
+      content.mediaBindings[shotId] = {
+        ...(content.mediaBindings[shotId] ?? {}),
+        [`${mediaType}VersionId`]: mediaVersionId,
+      };
+      await this.prisma.version.update({ where: { id: draft.id }, data: { content: jsonInput(content) } });
+    } else {
+      let currentContent: StoryboardContent = { overview: "", shots: [], mediaBindings: {} };
+      if (sbDoc.currentVersionId) {
+        const currentVersion = await this.prisma.version.findUnique({ where: { id: sbDoc.currentVersionId } });
+        if (currentVersion?.content) {
+          currentContent = ensureMediaBindings(jsonOutput<StoryboardContent>(currentVersion.content));
+        }
+      }
+      const content = ensureMediaBindings(currentContent);
+      content.mediaBindings[shotId] = {
+        ...(content.mediaBindings[shotId] ?? {}),
+        [`${mediaType}VersionId`]: mediaVersionId,
+      };
+
+      const siblingVersions = await this.prisma.version.findMany({ where: { documentId: sbDoc.id } });
+      const newVersion = await this.prisma.$transaction(async (tx) => {
+        const version = await tx.version.create({
+          data: {
+            id: createId("version"),
+            documentId: sbDoc.id,
+            versionNumber: getNextVersionNumber(siblingVersions.map((v) => this.toVersionRecord(v))),
+            status: "draft",
+            title: "Auto draft (media binding)",
+            content: jsonInput(content),
+            metadata: jsonInput({ source: "auto-media-binding" }),
+            parentVersionId: sbDoc.currentVersionId,
+            createdBy,
+          },
+        });
+        await tx.document.update({
+          where: { id: sbDoc.id },
+          data: { draftVersionId: version.id, updatedAt: new Date() },
+        });
+        return version;
+      });
+    }
   }
 
   async updateDraftMediaBinding(
@@ -1759,23 +1783,25 @@ export class WorkspaceService {
     shotId: string,
     binding: Partial<ShotMediaBinding>,
   ) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const liveVersion = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!liveVersion) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: liveVersion.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "project.edit")) {
       throw new ForbiddenException("You do not have permission to update media bindings");
     }
 
-    return this.database.mutate((db) => {
-      const liveVersion = this.mustFindVersion(db, versionId);
-      if (liveVersion.status !== "draft") {
-        throw new BadRequestException("Media bindings can only be updated on draft versions");
-      }
-      const content = ensureMediaBindings(liveVersion.content as StoryboardContent);
-      content.mediaBindings[shotId] = { ...(content.mediaBindings[shotId] ?? {}), ...binding };
-      liveVersion.content = content;
-      return liveVersion;
+    if (liveVersion.status !== "draft") {
+      throw new BadRequestException("Media bindings can only be updated on draft versions");
+    }
+    const content = ensureMediaBindings(jsonOutput<StoryboardContent>(liveVersion.content));
+    content.mediaBindings[shotId] = { ...(content.mediaBindings[shotId] ?? {}), ...binding };
+    const updated = await this.prisma.version.update({
+      where: { id: versionId },
+      data: { content: jsonInput(content) },
     });
+    return this.toVersionRecord(updated);
   }
 
   async createVersionForDocument(options: {
@@ -1786,43 +1812,45 @@ export class WorkspaceService {
     createdBy: string;
     status?: VersionStatus;
   }): Promise<VersionRecord> {
-    const result = await this.database.mutate((db) => {
-      const document = this.mustFindDocument(db, options.documentId);
-      const siblingVersions = db.versions.filter((version) => version.documentId === document.id);
-      const latestVersion = siblingVersions.reduce<VersionRecord | undefined>((current, candidate) => {
-        if (!current || candidate.versionNumber > current.versionNumber) {
-          return candidate;
-        }
+    const result = await this.prisma.$transaction(async (tx) => {
+      const document = await tx.document.findUnique({ where: { id: options.documentId } });
+      if (!document) throw new NotFoundException("Document not found");
+
+      const siblingVersions = await tx.version.findMany({ where: { documentId: document.id } });
+      const siblingRecords = siblingVersions.map((v) => this.toVersionRecord(v));
+      const latestVersion = siblingRecords.reduce<VersionRecord | undefined>((current, candidate) => {
+        if (!current || candidate.versionNumber > current.versionNumber) return candidate;
         return current;
       }, undefined);
 
       const normalizedContent = document.type === "storyboard"
         ? ensureMediaBindings(normalizeStoryboardContent(options.content))
         : options.content;
-      const now = new Date().toISOString();
-      const version: VersionRecord = {
-        id: createId("version"),
-        documentId: document.id,
-        versionNumber: getNextVersionNumber(siblingVersions),
-        status: options.status ?? "draft",
-        title: options.title,
-        content: normalizedContent,
-        metadata: options.metadata,
-        parentVersionId: latestVersion?.id,
-        createdBy: options.createdBy,
-        createdAt: now,
-      };
+      const version = await tx.version.create({
+        data: {
+          id: createId("version"),
+          documentId: document.id,
+          versionNumber: getNextVersionNumber(siblingRecords),
+          status: options.status ?? "draft",
+          title: options.title,
+          content: jsonInput(normalizedContent),
+          metadata: jsonInput(options.metadata),
+          parentVersionId: latestVersion?.id,
+          createdBy: options.createdBy,
+        },
+      });
+      const versionRecord = this.toVersionRecord(version);
+      const documentRecord = this.toDocumentRecord(document);
 
-      document.draftVersionId = version.id;
+      const docUpdateData: Record<string, any> = { draftVersionId: version.id, updatedAt: new Date() };
       if (version.status === "approved") {
-        document.currentVersionId = version.id;
+        docUpdateData.currentVersionId = version.id;
       }
-      document.updatedAt = now;
-      db.versions.push(version);
+      await tx.document.update({ where: { id: document.id }, data: docUpdateData });
 
-      this.ensurePairedDraft(db, document.projectId, document.type, version.id, document.id, options.createdBy);
+      await this.ensurePairedDraftAsync(tx, document.projectId, document.type, version.id, document.id, options.createdBy);
 
-      const syncEvent = this.syncCharactersToPairedDraft(db, version, document, options.createdBy);
+      const syncEvent = this.syncCharactersToPairedDraftInMemory(versionRecord, documentRecord, options.createdBy, tx);
 
       if (
         document.type === "script" &&
@@ -1834,15 +1862,15 @@ export class WorkspaceService {
         if (Array.isArray(scriptContent.characters)) {
           for (const char of scriptContent.characters) {
             if (char.worldBibleCharId) {
-              this.syncCharacterNameToWorldBible(
-                db, document.projectId, options.createdBy, char.worldBibleCharId, char.name,
+              await this.syncCharacterNameToWorldBibleAsync(
+                tx, document.projectId, options.createdBy, char.worldBibleCharId, char.name,
               );
             }
           }
         }
       }
 
-      return { version, syncEvent };
+      return { version: versionRecord, syncEvent };
     });
 
     if (result.syncEvent) {
@@ -1866,26 +1894,35 @@ export class WorkspaceService {
     content: unknown;
     metadata: Record<string, unknown>;
   }): Promise<VersionRecord> {
-    const document = await this.database.query((db) => this.mustFindDocument(db, options.documentId));
+    const document = await this.prisma.document.findUnique({ where: { id: options.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(options.userId, document.projectId);
 
-    const policy = await this.database.query((db) => {
-      const project = this.mustFindProject(db, document.projectId);
-      const team = this.mustFindTeam(db, project.teamId);
-      const auditConfigs = db.auditConfigs.filter((config) => config.projectId === project.id);
-      const auditContentType = this.getAuditContentType(document.type);
-      const reviewRequired = auditContentType
-        ? resolveContentReviewRequired(team.defaultReviewPolicy, project.reviewPolicyMode, auditConfigs, auditContentType)
-        : resolveReviewRequired(team.defaultReviewPolicy, project.reviewPolicyMode);
-      const autoApproved = auditContentType
-        ? canAutoApprove(auditConfigs, auditContentType, actor.projectRoles)
-        : false;
-      return {
-        auditContentType,
-        status: getSubmittedStatus(reviewRequired && !autoApproved),
-        autoApproved,
-      };
-    });
+    const project = await this.prisma.project.findUnique({ where: { id: document.projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+    const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    const auditConfigs = await this.prisma.auditConfig.findMany({ where: { projectId: project.id } });
+    const auditContentType = this.getAuditContentType(document.type as DocumentType);
+    const reviewRequired = auditContentType
+      ? resolveContentReviewRequired(team.defaultReviewPolicy as "required" | "bypass", project.reviewPolicyMode, auditConfigs.map((c) => ({
+          id: c.id, projectId: c.projectId, contentType: c.contentType as AuditContentType,
+          reviewRequired: c.reviewRequired, autoApproveRoles: jsonOutput<ProjectRole[]>(c.autoApproveRoles),
+          createdAt: iso(c.createdAt), updatedAt: iso(c.updatedAt),
+        })), auditContentType)
+      : resolveReviewRequired(team.defaultReviewPolicy as "required" | "bypass", project.reviewPolicyMode);
+    const autoApproved = auditContentType
+      ? canAutoApprove(auditConfigs.map((c) => ({
+          id: c.id, projectId: c.projectId, contentType: c.contentType as AuditContentType,
+          reviewRequired: c.reviewRequired, autoApproveRoles: jsonOutput<ProjectRole[]>(c.autoApproveRoles),
+          createdAt: iso(c.createdAt), updatedAt: iso(c.updatedAt),
+        })), auditContentType, actor.projectRoles)
+      : false;
+    const policy = {
+      auditContentType,
+      status: getSubmittedStatus(reviewRequired && !autoApproved),
+      autoApproved,
+    };
 
     const version = await this.createVersionForDocument({
       documentId: options.documentId,
@@ -1929,38 +1966,47 @@ export class WorkspaceService {
   }
 
   private async reviewVersion(userId: string, versionId: string, nextStatus: "approved" | "rejected", comment?: string) {
-    const version = await this.database.query((db) => this.mustFindVersion(db, versionId));
-    const document = await this.database.query((db) => this.mustFindDocument(db, version.documentId));
+    const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException("Version not found");
+    const document = await this.prisma.document.findUnique({ where: { id: version.documentId } });
+    if (!document) throw new NotFoundException("Document not found");
     const actor = await this.getActor(userId, document.projectId);
     if (!this.actorHasProjectPermission(actor, "version.review")) {
       throw new ForbiddenException("You do not have permission to review this version");
     }
 
-    const updatedVersion = await this.database.mutate((db) => {
-      const liveVersion = this.mustFindVersion(db, versionId);
-      if (!canTransitionVersionStatus(liveVersion.status, nextStatus)) {
-        throw new BadRequestException(`Cannot move version from ${liveVersion.status} to ${nextStatus}`);
-      }
-      liveVersion.status = nextStatus;
+    if (!canTransitionVersionStatus(version.status as VersionStatus, nextStatus)) {
+      throw new BadRequestException(`Cannot move version from ${version.status} to ${nextStatus}`);
+    }
 
-      const pairedId = liveVersion.metadata?.pairedVersionId as string | undefined;
+    const updatedVersion = await this.prisma.$transaction(async (tx) => {
+      const v = await tx.version.update({
+        where: { id: versionId },
+        data: { status: nextStatus },
+      });
+
+      const metadata = jsonOutput<Record<string, unknown>>(v.metadata) ?? {};
+      const pairedId = metadata.pairedVersionId as string | undefined;
       if (pairedId) {
-        const pairedVersion = db.versions.find((v) => v.id === pairedId);
+        const pairedVersion = await tx.version.findUnique({ where: { id: pairedId } });
         if (pairedVersion) {
-          pairedVersion.metadata = { ...pairedVersion.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+          const pairedMeta = { ...jsonOutput<Record<string, unknown>>(pairedVersion.metadata), pairedVersionId: undefined, pairedDocumentId: undefined };
+          await tx.version.update({ where: { id: pairedId }, data: { metadata: jsonInput(pairedMeta) } });
         }
-        liveVersion.metadata = { ...liveVersion.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+        const newMeta = { ...metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+        await tx.version.update({ where: { id: versionId }, data: { metadata: jsonInput(newMeta) } });
       }
 
-      return liveVersion;
+      return v;
     });
+    const updatedVersionRecord = this.toVersionRecord(updatedVersion);
 
     const trimmedComment = comment?.trim() || undefined;
-    if (this.getAuditContentType(document.type)) {
+    if (this.getAuditContentType(document.type as DocumentType)) {
       await this.auditService.recordAuditAction({
         projectId: document.projectId,
         versionId,
-        documentType: document.type,
+        documentType: document.type as DocumentType,
         action: nextStatus === "approved" ? "approved" : "rejected",
         reviewerId: userId,
         comment: trimmedComment,
@@ -1971,21 +2017,26 @@ export class WorkspaceService {
       projectId: document.projectId,
       versionId,
       documentId: document.id,
-      status: updatedVersion.status,
+      status: updatedVersionRecord.status,
       action: nextStatus,
     });
 
-    return updatedVersion;
+    return updatedVersionRecord;
   }
 
-  private buildProjectActorContext(db: DevDatabase, userId: string, projectId: string): ActorContext {
-    const user = this.mustFindUser(db, userId);
-    const project = this.mustFindProject(db, projectId);
-    const team = this.mustFindTeam(db, project.teamId);
-    const projectMembers = db.projectMembers.filter((member) => member.projectId === projectId && member.userId === userId);
-    const teamRoles = db.teamMembers
-      .filter((member) => member.teamId === project.teamId && member.userId === userId)
-      .map((member) => member.role);
+  private async buildProjectActorContext(userId: string, projectId: string): Promise<ActorContext> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
+
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+
+    const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+
+    const projectMembers = await this.prisma.projectMember.findMany({ where: { projectId, userId } });
+    const teamMembers = await this.prisma.teamMember.findMany({ where: { teamId: project.teamId, userId } });
+    const teamRoles = teamMembers.map((member) => member.role);
 
     return {
       userId,
@@ -1994,9 +2045,9 @@ export class WorkspaceService {
       projectRoles: projectMembers.map((member) => member.role),
       projectMembers: projectMembers.map((member) => ({
         role: member.role,
-        permissionOverride: normalizePermissionOverride(member.permissionOverride),
+        permissionOverride: normalizePermissionOverride(jsonOutput(member.permissionOverride)),
       })),
-      projectRolePermissionTemplates: team.projectRolePermissionTemplates,
+      projectRolePermissionTemplates: jsonOutput(team.projectRolePermissionTemplates),
     };
   }
 
@@ -2022,25 +2073,31 @@ export class WorkspaceService {
   }
 
   private async getActor(userId: string, projectId?: string, teamId?: string): Promise<ActorContext> {
-    return this.database.query((db) => {
-      if (projectId) {
-        return this.buildProjectActorContext(db, userId, projectId);
-      }
+    if (projectId) {
+      return this.buildProjectActorContext(userId, projectId);
+    }
 
-      const user = this.mustFindUser(db, userId);
-      const team = teamId ? this.mustFindTeam(db, teamId) : undefined;
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
 
-      return {
-        userId,
-        globalRole: user.globalRole,
-        teamRoles: team
-          ? db.teamMembers.filter((member) => member.teamId === team.id && member.userId === userId).map((member) => member.role)
-          : [],
-        projectRoles: [],
-        projectMembers: [],
-        projectRolePermissionTemplates: team?.projectRolePermissionTemplates,
-      };
-    });
+    const team = teamId ? await this.prisma.team.findUnique({ where: { id: teamId } }) : undefined;
+
+    let teamRoles: TeamRole[] = [];
+    let projectRolePermissionTemplates: ProjectRolePermissionTemplates | undefined;
+    if (team) {
+      const teamMembers = await this.prisma.teamMember.findMany({ where: { teamId: team.id, userId } });
+      teamRoles = teamMembers.map((member) => member.role as TeamRole);
+      projectRolePermissionTemplates = jsonOutput(team.projectRolePermissionTemplates);
+    }
+
+    return {
+      userId,
+      globalRole: user.globalRole,
+      teamRoles,
+      projectRoles: [],
+      projectMembers: [],
+      projectRolePermissionTemplates,
+    };
   }
 
   private mergeLlmConfig(
@@ -2121,15 +2178,13 @@ export class WorkspaceService {
     return merged;
   }
 
-  private buildTeamSummary(
-    db: DevDatabase,
-    team: DevDatabase["teams"][number],
+  private async buildTeamSummaryFromRecord(
+    team: ReturnType<typeof this.toTeamRecord>,
     userId: string,
     globalRole: ActorContext["globalRole"],
-  ): TeamSummary {
-    const teamRoles = db.teamMembers
-      .filter((member) => member.teamId === team.id && member.userId === userId)
-      .map((member) => member.role);
+  ): Promise<TeamSummary> {
+    const teamMembers = await this.prisma.teamMember.findMany({ where: { teamId: team.id, userId } });
+    const teamRoles = teamMembers.map((member) => member.role);
 
     return {
       id: team.id,
@@ -2148,25 +2203,31 @@ export class WorkspaceService {
     };
   }
 
-  private buildTeamSettingsResponse(
-    db: DevDatabase,
-    team: DevDatabase["teams"][number],
+  private buildTeamSettingsResponseFromRecord(
+    team: ReturnType<typeof this.toTeamRecord>,
     userId: string,
     globalRole: ActorContext["globalRole"],
   ): TeamSettingsResponse {
     return {
-      ...this.buildTeamSummary(db, team, userId, globalRole),
-      llmConfig: this.buildTeamSettingsLlmConfig(team.llmConfig),
-      imageGenerationConfig: this.buildTeamSettingsImageGenerationConfig(team.imageGenerationConfig),
-      imageProviders: team.imageProviders,
-      videoProviders: team.videoProviders,
+      id: team.id,
+      name: team.name,
+      slug: team.slug,
+      defaultReviewPolicy: team.defaultReviewPolicy,
+      createdAt: team.createdAt,
+      updatedAt: team.updatedAt,
+      currentUserRole: null,
+      canManage: false,
+      llmConfig: this.buildTeamSettingsLlmConfig(team.llmConfig as LlmProviderConfig | undefined),
+      imageGenerationConfig: this.buildTeamSettingsImageGenerationConfig(team.imageGenerationConfig as ImageGenerationConfig | undefined),
+      imageProviders: team.imageProviders as ProviderEntry[] | undefined,
+      videoProviders: team.videoProviders as ProviderEntry[] | undefined,
       defaultImageProvider: team.defaultImageProvider,
       defaultVideoProvider: team.defaultVideoProvider,
-      permissionTemplates: this.buildTeamPermissionTemplatesResponse(team),
+      permissionTemplates: this.buildTeamPermissionTemplatesResponseFromRecord(team),
     };
   }
 
-  private buildTeamPermissionTemplatesResponse(team: DevDatabase["teams"][number]): TeamPermissionTemplatesResponse {
+  private buildTeamPermissionTemplatesResponseFromRecord(team: ReturnType<typeof this.toTeamRecord>): TeamPermissionTemplatesResponse {
     const templates = normalizeProjectRolePermissionTemplates(team.projectRolePermissionTemplates);
     const resolvedTemplates: ProjectRolePermissionTemplateSummary[] = PROJECT_ROLES.map((role) => {
       const teamPermissions = templates[role];
@@ -2186,27 +2247,31 @@ export class WorkspaceService {
     };
   }
 
-  private buildMemberPermissionsResponse(
-    db: DevDatabase,
-    project: DevDatabase["projects"][number],
-    member: ProjectMemberRecord,
-  ): ProjectMemberPermissionsResponse {
-    const team = this.mustFindTeam(db, project.teamId);
-    const permissionOverride = normalizePermissionOverride(member.permissionOverride);
-    const inheritedPermissions = getProjectRoleTemplatePermissions(member.role, team.projectRolePermissionTemplates);
+  private async buildMemberPermissionsResponseFromPrisma(
+    project: { id: string; teamId: string },
+    member: { id: string; userId: string; role: string; permissionOverride: unknown },
+  ): Promise<ProjectMemberPermissionsResponse> {
+    const team = await this.prisma.team.findUnique({ where: { id: project.teamId } });
+    if (!team) throw new NotFoundException("Team not found");
+    const permissionOverride = normalizePermissionOverride(jsonOutput(member.permissionOverride));
+    const inheritedPermissions = getProjectRoleTemplatePermissions(member.role as ProjectRole, jsonOutput(team.projectRolePermissionTemplates));
+    const user = await this.prisma.user.findUnique({ where: { id: member.userId } });
+    if (!user) throw new NotFoundException("User not found");
+    const teamMembers = await this.prisma.teamMember.findMany({ where: { teamId: project.teamId, userId: member.userId } });
+
     const effectivePermissions = resolveProjectPermissions({
       userId: member.userId,
-      globalRole: this.mustFindUser(db, member.userId).globalRole,
-      teamRoles: db.teamMembers.filter((item) => item.teamId === project.teamId && item.userId === member.userId).map((item) => item.role),
-      projectRoles: [member.role],
-      projectMembers: [{ role: member.role, permissionOverride }],
-      projectRolePermissionTemplates: team.projectRolePermissionTemplates,
+      globalRole: user.globalRole,
+      teamRoles: teamMembers.map((item) => item.role),
+      projectRoles: [member.role as ProjectRole],
+      projectMembers: [{ role: member.role as ProjectRole, permissionOverride }],
+      projectRolePermissionTemplates: jsonOutput(team.projectRolePermissionTemplates),
     });
 
     return {
       memberId: member.id,
       userId: member.userId,
-      role: member.role,
+      role: member.role as ProjectRole,
       inheritedPermissions,
       permissionOverride,
       effectivePermissions,
@@ -2242,42 +2307,57 @@ export class WorkspaceService {
     };
   }
 
-  private getTeamMemberSummaries(db: DevDatabase, teamId: string): TeamMemberSummary[] {
-
-    return db.teamMembers
-      .filter((member) => member.teamId === teamId)
-      .map((member) => this.buildTeamMemberSummary(db, member))
-      .sort((left, right) => left.displayName.localeCompare(right.displayName));
+  private async getTeamMemberSummariesAsync(teamId: string): Promise<TeamMemberSummary[]> {
+    const members = await this.prisma.teamMember.findMany({ where: { teamId } });
+    const summaries = await Promise.all(members.map(async (member) => {
+      const user = await this.prisma.user.findUnique({ where: { id: member.userId } });
+      return {
+        id: member.id,
+        userId: member.userId,
+        role: member.role as TeamRole,
+        createdAt: iso(member.createdAt),
+        displayName: user?.displayName ?? "Unknown",
+        email: user?.email ?? "",
+      };
+    }));
+    return summaries.sort((left, right) => left.displayName.localeCompare(right.displayName));
   }
 
-  private buildTeamMemberSummary(db: DevDatabase, member: TeamMemberRecord): TeamMemberSummary {
-    const user = this.mustFindUser(db, member.userId);
+  private buildTeamMemberSummaryFromRecords(
+    member: { id: string; userId: string; role: string; createdAt: Date },
+    user: { displayName: string; email: string } | null,
+  ): TeamMemberSummary {
     return {
       id: member.id,
       userId: member.userId,
-      role: member.role,
-      createdAt: member.createdAt,
-      displayName: user.displayName,
-      email: user.email,
+      role: member.role as TeamRole,
+      createdAt: iso(member.createdAt),
+      displayName: user?.displayName ?? "Unknown",
+      email: user?.email ?? "",
     };
   }
 
-  private getProjectMemberSummaries(db: DevDatabase, projectId: string): ProjectMemberSummary[] {
-    return db.projectMembers
-      .filter((member) => member.projectId === projectId)
-      .map((member) => this.buildProjectMemberSummary(db, member))
-      .sort((left, right) => left.displayName.localeCompare(right.displayName));
+  private async getProjectMemberSummariesAsync(projectId: string): Promise<ProjectMemberSummary[]> {
+    const members = await this.prisma.projectMember.findMany({ where: { projectId } });
+    const summaries = await Promise.all(members.map(async (member) => {
+      return this.buildProjectMemberSummaryFromPrisma(member);
+    }));
+    return summaries.sort((left, right) => left.displayName.localeCompare(right.displayName));
   }
 
-  private buildProjectMemberSummary(db: DevDatabase, member: ProjectMemberRecord): ProjectMemberSummary {
-    const user = this.mustFindUser(db, member.userId);
-    const project = this.mustFindProject(db, member.projectId);
-    const permissions = this.buildMemberPermissionsResponse(db, project, member);
+  private async buildProjectMemberSummaryFromPrisma(
+    member: { id: string; userId: string; role: string; projectId: string; permissionOverride: unknown; createdAt: Date },
+  ): Promise<ProjectMemberSummary> {
+    const user = await this.prisma.user.findUnique({ where: { id: member.userId } });
+    if (!user) throw new NotFoundException("User not found");
+    const project = await this.prisma.project.findUnique({ where: { id: member.projectId } });
+    if (!project) throw new NotFoundException("Project not found");
+    const permissions = await this.buildMemberPermissionsResponseFromPrisma(project, member);
     return {
       id: member.id,
       userId: member.userId,
-      role: member.role,
-      createdAt: member.createdAt,
+      role: member.role as ProjectRole,
+      createdAt: iso(member.createdAt),
       displayName: user.displayName,
       email: user.email,
       inheritedPermissions: permissions.inheritedPermissions,
@@ -2286,45 +2366,82 @@ export class WorkspaceService {
     };
   }
 
-  private getProjectInviteSummaries(db: DevDatabase, projectIds: string[]): ProjectInviteSummary[] {
-    return db.projectInvites
-      .filter((invite) => projectIds.includes(invite.projectId))
-      .map((invite) => {
-        const project = this.mustFindProject(db, invite.projectId);
-        return {
-          id: invite.id,
-          projectId: invite.projectId,
-          projectName: project.name,
-          email: invite.email,
-          role: invite.role,
-          status: invite.status,
-          createdAt: invite.createdAt,
-          createdBy: invite.createdBy,
-        };
-      })
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  private async getProjectInviteSummariesAsync(projectIds: string[]): Promise<ProjectInviteSummary[]> {
+    const invites = await this.prisma.projectInvite.findMany({
+      where: { projectId: { in: projectIds } },
+      orderBy: { createdAt: "desc" },
+    });
+    const summaries = await Promise.all(invites.map(async (invite) => {
+      const project = await this.prisma.project.findUnique({ where: { id: invite.projectId } });
+      if (!project) return null;
+      return {
+        id: invite.id,
+        projectId: invite.projectId,
+        projectName: project.name,
+        email: invite.email,
+        role: invite.role as ProjectRole,
+        status: invite.status as string,
+        createdAt: iso(invite.createdAt),
+        createdBy: invite.createdBy,
+      } satisfies ProjectInviteSummary;
+    }));
+    return summaries.filter((s): s is ProjectInviteSummary => s !== null);
   }
 
-  private getReviewQueue(db: DevDatabase, projectIds: string[]): ReviewQueueVersionSummary[] {
-    return db.versions
-      .filter((version) => this.isReviewQueueStatus(version.status))
-      .map((version) => {
-        const document = this.mustFindDocument(db, version.documentId);
-        const project = this.mustFindProject(db, document.projectId);
-        return {
-          id: version.id,
-          title: version.title,
-          status: version.status,
-          versionNumber: version.versionNumber,
-          createdAt: version.createdAt,
-          documentId: document.id,
-          documentTitle: document.title,
-          projectId: project.id,
-          projectName: project.name,
-        };
-      })
-      .filter((version) => projectIds.includes(version.projectId))
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  private async getReviewQueueAsync(projectIds: string[]): Promise<ReviewQueueVersionSummary[]> {
+    const projectDocs = await this.prisma.document.findMany({
+      where: { projectId: { in: projectIds } },
+      select: { id: true, projectId: true, title: true },
+    });
+    const documentIds = projectDocs.map((d) => d.id);
+    const docMap = new Map(projectDocs.map((d) => [d.id, d]));
+
+    const reviewVersions = await this.prisma.version.findMany({
+      where: {
+        documentId: { in: documentIds },
+        status: { in: ["pending_review", "submitted"] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const summaries = await Promise.all(reviewVersions.map(async (version) => {
+      const doc = docMap.get(version.documentId);
+      if (!doc) return null;
+      const project = await this.prisma.project.findUnique({ where: { id: doc.projectId } });
+      if (!project || !projectIds.includes(project.id)) return null;
+      return {
+        id: version.id,
+        title: version.title,
+        status: version.status as VersionStatus,
+        versionNumber: version.versionNumber,
+        createdAt: iso(version.createdAt),
+        documentId: doc.id,
+        documentTitle: doc.title,
+        projectId: project.id,
+        projectName: project.name,
+      };
+    }));
+    return summaries.filter((s): s is ReviewQueueVersionSummary => s !== null);
+  }
+
+  /** 使用 Prisma 构建版本影响摘要（替代 impactService.buildVersionImpactSummary） */
+  private async buildVersionImpactSummaryPrisma(versionId: string) {
+    const issues = await this.prisma.impactIssue.findMany({ where: { targetVersionId: versionId } });
+    const dependencies = await this.prisma.versionDependency.findMany({ where: { targetVersionId: versionId } });
+    return {
+      versionId,
+      dependencies,
+      openCount: issues.filter((i) => i.status === "open").length,
+      suggestedCount: issues.filter((i) => i.status === "suggested").length,
+      acceptedCount: issues.filter((i) => i.status === "accepted").length,
+      ignoredCount: issues.filter((i) => i.status === "ignored").length,
+      resolvedCount: issues.filter((i) => i.status === "resolved").length,
+      latestIssues: issues.slice(0, 5).map((i) => ({
+        id: i.id, projectId: i.projectId, title: i.title, status: i.status,
+        severity: i.severity, targetDocumentId: i.targetDocumentId,
+        targetVersionId: i.targetVersionId, createdAt: iso(i.createdAt),
+      })),
+    };
   }
 
   private isReviewQueueStatus(status: VersionStatus) {
@@ -2347,194 +2464,165 @@ export class WorkspaceService {
     return undefined;
   }
 
-  private assertProjectReadable(db: DevDatabase, projectId: string, userId: string) {
-    const actor = this.buildProjectActorContext(db, userId, projectId);
+  private async assertProjectReadableAsync(projectId: string, userId: string) {
+    const actor = await this.buildProjectActorContext(userId, projectId);
 
     if (!this.actorHasProjectPermission(actor, "project.view")) {
       throw new ForbiddenException("You do not have access to this project");
     }
   }
 
-  private mustFindProject(db: DevDatabase, projectId: string) {
-    const project = db.projects.find((item) => item.id === projectId);
-    if (!project) {
-      throw new NotFoundException("Project not found");
-    }
-    return project;
-  }
-
-  private mustFindProjectMember(db: DevDatabase, projectId: string, memberId: string): ProjectMemberRecord {
-    const member = db.projectMembers.find((item) => item.id === memberId && item.projectId === projectId);
-    if (!member) {
-      throw new NotFoundException("Project member not found");
-    }
-    return member;
-  }
-
-  private removesOwnLastPermissionManager(
-    db: DevDatabase,
-    project: DevDatabase["projects"][number],
-    member: ProjectMemberRecord,
+  private async removesOwnLastPermissionManagerAsync(
+    project: { id: string; teamId: string },
+    member: { id: string; userId: string; role: string; permissionOverride: unknown },
     actorUserId: string,
     nextOverride: PermissionOverride,
-  ): boolean {
+  ): Promise<boolean> {
     if (member.userId !== actorUserId) {
       return false;
     }
 
-    const members = db.projectMembers.filter((item) => item.projectId === project.id);
-    const hasPermissionManage = (item: ProjectMemberRecord) => this.buildMemberPermissionsResponse(db, project, item)
-      .effectivePermissions.includes("permission.manage");
-    const managersBefore = members.filter(hasPermissionManage);
+    const members = await this.prisma.projectMember.findMany({ where: { projectId: project.id } });
+    const hasPermissionManage = async (item: { id: string; userId: string; role: string; permissionOverride: unknown }) =>
+      (await this.buildMemberPermissionsResponseFromPrisma(project, item))
+        .effectivePermissions.includes("permission.manage");
+    const managersBefore: typeof members = [];
+    for (const m of members) {
+      if (await hasPermissionManage(m)) managersBefore.push(m);
+    }
 
     if (managersBefore.length !== 1 || managersBefore[0]?.id !== member.id) {
       return false;
     }
 
     const nextMember = { ...member, permissionOverride: nextOverride };
-    return !members
-      .map((item) => item.id === member.id ? nextMember : item)
-      .some(hasPermissionManage);
-  }
-
-  private mustFindDocument(db: DevDatabase, documentId: string) {
-    const document = db.documents.find((item) => item.id === documentId);
-    if (!document) {
-      throw new NotFoundException("Document not found");
+    for (const item of members) {
+      const check = item.id === member.id ? nextMember : item;
+      if (await hasPermissionManage(check as any)) return false;
     }
-    return document;
+    return true;
   }
 
-  private mustFindVersion(db: DevDatabase, versionId: string) {
-    const version = db.versions.find((item) => item.id === versionId);
-    if (!version) {
-      throw new NotFoundException("Version not found");
-    }
-    return version;
-  }
-
-  private mustFindTeam(db: DevDatabase, teamId: string) {
-    const team = db.teams.find((item) => item.id === teamId);
-    if (!team) {
-      throw new NotFoundException("Team not found");
-    }
-    return team;
-  }
-
-  private mustFindUser(db: DevDatabase, userId: string) {
-    const user = db.users.find((item) => item.id === userId);
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    return user;
-  }
-
-  private ensurePairedDraft(
-    db: DevDatabase,
+  private async ensurePairedDraftAsync(
+    tx: any,
     projectId: string,
     documentType: string,
     createdVersionId: string,
     createdDocumentId: string,
     userId: string,
-  ): void {
+  ): Promise<void> {
     if (documentType !== "script" && documentType !== "world_bible") return;
 
     const peerType = documentType === "script" ? "world_bible" : "script";
-    let peerDoc = db.documents.find(
-      (doc) => doc.projectId === projectId && doc.type === peerType,
-    );
-
-    const now = new Date().toISOString();
+    let peerDoc = await tx.document.findFirst({
+      where: { projectId, type: peerType as any },
+    });
 
     if (!peerDoc) {
       const peerTitle = peerType === "world_bible" ? "世界观设定" : "剧本";
-      peerDoc = {
-        id: createId("doc"),
-        projectId,
-        type: peerType,
-        title: peerTitle,
-        createdBy: userId,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.documents.push(peerDoc);
+      peerDoc = await tx.document.create({
+        data: {
+          id: createId("doc"),
+          projectId,
+          type: peerType as any,
+          title: peerTitle,
+          createdBy: userId,
+        },
+      });
     }
 
-    const existingDraft = db.versions
-      .filter((v) => v.documentId === peerDoc.id)
-      .sort((a, b) => b.versionNumber - a.versionNumber)
-      .find((v) => v.status === "draft" || v.status === "submitted");
+    const existingDraftVersions = await tx.version.findMany({
+      where: { documentId: peerDoc.id },
+      orderBy: { versionNumber: "desc" },
+    });
+    const existingDraft = existingDraftVersions.find((v: any) => v.status === "draft" || v.status === "submitted");
 
     let pairedVersionId: string;
 
     if (existingDraft) {
       pairedVersionId = existingDraft.id;
-      existingDraft.metadata = {
-        ...existingDraft.metadata,
-        pairedVersionId: createdVersionId,
-        pairedDocumentId: createdDocumentId,
-      };
+      const existingMeta = { ...jsonOutput<Record<string, unknown>>(existingDraft.metadata), pairedVersionId: createdVersionId, pairedDocumentId: createdDocumentId };
+      await tx.version.update({ where: { id: existingDraft.id }, data: { metadata: jsonInput(existingMeta) } });
     } else {
-      const siblingVersions = db.versions.filter((v) => v.documentId === peerDoc.id);
-      const latestVersion = siblingVersions.reduce<VersionRecord | undefined>(
-        (current, candidate) =>
-          !current || candidate.versionNumber > current.versionNumber ? candidate : current,
-        undefined,
-      );
+      const latestVersion = (existingDraftVersions as Array<{ versionNumber: number; id: string; [k: string]: unknown }>).reduce(
+        (current, candidate) => !current || candidate.versionNumber > current.versionNumber ? candidate : current,
+        undefined as typeof existingDraftVersions[number] | undefined);
 
       const emptyContent = peerType === "world_bible"
         ? { characters: [], locations: [] }
         : { logline: "", premise: "", characters: [], scenes: [] };
 
-      const newVersion: VersionRecord = {
-        id: createId("version"),
-        documentId: peerDoc.id,
-        versionNumber: getNextVersionNumber(siblingVersions),
-        status: "draft",
-        title: "配对草稿",
-        content: latestVersion?.content ?? emptyContent,
-        metadata: {
-          source: "character-sync",
-          pairedVersionId: createdVersionId,
-          pairedDocumentId: createdDocumentId,
+      const newVersion = await tx.version.create({
+        data: {
+          id: createId("version"),
+          documentId: peerDoc.id,
+          versionNumber: getNextVersionNumber(existingDraftVersions.map((v: any) => this.toVersionRecord(v))),
+          status: "draft",
+          title: "配对草稿",
+          content: jsonInput(latestVersion?.content ?? emptyContent),
+          metadata: jsonInput({
+            source: "character-sync",
+            pairedVersionId: createdVersionId,
+            pairedDocumentId: createdDocumentId,
+          }),
+          parentVersionId: latestVersion?.id,
+          createdBy: userId,
         },
-        parentVersionId: latestVersion?.id,
-        createdBy: userId,
-        createdAt: now,
-      };
-      db.versions.push(newVersion);
-      peerDoc.draftVersionId = newVersion.id;
-      peerDoc.updatedAt = now;
+      });
+      await tx.document.update({
+        where: { id: peerDoc.id },
+        data: { draftVersionId: newVersion.id, updatedAt: new Date() },
+      });
       pairedVersionId = newVersion.id;
     }
 
-    const createdVersion = db.versions.find((v) => v.id === createdVersionId);
+    const createdVersion = await tx.version.findUnique({ where: { id: createdVersionId } });
     if (createdVersion) {
-      createdVersion.metadata = {
-        ...createdVersion.metadata,
-        pairedVersionId,
-        pairedDocumentId: peerDoc.id,
-      };
+      const meta = { ...jsonOutput<Record<string, unknown>>(createdVersion.metadata), pairedVersionId, pairedDocumentId: peerDoc.id };
+      await tx.version.update({ where: { id: createdVersionId }, data: { metadata: jsonInput(meta) } });
     }
   }
 
-  private syncCharactersToPairedDraft(
-    db: DevDatabase,
+  /** 在事务内同步角色到配对草稿（内存操作 + Prisma 写入） */
+  private syncCharactersToPairedDraftInMemory(
     version: VersionRecord,
     document: DocumentRecord,
     userId: string,
+    tx: any,
   ): RealtimeCharacterSyncedEvent | null {
+    // 注意：此方法在事务内使用时，仅返回同步事件信息，
+    // 实际的 Prisma 写入由调用方在事务内完成。
+    // 由于版本内容已在事务中创建/更新，这里只计算需要的事件。
     const metadata = version.metadata ?? {};
     const pairedVersionId = metadata.pairedVersionId as string | undefined;
     const pairedDocumentId = metadata.pairedDocumentId as string | undefined;
     if (!pairedVersionId || !pairedDocumentId) return null;
-    if (metadata.source === "character-sync") return null;
+    if ((metadata as any).source === "character-sync") return null;
 
-    const pairedVersion = db.versions.find((v) => v.id === pairedVersionId);
-    if (!pairedVersion || pairedVersion.status !== "draft") {
-      version.metadata = { ...version.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+    // 返回一个基本事件，实际的同步逻辑由异步版本处理
+    return null;
+  }
+
+  /** 异步同步角色到配对草稿（独立 Prisma 调用） */
+  private async syncCharactersToPairedDraftAsync(
+    tx: any,
+    version: VersionRecord,
+    document: DocumentRecord,
+    userId: string,
+  ): Promise<RealtimeCharacterSyncedEvent | null> {
+    const metadata = version.metadata ?? {};
+    const pairedVersionId = metadata.pairedVersionId as string | undefined;
+    const pairedDocumentId = metadata.pairedDocumentId as string | undefined;
+    if (!pairedVersionId || !pairedDocumentId) return null;
+    if ((metadata as any).source === "character-sync") return null;
+
+    const pairedVersionRow = await tx.version.findUnique({ where: { id: pairedVersionId } });
+    if (!pairedVersionRow || pairedVersionRow.status !== "draft") {
+      const newMeta = { ...version.metadata, pairedVersionId: undefined, pairedDocumentId: undefined };
+      await tx.version.update({ where: { id: version.id }, data: { metadata: jsonInput(newMeta) } });
       return null;
     }
+    const pairedVersion = this.toVersionRecord(pairedVersionRow);
 
     const addedCharacters: Array<{ name: string; id?: string }> = [];
     const updatedCharacters: Array<{ name: string }> = [];
@@ -2568,7 +2656,14 @@ export class WorkspaceService {
       }
 
       if (addedCharacters.length || updatedCharacters.length) {
-        pairedVersion.content = { ...wbContent, characters: wbCharacters };
+        await tx.version.update({
+          where: { id: pairedVersionId },
+          data: { content: jsonInput({ ...wbContent, characters: wbCharacters }) },
+        });
+        await tx.version.update({
+          where: { id: version.id },
+          data: { content: jsonInput({ ...scriptContent, characters: scriptContent.characters }) },
+        });
       }
     } else if (document.type === "world_bible" && version.content && typeof version.content === "object") {
       const wbContent = version.content as WorldBibleContent;
@@ -2593,7 +2688,10 @@ export class WorkspaceService {
       }
 
       if (addedCharacters.length || updatedCharacters.length) {
-        pairedVersion.content = { ...scriptContent, characters: scriptCharacters };
+        await tx.version.update({
+          where: { id: pairedVersionId },
+          data: { content: jsonInput({ ...scriptContent, characters: scriptCharacters }) },
+        });
       }
     }
 
@@ -2610,23 +2708,22 @@ export class WorkspaceService {
     };
   }
 
-  private syncCharacterNameToScripts(
-    db: DevDatabase,
+  private async syncCharacterNameToScriptsAsync(
     projectId: string,
     userId: string,
     characterId: string,
     oldName: string,
     newName: string,
-  ): void {
-    const scriptDocs = db.documents.filter(
-      (doc) => doc.projectId === projectId && doc.type === "script",
-    );
+  ): Promise<void> {
+    const scriptDocs = await this.prisma.document.findMany({
+      where: { projectId, type: "script" },
+    });
     for (const doc of scriptDocs) {
       if (!doc.currentVersionId) continue;
-      const version = db.versions.find((v) => v.id === doc.currentVersionId);
+      const version = await this.prisma.version.findUnique({ where: { id: doc.currentVersionId } });
       if (!version?.content || typeof version.content !== "object") continue;
 
-      const content = version.content as ScriptContent;
+      const content = jsonOutput<ScriptContent>(version.content);
       if (!Array.isArray(content.scenes) && !Array.isArray(content.characters)) continue;
 
       let changed = false;
@@ -2653,82 +2750,84 @@ export class WorkspaceService {
       if (!changed) continue;
 
       const updatedContent: ScriptContent = { ...content, characters: updatedCharacters, scenes: updatedScenes };
-      const siblingVersions = db.versions.filter((v) => v.documentId === doc.id);
-      const now = new Date().toISOString();
-      const newVersion: VersionRecord = {
-        id: createId("version"),
-        documentId: doc.id,
-        versionNumber: getNextVersionNumber(siblingVersions),
-        status: "draft",
-        title: `角色同步: ${oldName} → ${newName}`,
-        content: updatedContent,
-        metadata: { source: "world-bible-sync", characterId, oldName, newName },
-        parentVersionId: version.id,
-        createdBy: userId,
-        createdAt: now,
-      };
-      db.versions.push(newVersion);
-      doc.draftVersionId = newVersion.id;
-      doc.updatedAt = now;
+      const siblingVersions = await this.prisma.version.findMany({ where: { documentId: doc.id } });
+      const now = new Date();
+      const newVersion = await this.prisma.version.create({
+        data: {
+          id: createId("version"),
+          documentId: doc.id,
+          versionNumber: getNextVersionNumber(siblingVersions.map((v) => this.toVersionRecord(v))),
+          status: "draft",
+          title: `角色同步: ${oldName} → ${newName}`,
+          content: jsonInput(updatedContent),
+          metadata: jsonInput({ source: "world-bible-sync", characterId, oldName, newName }),
+          parentVersionId: version.id,
+          createdBy: userId,
+        },
+      });
+      await this.prisma.document.update({
+        where: { id: doc.id },
+        data: { draftVersionId: newVersion.id, updatedAt: now },
+      });
     }
   }
 
-  private syncCharacterNameToWorldBible(
-    db: DevDatabase,
+  private async syncCharacterNameToWorldBibleAsync(
+    txOrPrisma: any,
     projectId: string,
     userId: string,
     characterId: string,
     newName: string,
-  ): void {
-    const wbDoc = db.documents.find(
-      (doc) => doc.projectId === projectId && doc.type === "world_bible",
-    );
+  ): Promise<void> {
+    const wbDoc = await txOrPrisma.document.findFirst({
+      where: { projectId, type: "world_bible" },
+    });
     if (!wbDoc || !wbDoc.currentVersionId) return;
 
-    const version = db.versions.find((v) => v.id === wbDoc.currentVersionId);
+    const version = await txOrPrisma.version.findUnique({ where: { id: wbDoc.currentVersionId } });
     if (!version?.content || typeof version.content !== "object") return;
 
-    const wb = version.content as WorldBibleContent;
+    const wb = jsonOutput<WorldBibleContent>(version.content);
     const character = (wb.characters ?? []).find((c) => c.id === characterId);
     if (!character || character.name === newName) return;
 
     character.name = newName;
     const updatedWb: WorldBibleContent = { ...wb, characters: [...wb.characters] };
 
-    const siblingVersions = db.versions.filter((v) => v.documentId === wbDoc.id);
-    const now = new Date().toISOString();
-    const newVersion: VersionRecord = {
-      id: createId("version"),
-      documentId: wbDoc.id,
-      versionNumber: getNextVersionNumber(siblingVersions),
-      status: "draft",
-      title: `剧本同步: 角色 ${newName}`,
-      content: updatedWb,
-      metadata: { source: "script-sync", characterId, newName },
-      parentVersionId: version.id,
-      createdBy: userId,
-      createdAt: now,
-    };
-    db.versions.push(newVersion);
-    wbDoc.draftVersionId = newVersion.id;
-    wbDoc.updatedAt = now;
+    const siblingVersions = await txOrPrisma.version.findMany({ where: { documentId: wbDoc.id } });
+    const newVersion = await txOrPrisma.version.create({
+      data: {
+        id: createId("version"),
+        documentId: wbDoc.id,
+        versionNumber: getNextVersionNumber(siblingVersions.map((v: any) => this.toVersionRecord(v))),
+        status: "draft",
+        title: `剧本同步: 角色 ${newName}`,
+        content: jsonInput(updatedWb),
+        metadata: jsonInput({ source: "script-sync", characterId, newName }),
+        parentVersionId: version.id,
+        createdBy: userId,
+      },
+    });
+    await txOrPrisma.document.update({
+      where: { id: wbDoc.id },
+      data: { draftVersionId: newVersion.id, updatedAt: new Date() },
+    });
   }
 
-  private clearCharacterRefsInScripts(
-    db: DevDatabase,
+  private async clearCharacterRefsInScriptsAsync(
     projectId: string,
     userId: string,
     characterId: string,
-  ): void {
-    const scriptDocs = db.documents.filter(
-      (doc) => doc.projectId === projectId && doc.type === "script",
-    );
+  ): Promise<void> {
+    const scriptDocs = await this.prisma.document.findMany({
+      where: { projectId, type: "script" },
+    });
     for (const doc of scriptDocs) {
       if (!doc.currentVersionId) continue;
-      const version = db.versions.find((v) => v.id === doc.currentVersionId);
+      const version = await this.prisma.version.findUnique({ where: { id: doc.currentVersionId } });
       if (!version?.content || typeof version.content !== "object") continue;
 
-      const content = version.content as ScriptContent;
+      const content = jsonOutput<ScriptContent>(version.content);
       if (!Array.isArray(content.characters)) continue;
 
       let changed = false;
@@ -2744,41 +2843,42 @@ export class WorkspaceService {
       if (!changed) continue;
 
       const updatedContent: ScriptContent = { ...content, characters: updatedCharacters };
-      const siblingVersions = db.versions.filter((v) => v.documentId === doc.id);
-      const now = new Date().toISOString();
-      const newVersion: VersionRecord = {
-        id: createId("version"),
-        documentId: doc.id,
-        versionNumber: getNextVersionNumber(siblingVersions),
-        status: "draft",
-        title: "角色关联清理",
-        content: updatedContent,
-        metadata: { source: "world-bible-sync", deletedCharacterId: characterId },
-        parentVersionId: version.id,
-        createdBy: userId,
-        createdAt: now,
-      };
-      db.versions.push(newVersion);
-      doc.draftVersionId = newVersion.id;
-      doc.updatedAt = now;
+      const siblingVersions = await this.prisma.version.findMany({ where: { documentId: doc.id } });
+      const now = new Date();
+      const newVersion = await this.prisma.version.create({
+        data: {
+          id: createId("version"),
+          documentId: doc.id,
+          versionNumber: getNextVersionNumber(siblingVersions.map((v) => this.toVersionRecord(v))),
+          status: "draft",
+          title: "角色关联清理",
+          content: jsonInput(updatedContent),
+          metadata: jsonInput({ source: "world-bible-sync", deletedCharacterId: characterId }),
+          parentVersionId: version.id,
+          createdBy: userId,
+        },
+      });
+      await this.prisma.document.update({
+        where: { id: doc.id },
+        data: { draftVersionId: newVersion.id, updatedAt: now },
+      });
     }
   }
 
-  private clearLocationRefsInScripts(
-    db: DevDatabase,
+  private async clearLocationRefsInScriptsAsync(
     projectId: string,
     userId: string,
     locationId: string,
-  ): void {
-    const scriptDocs = db.documents.filter(
-      (doc) => doc.projectId === projectId && doc.type === "script",
-    );
+  ): Promise<void> {
+    const scriptDocs = await this.prisma.document.findMany({
+      where: { projectId, type: "script" },
+    });
     for (const doc of scriptDocs) {
       if (!doc.currentVersionId) continue;
-      const version = db.versions.find((v) => v.id === doc.currentVersionId);
+      const version = await this.prisma.version.findUnique({ where: { id: doc.currentVersionId } });
       if (!version?.content || typeof version.content !== "object") continue;
 
-      const content = version.content as ScriptContent;
+      const content = jsonOutput<ScriptContent>(version.content);
       if (!Array.isArray(content.scenes)) continue;
 
       let changed = false;
@@ -2794,40 +2894,42 @@ export class WorkspaceService {
       if (!changed) continue;
 
       const updatedContent: ScriptContent = { ...content, scenes: updatedScenes };
-      const siblingVersions = db.versions.filter((v) => v.documentId === doc.id);
-      const now = new Date().toISOString();
-      const newVersion: VersionRecord = {
-        id: createId("version"),
-        documentId: doc.id,
-        versionNumber: getNextVersionNumber(siblingVersions),
-        status: "draft",
-        title: "地点关联清理",
-        content: updatedContent,
-        metadata: { source: "world-bible-sync", deletedLocationId: locationId },
-        parentVersionId: version.id,
-        createdBy: userId,
-        createdAt: now,
-      };
-      db.versions.push(newVersion);
-      doc.draftVersionId = newVersion.id;
-      doc.updatedAt = now;
+      const siblingVersions = await this.prisma.version.findMany({ where: { documentId: doc.id } });
+      const now = new Date();
+      const newVersion = await this.prisma.version.create({
+        data: {
+          id: createId("version"),
+          documentId: doc.id,
+          versionNumber: getNextVersionNumber(siblingVersions.map((v) => this.toVersionRecord(v))),
+          status: "draft",
+          title: "地点关联清理",
+          content: jsonInput(updatedContent),
+          metadata: jsonInput({ source: "world-bible-sync", deletedLocationId: locationId }),
+          parentVersionId: version.id,
+          createdBy: userId,
+        },
+      });
+      await this.prisma.document.update({
+        where: { id: doc.id },
+        data: { draftVersionId: newVersion.id, updatedAt: now },
+      });
     }
   }
 
-  private extractWorldBible(db: DevDatabase, projectId: string): WorldBibleContent {
-    const wbDoc = db.documents.find(
-      (doc) => doc.projectId === projectId && doc.type === "world_bible",
-    );
+  private async extractWorldBibleAsync(projectId: string): Promise<WorldBibleContent> {
+    const wbDoc = await this.prisma.document.findFirst({
+      where: { projectId, type: "world_bible" },
+    });
     if (!wbDoc || !wbDoc.currentVersionId) {
       return { characters: [], locations: [] };
     }
 
-    const version = db.versions.find((v) => v.id === wbDoc.currentVersionId);
+    const version = await this.prisma.version.findUnique({ where: { id: wbDoc.currentVersionId } });
     if (!version || !version.content || typeof version.content !== "object") {
       return { characters: [], locations: [] };
     }
 
-    const content = version.content as Record<string, unknown>;
+    const content = jsonOutput<Record<string, unknown>>(version.content);
     return {
       characters: Array.isArray(content.characters) ? content.characters as WorldBibleContent["characters"] : [],
       locations: Array.isArray(content.locations) ? content.locations as WorldBibleContent["locations"] : [],
@@ -2838,69 +2940,86 @@ export class WorkspaceService {
     };
   }
 
-  private persistWorldBible(db: DevDatabase, projectId: string, userId: string, content: WorldBibleContent) {
-    let wbDoc = db.documents.find(
-      (doc) => doc.projectId === projectId && doc.type === "world_bible",
-    );
-
-    const now = new Date().toISOString();
+  private async persistWorldBibleAsync(projectId: string, userId: string, content: WorldBibleContent) {
+    let wbDoc = await this.prisma.document.findFirst({
+      where: { projectId, type: "world_bible" },
+    });
 
     if (!wbDoc) {
-      wbDoc = {
-        id: createId("doc"),
-        projectId,
-        type: "world_bible",
-        title: "\u4e16\u754c\u89c2\u8bbe\u5b9a",
-        createdBy: userId,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.documents.push(wbDoc);
+      wbDoc = await this.prisma.document.create({
+        data: {
+          id: createId("doc"),
+          projectId,
+          type: "world_bible",
+          title: "\u4e16\u754c\u89c2\u8bbe\u5b9a",
+          createdBy: userId,
+        },
+      });
     }
 
-    const siblingVersions = db.versions.filter((v) => v.documentId === wbDoc!.id);
+    const siblingVersions = await this.prisma.version.findMany({ where: { documentId: wbDoc.id } });
     const latestVersion = siblingVersions.length > 0
       ? siblingVersions.reduce((latest, v) => v.versionNumber > latest.versionNumber ? v : latest, siblingVersions[0])
       : undefined;
 
-    const prevMetadata = (latestVersion?.metadata ?? {}) as Record<string, unknown>;
-    const version: VersionRecord = {
-      id: createId("version"),
-      documentId: wbDoc.id,
-      versionNumber: getNextVersionNumber(siblingVersions),
-      status: "draft",
-      title: "\u4e16\u754c\u89c2\u8bbe\u5b9a\u66f4\u65b0",
-      content,
-      metadata: {
-        source: "world-bible-editor",
-        pairedVersionId: prevMetadata.pairedVersionId,
-        pairedDocumentId: prevMetadata.pairedDocumentId,
-      },
-      parentVersionId: latestVersion?.id,
-      createdBy: userId,
-      createdAt: now,
-    };
+    const prevMetadata = latestVersion ? jsonOutput<Record<string, unknown>>(latestVersion.metadata) ?? {} : {};
+    const version = await this.prisma.$transaction(async (tx) => {
+      const newVersion = await tx.version.create({
+        data: {
+          id: createId("version"),
+          documentId: wbDoc!.id,
+          versionNumber: getNextVersionNumber(siblingVersions.map((v) => this.toVersionRecord(v))),
+          status: "draft",
+          title: "\u4e16\u754c\u89c2\u8bbe\u5b9a\u66f4\u65b0",
+          content: jsonInput(content),
+          metadata: jsonInput({
+            source: "world-bible-editor",
+            pairedVersionId: prevMetadata.pairedVersionId,
+            pairedDocumentId: prevMetadata.pairedDocumentId,
+          }),
+          parentVersionId: latestVersion?.id,
+          createdBy: userId,
+        },
+      });
+      await tx.document.update({
+        where: { id: wbDoc!.id },
+        data: {
+          draftVersionId: newVersion.id,
+          currentVersionId: newVersion.id,
+          updatedAt: new Date(),
+        },
+      });
 
-    db.versions.push(version);
-    wbDoc.draftVersionId = version.id;
-    wbDoc.currentVersionId = version.id;
-    wbDoc.updatedAt = now;
+      // \u5728\u4e8b\u52a1\u5185\u6267\u884c\u89d2\u8272\u540c\u6b65
+      const versionRecord = this.toVersionRecord(newVersion);
+      const docRecord = this.toDocumentRecord(wbDoc!);
+      const syncEvent = await this.syncCharactersToPairedDraftAsync(tx, versionRecord, docRecord, userId);
+      if (syncEvent) {
+        this.realtimeEvents.emitCharacterSynced(syncEvent);
+      }
 
-    const syncEvent = this.syncCharactersToPairedDraft(db, version, wbDoc, userId);
-    if (syncEvent) {
-      this.realtimeEvents.emitCharacterSynced(syncEvent);
-    }
+      return newVersion;
+    });
   }
 
   // ===== Timeline Methods =====
 
   async getTimeline(userId: string, projectId: string): Promise<TimelineRecord> {
-    return this.database.query((db) => {
-      this.assertProjectReadable(db, projectId, userId);
-      const existing = db.timelines.find((t) => t.projectId === projectId);
-      if (existing) return existing;
-      return this.createDefaultTimeline(projectId);
-    });
+    await this.assertProjectReadableAsync(projectId, userId);
+    const existing = await this.prisma.timeline.findUnique({ where: { projectId } });
+    if (existing) {
+      return {
+        id: existing.id,
+        projectId: existing.projectId,
+        duration: existing.duration,
+        fps: existing.fps,
+        resolution: existing.resolution,
+        tracks: jsonOutput(existing.tracks),
+        createdAt: iso(existing.createdAt),
+        updatedAt: iso(existing.updatedAt),
+      };
+    }
+    return this.createDefaultTimeline(projectId);
   }
 
   async saveTimeline(userId: string, projectId: string, payload: TimelineSavePayload): Promise<TimelineRecord> {
@@ -2909,59 +3028,78 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the timeline");
     }
 
-    return this.database.mutate((db) => {
-      this.mustFindProject(db, projectId);
-      const now = new Date().toISOString();
-      let existing = db.timelines.find((t) => t.projectId === projectId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
 
-      if (existing) {
-        existing.duration = payload.duration;
-        existing.fps = payload.fps;
-        existing.resolution = payload.resolution;
-        existing.tracks = payload.tracks;
-        existing.updatedAt = now;
-        return existing;
-      }
+    const existing = await this.prisma.timeline.findUnique({ where: { projectId } });
+    if (existing) {
+      const updated = await this.prisma.timeline.update({
+        where: { projectId },
+        data: {
+          duration: payload.duration,
+          fps: payload.fps,
+          resolution: payload.resolution,
+          tracks: jsonInput(payload.tracks),
+          updatedAt: new Date(),
+        },
+      });
+      return {
+        id: updated.id,
+        projectId: updated.projectId,
+        duration: updated.duration,
+        fps: updated.fps,
+        resolution: updated.resolution,
+        tracks: jsonOutput(updated.tracks),
+        createdAt: iso(updated.createdAt),
+        updatedAt: iso(updated.updatedAt),
+      };
+    }
 
-      const timeline: TimelineRecord = {
+    const timeline = await this.prisma.timeline.create({
+      data: {
         id: createId("tl"),
         projectId,
         duration: payload.duration,
         fps: payload.fps,
         resolution: payload.resolution,
-        tracks: payload.tracks,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.timelines.push(timeline);
-      return timeline;
+        tracks: jsonInput(payload.tracks),
+      },
     });
+    return {
+      id: timeline.id,
+      projectId: timeline.projectId,
+      duration: timeline.duration,
+      fps: timeline.fps,
+      resolution: timeline.resolution,
+      tracks: jsonOutput(timeline.tracks),
+      createdAt: iso(timeline.createdAt),
+      updatedAt: iso(timeline.updatedAt),
+    };
   }
 
-  private findApprovedShotCompositionVersion(
-    db: DevDatabase,
+  private async findApprovedShotCompositionVersionAsync(
     projectId: string,
     shotId: string,
-  ): { version: VersionRecord; content: MediaContent } | null {
-    const videoDocument = db.documents.find(
-      (document) => document.projectId === projectId && document.type === "video" && document.shotId === shotId,
-    );
-    if (!videoDocument) {
-      return null;
-    }
+  ): Promise<{ version: VersionRecord; content: MediaContent } | null> {
+    const videoDocument = await this.prisma.document.findFirst({
+      where: { projectId, type: "video", shotId },
+    });
+    if (!videoDocument) return null;
 
-    const candidates = db.versions
-      .filter((version) =>
-        version.documentId === videoDocument.id
-        && version.status === "approved"
-        && version.metadata?.source === "shot_composition",
-      )
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const candidates = await this.prisma.version.findMany({
+      where: {
+        documentId: videoDocument.id,
+        status: "approved",
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
     for (const version of candidates) {
-      const content = version.content as MediaContent | undefined;
+      const meta = jsonOutput<Record<string, unknown>>(version.metadata);
+      if (meta?.source !== "shot_composition") continue;
+      const content = jsonOutput<MediaContent>(version.content);
       if (content?.assetUrl) {
-        return { version, content };
+        return { version: this.toVersionRecord(version), content };
       }
     }
     return null;
@@ -2973,156 +3111,177 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the timeline");
     }
 
-    return this.database.mutate((db) => {
-      this.mustFindProject(db, projectId);
-      const now = new Date().toISOString();
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException("Project not found");
 
-      // Gather storyboard data
-      const storyboardDoc = db.documents.find(
-        (d) => d.projectId === projectId && d.type === "storyboard",
-      );
+    // Gather storyboard data
+    const storyboardDoc = await this.prisma.document.findFirst({
+      where: { projectId, type: "storyboard" },
+    });
 
-      const videoTracks: TimelineClipRecord[] = [];
-      const dialogueTracks: TimelineClipRecord[] = [];
-      const subtitleTracks: TimelineClipRecord[] = [];
-      let currentTime = 0;
-      let clipIndex = 0;
+    const videoTracks: TimelineClipRecord[] = [];
+    const dialogueTracks: TimelineClipRecord[] = [];
+    const subtitleTracks: TimelineClipRecord[] = [];
+    let currentTime = 0;
+    let clipIndex = 0;
 
-      if (storyboardDoc && storyboardDoc.currentVersionId) {
-        const sbVersion = db.versions.find((v) => v.id === storyboardDoc.currentVersionId);
-        if (sbVersion && sbVersion.content && typeof sbVersion.content === "object") {
-          const sbContent = sbVersion.content as StoryboardContent;
-          const shots = Array.isArray(sbContent.shots) ? sbContent.shots : [];
+    if (storyboardDoc && storyboardDoc.currentVersionId) {
+      const sbVersion = await this.prisma.version.findUnique({ where: { id: storyboardDoc.currentVersionId } });
+      if (sbVersion && sbVersion.content && typeof sbVersion.content === "object") {
+        const sbContent = jsonOutput<StoryboardContent>(sbVersion.content);
+        const shots = Array.isArray(sbContent.shots) ? sbContent.shots : [];
 
-          for (const shot of shots) {
-            const shotDuration = shot.durationSeconds || 3;
+        for (const shot of shots) {
+          const shotDuration = shot.durationSeconds || 3;
 
-            // 优先使用已验收的单镜头合成版本
-            const composition = this.findApprovedShotCompositionVersion(db, projectId, shot.id);
-            if (composition) {
-              videoTracks.push({
-                id: createId("clip"),
-                assetUrl: composition.content.assetUrl,
-                assetId: composition.content.assetId,
-                startTime: currentTime,
-                duration: shotDuration,
-                inPoint: 0,
-                sortOrder: clipIndex,
-                label: shot.shotLabel || `Shot ${clipIndex + 1}`,
-                shotId: shot.id,
-                transitionIn: clipIndex > 0 ? "fade" : "none",
-                transitionDuration: clipIndex > 0 ? 0.5 : undefined,
-                source: "shot_composition",
-              });
-              currentTime += shotDuration;
-              clipIndex++;
-              continue;
-            }
-
-            // Find adopted video asset for this shot
-            const videoDoc = db.documents.find(
-              (d) => d.projectId === projectId && d.type === "video" && d.shotId === shot.id,
-            );
-            if (videoDoc && videoDoc.currentVersionId) {
-              const videoVersion = db.versions.find((v) => v.id === videoDoc.currentVersionId);
-              const videoContent = videoVersion?.content as Record<string, unknown> | undefined;
-              videoTracks.push({
-                id: createId("clip"),
-                assetUrl: (videoContent?.assetUrl as string) ?? undefined,
-                assetId: (videoContent?.assetId as string) ?? undefined,
-                startTime: currentTime,
-                duration: shotDuration,
-                inPoint: 0,
-                sortOrder: clipIndex,
-                label: shot.shotLabel || `Shot ${clipIndex + 1}`,
-                shotId: shot.id,
-                transitionIn: clipIndex > 0 ? "fade" : "none",
-                transitionDuration: clipIndex > 0 ? 0.5 : undefined,
-                source: "timeline_auto_assemble",
-              });
-            }
-
-            // Find audio asset for this shot
-            const audioDoc = db.documents.find(
-              (d) => d.projectId === projectId && d.type === "audio" && d.shotId === shot.id,
-            );
-            if (audioDoc && audioDoc.currentVersionId) {
-              const audioVersion = db.versions.find((v) => v.id === audioDoc.currentVersionId);
-              const audioContent = audioVersion?.content as Record<string, unknown> | undefined;
-              dialogueTracks.push({
-                id: createId("clip"),
-                assetUrl: (audioContent?.assetUrl as string) ?? undefined,
-                assetId: (audioContent?.assetId as string) ?? undefined,
-                startTime: currentTime,
-                duration: shotDuration,
-                inPoint: 0,
-                sortOrder: clipIndex,
-                label: shot.dialogue ? shot.dialogue.substring(0, 30) : undefined,
-                shotId: shot.id,
-                source: "timeline_auto_assemble",
-              });
-            }
-
-            // Generate subtitle from dialogue
-            if (shot.dialogue) {
-              subtitleTracks.push({
-                id: createId("clip"),
-                startTime: currentTime,
-                duration: shotDuration,
-                inPoint: 0,
-                sortOrder: clipIndex,
-                subtitleText: shot.dialogue,
-                subtitleStyle: { fontSize: 24, color: "#ffffff", position: "bottom" },
-                label: shot.dialogue.substring(0, 30),
-                shotId: shot.id,
-                source: "timeline_auto_assemble",
-              });
-            }
-
+          // 优先使用已验收的单镜头合成版本
+          const composition = await this.findApprovedShotCompositionVersionAsync(projectId, shot.id);
+          if (composition) {
+            videoTracks.push({
+              id: createId("clip"),
+              assetUrl: composition.content.assetUrl,
+              assetId: composition.content.assetId,
+              startTime: currentTime,
+              duration: shotDuration,
+              inPoint: 0,
+              sortOrder: clipIndex,
+              label: shot.shotLabel || `Shot ${clipIndex + 1}`,
+              shotId: shot.id,
+              transitionIn: clipIndex > 0 ? "fade" : "none",
+              transitionDuration: clipIndex > 0 ? 0.5 : undefined,
+              source: "shot_composition",
+            });
             currentTime += shotDuration;
             clipIndex++;
+            continue;
           }
+
+          // Find adopted video asset for this shot
+          const videoDoc = await this.prisma.document.findFirst({
+            where: { projectId, type: "video", shotId: shot.id },
+          });
+          if (videoDoc && videoDoc.currentVersionId) {
+            const videoVersion = await this.prisma.version.findUnique({ where: { id: videoDoc.currentVersionId } });
+            const videoContent = videoVersion?.content ? jsonOutput<Record<string, unknown>>(videoVersion.content) : undefined;
+            videoTracks.push({
+              id: createId("clip"),
+              assetUrl: (videoContent?.assetUrl as string) ?? undefined,
+              assetId: (videoContent?.assetId as string) ?? undefined,
+              startTime: currentTime,
+              duration: shotDuration,
+              inPoint: 0,
+              sortOrder: clipIndex,
+              label: shot.shotLabel || `Shot ${clipIndex + 1}`,
+              shotId: shot.id,
+              transitionIn: clipIndex > 0 ? "fade" : "none",
+              transitionDuration: clipIndex > 0 ? 0.5 : undefined,
+              source: "timeline_auto_assemble",
+            });
+          }
+
+          // Find audio asset for this shot
+          const audioDoc = await this.prisma.document.findFirst({
+            where: { projectId, type: "audio", shotId: shot.id },
+          });
+          if (audioDoc && audioDoc.currentVersionId) {
+            const audioVersion = await this.prisma.version.findUnique({ where: { id: audioDoc.currentVersionId } });
+            const audioContent = audioVersion?.content ? jsonOutput<Record<string, unknown>>(audioVersion.content) : undefined;
+            dialogueTracks.push({
+              id: createId("clip"),
+              assetUrl: (audioContent?.assetUrl as string) ?? undefined,
+              assetId: (audioContent?.assetId as string) ?? undefined,
+              startTime: currentTime,
+              duration: shotDuration,
+              inPoint: 0,
+              sortOrder: clipIndex,
+              label: shot.dialogue ? shot.dialogue.substring(0, 30) : undefined,
+              shotId: shot.id,
+              source: "timeline_auto_assemble",
+            });
+          }
+
+          // Generate subtitle from dialogue
+          if (shot.dialogue) {
+            subtitleTracks.push({
+              id: createId("clip"),
+              startTime: currentTime,
+              duration: shotDuration,
+              inPoint: 0,
+              sortOrder: clipIndex,
+              subtitleText: shot.dialogue,
+              subtitleStyle: { fontSize: 24, color: "#ffffff", position: "bottom" },
+              label: shot.dialogue.substring(0, 30),
+              shotId: shot.id,
+              source: "timeline_auto_assemble",
+            });
+          }
+
+          currentTime += shotDuration;
+          clipIndex++;
         }
       }
+    }
 
-      const tracks: TimelineTrackRecord[] = [
-        { id: createId("track"), type: "video", name: "视频", sortOrder: 0, isMuted: false, volume: 1.0, clips: videoTracks },
-        { id: createId("track"), type: "dialogue", name: "对白", sortOrder: 1, isMuted: false, volume: 1.0, clips: dialogueTracks },
-        { id: createId("track"), type: "music", name: "音乐", sortOrder: 2, isMuted: false, volume: 0.5, clips: [] },
-        { id: createId("track"), type: "sfx", name: "音效", sortOrder: 3, isMuted: false, volume: 0.8, clips: [] },
-        { id: createId("track"), type: "subtitle", name: "字幕", sortOrder: 4, isMuted: false, volume: 1.0, clips: subtitleTracks },
-      ];
+    const tracks: TimelineTrackRecord[] = [
+      { id: createId("track"), type: "video", name: "视频", sortOrder: 0, isMuted: false, volume: 1.0, clips: videoTracks },
+      { id: createId("track"), type: "dialogue", name: "对白", sortOrder: 1, isMuted: false, volume: 1.0, clips: dialogueTracks },
+      { id: createId("track"), type: "music", name: "音乐", sortOrder: 2, isMuted: false, volume: 0.5, clips: [] },
+      { id: createId("track"), type: "sfx", name: "音效", sortOrder: 3, isMuted: false, volume: 0.8, clips: [] },
+      { id: createId("track"), type: "subtitle", name: "字幕", sortOrder: 4, isMuted: false, volume: 1.0, clips: subtitleTracks },
+    ];
 
-      const existing = db.timelines.find((t) => t.projectId === projectId);
-      if (existing) {
-        existing.tracks = tracks;
-        existing.duration = currentTime;
-        existing.updatedAt = now;
-        return existing;
-      }
+    const existing = await this.prisma.timeline.findUnique({ where: { projectId } });
+    if (existing) {
+      const updated = await this.prisma.timeline.update({
+        where: { projectId },
+        data: { tracks: jsonInput(tracks), duration: currentTime, updatedAt: new Date() },
+      });
+      return {
+        id: updated.id, projectId: updated.projectId,
+        duration: updated.duration, fps: updated.fps, resolution: updated.resolution,
+        tracks: jsonOutput(updated.tracks), createdAt: iso(updated.createdAt), updatedAt: iso(updated.updatedAt),
+      };
+    }
 
-      const timeline: TimelineRecord = {
+    const timeline = await this.prisma.timeline.create({
+      data: {
         id: createId("tl"),
         projectId,
         duration: currentTime,
         fps: 30,
         resolution: "1080x1920",
-        tracks,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.timelines.push(timeline);
-      return timeline;
+        tracks: jsonInput(tracks),
+      },
     });
+    return {
+      id: timeline.id, projectId: timeline.projectId,
+      duration: timeline.duration, fps: timeline.fps, resolution: timeline.resolution,
+      tracks: jsonOutput(timeline.tracks), createdAt: iso(timeline.createdAt), updatedAt: iso(timeline.updatedAt),
+    };
   }
 
   async listExports(userId: string, projectId: string): Promise<ExportRecord[]> {
-    return this.database.query((db) => {
-      this.assertProjectReadable(db, projectId, userId);
-      return db.exports
-        .filter((e) => e.projectId === projectId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    await this.assertProjectReadableAsync(projectId, userId);
+    const exports = await this.prisma.export.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
     });
+    return exports.map((e) => ({
+      id: e.id,
+      projectId: e.projectId,
+      taskId: e.taskId,
+      resolution: e.resolution,
+      fps: e.fps,
+      bitrate: e.bitrate ?? undefined,
+      format: e.format,
+      outputUrl: e.outputUrl ?? undefined,
+      fileSize: e.fileSize ?? undefined,
+      duration: e.duration ?? undefined,
+      status: e.status,
+      createdBy: e.createdBy,
+      createdAt: iso(e.createdAt),
+      completedAt: optionalIso(e.completedAt),
+    })) as ExportRecord[];
   }
 
   async registerProjectAsset(
@@ -3192,29 +3351,27 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit voice configuration");
     }
 
-    return this.database.mutate((db) => {
-      const wb = this.extractWorldBible(db, projectId);
-      const character = wb.characters.find((c) => c.id === characterId);
-      if (!character) {
-        throw new NotFoundException("Character not found");
-      }
+    const wb = await this.extractWorldBibleAsync(projectId);
+    const character = wb.characters.find((c) => c.id === characterId);
+    if (!character) {
+      throw new NotFoundException("Character not found");
+    }
 
-      const voiceConfig: CharacterVoiceConfig = {
-        characterId,
-        ...config,
-      };
+    const voiceConfig: CharacterVoiceConfig = {
+      characterId,
+      ...config,
+    };
 
-      const voiceConfigs = wb.voiceConfigs ? [...wb.voiceConfigs] : [];
-      const existingIdx = voiceConfigs.findIndex((v) => v.characterId === characterId);
-      if (existingIdx >= 0) {
-        voiceConfigs[existingIdx] = voiceConfig;
-      } else {
-        voiceConfigs.push(voiceConfig);
-      }
+    const voiceConfigs = wb.voiceConfigs ? [...wb.voiceConfigs] : [];
+    const existingIdx = voiceConfigs.findIndex((v) => v.characterId === characterId);
+    if (existingIdx >= 0) {
+      voiceConfigs[existingIdx] = voiceConfig;
+    } else {
+      voiceConfigs.push(voiceConfig);
+    }
 
-      this.persistWorldBible(db, projectId, userId, { ...wb, voiceConfigs });
-      return voiceConfig;
-    });
+    await this.persistWorldBibleAsync(projectId, userId, { ...wb, voiceConfigs });
+    return voiceConfig;
   }
 
   private createDefaultTimeline(projectId: string): TimelineRecord {
