@@ -14,6 +14,7 @@ main().catch((error) => {
 
 async function main() {
   await runStep("shared build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/shared", "run", "build"], rootDir);
+  await runStep("api prisma generate", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "prisma:generate"], rootDir);
   await runStep("api build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "build"], rootDir);
   await runStep("worker build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/worker", "run", "build"], rootDir);
 

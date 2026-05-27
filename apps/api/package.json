@@ -7,7 +7,10 @@
     "start": "node dist/apps/api/src/main.js",
     "start:dev": "tsx watch src/main.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/jobs/providers.test.ts && tsx scripts/test.ts"
+    "test": "tsx --test src/jobs/providers.test.ts && tsx scripts/test.ts",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "migrate:legacy-json": "tsx scripts/migrate-legacy-json.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",
@@ -22,6 +25,7 @@
     "@nestjs/serve-static": "^5.0.0",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/websockets": "^11.0.0",
+    "@prisma/client": "^6.19.0",
     "argon2": "^0.41.1",
     "express": "^4.21.0",
     "reflect-metadata": "^0.2.2",
@@ -31,5 +35,8 @@
     "socket.io-client": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.0"
   }
 }
