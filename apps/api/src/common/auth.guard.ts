@@ -14,14 +14,14 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 
-import { DevDatabaseService } from "./dev-database.service";
+import { PrismaService } from "./prisma.service";
 
 /** JWT Bearer 认证守卫，验证访问令牌并加载用户信息 */
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
     @Inject(JwtService) private readonly jwtService: JwtService,
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
 
   /** 验证请求中的 Bearer Token 并加载用户对象 */
@@ -40,9 +40,9 @@ export class AuthGuard implements CanActivate {
         secret: process.env.JWT_ACCESS_SECRET ?? "dramaflow-access-secret",
       });
 
-      const user = await this.database.query((db) =>
-        db.users.find((item) => item.id === payload.sub),
-      );
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
 
       if (!user) {
         throw new UnauthorizedException("User not found");
