@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,8 +12,7 @@ import { PROJECT_PERMISSIONS } from "@dramaflow/shared";
 import { AdminController } from "../src/admin/admin.controller";
 import { AppModule } from "../src/app.module";
 import { AuthController } from "../src/auth/auth.controller";
-import { createEmptyDatabase } from "../src/common/database.types";
-import { DevDatabaseService } from "../src/common/dev-database.service";
+import { resetPrismaTestDatabase } from "./prisma-test-db";
 import { InternalJobsController } from "../src/jobs/internal-jobs.controller";
 import { OpenAiMediaProvider } from "../src/jobs/media-generation.provider";
 import { JobsController } from "../src/jobs/jobs.controller";
@@ -64,11 +63,13 @@ async function runCase(name: string, callback: () => Promise<void>) {
 
 async function withHttpApp<T>(callback: (baseUrl: string) => Promise<T>) {
   const tempRoot = await mkdtemp(join(tmpdir(), "dramaflow-api-test-"));
-  process.env.DATA_DIR = join(tempRoot, "data");
+  process.env.DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://dramaflow:dramaflow@localhost:5432/dramaflow_test?schema=public";
   process.env.UPLOADS_DIR = join(tempRoot, "uploads");
   process.env.STORAGE_DRIVER = "local";
   process.env.JWT_ACCESS_SECRET = "test-access-secret";
   process.env.JWT_REFRESH_SECRET = "test-refresh-secret";
+
+  const prisma = await resetPrismaTestDatabase();
 
   const app = await NestFactory.create(AppModule, { logger: false });
   app.use("/uploads/direct", express.raw({ type: "*/*", limit: "100mb" }));
@@ -84,6 +85,7 @@ async function withHttpApp<T>(callback: (baseUrl: string) => Promise<T>) {
     return await callback(`http://127.0.0.1:${address.port}`);
   } finally {
     await app.close();
+    await prisma.$disconnect();
     // Windows may hold file locks briefly after app.close(), retry cleanup
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -241,38 +243,6 @@ function assertMethodsStayOnPrototype(controller: object, methodNames: string[])
 }
 
 async function main() {
-  const db = createEmptyDatabase();
-  assert.equal(db.users.length, 0);
-  assert.equal(db.projects.length, 0);
-
-  await runCase("dev database normalizes missing conversation sessions", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "dramaflow-db-normalize-"));
-    const previousDataDir = process.env.DATA_DIR;
-    process.env.DATA_DIR = join(tempRoot, "data");
-
-    try {
-      await mkdir(process.env.DATA_DIR, { recursive: true });
-      const legacyDb = createEmptyDatabase() as Record<string, unknown>;
-      delete legacyDb.conversationSessions;
-      await writeFile(
-        join(process.env.DATA_DIR, "dev-db.json"),
-        JSON.stringify(legacyDb, null, 2),
-        "utf-8",
-      );
-
-      const database = new DevDatabaseService();
-      const count = await database.query((db) => db.conversationSessions.length);
-      assert.equal(count, 0);
-    } finally {
-      if (previousDataDir === undefined) {
-        delete process.env.DATA_DIR;
-      } else {
-        process.env.DATA_DIR = previousDataDir;
-      }
-      await rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
   await runCase("mock script fallback without API key", async () => {
     process.env.OPENAI_COMPAT_API_KEY = "test-key";
     process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
