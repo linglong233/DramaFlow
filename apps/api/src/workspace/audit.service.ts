@@ -16,7 +16,8 @@ import type {
   ProjectRole,
 } from "@dramaflow/shared";
 
-import { DevDatabaseService } from "../common/dev-database.service";
+import { PrismaService } from "../common/prisma.service";
+import { jsonInput, jsonOutput, iso } from "../common/prisma-json";
 import { NotificationService } from "../notifications/notification.service";
 import { createId } from "../common/id";
 
@@ -24,15 +25,24 @@ import { createId } from "../common/id";
 @Injectable()
 export class AuditService {
   constructor(
-    @Inject(DevDatabaseService) private readonly database: DevDatabaseService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(NotificationService) private readonly notificationService: NotificationService,
   ) {}
 
   /** 获取项目的审核配置列表 */
   async getAuditConfigs(projectId: string): Promise<AuditConfigRecord[]> {
-    return this.database.query((db) =>
-      db.auditConfigs.filter((c) => c.projectId === projectId),
-    );
+    const configs = await this.prisma.auditConfig.findMany({
+      where: { projectId },
+    });
+    return configs.map((c) => ({
+      id: c.id,
+      projectId: c.projectId,
+      contentType: c.contentType as AuditContentType,
+      reviewRequired: c.reviewRequired,
+      autoApproveRoles: jsonOutput<ProjectRole[]>(c.autoApproveRoles),
+      createdAt: iso(c.createdAt),
+      updatedAt: iso(c.updatedAt),
+    }));
   }
 
   /** 创建或更新审核配置 */
@@ -41,33 +51,32 @@ export class AuditService {
     contentType: AuditContentType,
     input: { reviewRequired: boolean; autoApproveRoles?: ProjectRole[] },
   ): Promise<AuditConfigRecord> {
-    return this.database.mutate((db) => {
-      const existing = db.auditConfigs.find(
-        (c) => c.projectId === projectId && c.contentType === contentType,
-      );
-
-      const now = new Date().toISOString();
-
-      if (existing) {
-        existing.reviewRequired = input.reviewRequired;
-        existing.autoApproveRoles = input.autoApproveRoles ?? existing.autoApproveRoles;
-        existing.updatedAt = now;
-        return existing;
-      }
-
-      const config: AuditConfigRecord = {
+    const result = await this.prisma.auditConfig.upsert({
+      where: { projectId_contentType: { projectId, contentType } },
+      update: {
+        reviewRequired: input.reviewRequired,
+        autoApproveRoles: jsonInput(input.autoApproveRoles ?? []),
+        updatedAt: new Date(),
+      },
+      create: {
         id: createId("acfg"),
         projectId,
         contentType,
         reviewRequired: input.reviewRequired,
-        autoApproveRoles: input.autoApproveRoles ?? [],
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      db.auditConfigs.push(config);
-      return config;
+        autoApproveRoles: jsonInput(input.autoApproveRoles ?? []),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
     });
+    return {
+      id: result.id,
+      projectId: result.projectId,
+      contentType: result.contentType as AuditContentType,
+      reviewRequired: result.reviewRequired,
+      autoApproveRoles: jsonOutput<ProjectRole[]>(result.autoApproveRoles),
+      createdAt: iso(result.createdAt),
+      updatedAt: iso(result.updatedAt),
+    };
   }
 
   /** 记录审核操作并发送通知 */
@@ -79,25 +88,32 @@ export class AuditService {
     reviewerId: string;
     comment?: string;
   }): Promise<AuditRecordEntry> {
-    const entry: AuditRecordEntry = {
-      id: createId("aud"),
-      projectId: params.projectId,
-      versionId: params.versionId,
-      documentType: params.documentType,
-      action: params.action,
-      reviewerId: params.reviewerId,
-      comment: params.comment,
-      createdAt: new Date().toISOString(),
-    };
-
-    await this.database.mutate((db) => {
-      db.auditRecords.push(entry);
+    const entry = await this.prisma.auditRecord.create({
+      data: {
+        id: createId("aud"),
+        projectId: params.projectId,
+        versionId: params.versionId,
+        documentType: params.documentType,
+        action: params.action,
+        reviewerId: params.reviewerId,
+        comment: params.comment,
+        createdAt: new Date(),
+      },
     });
 
     // 向相关用户发送审核通知
     await this.notifyAuditAction(params);
 
-    return entry;
+    return {
+      id: entry.id,
+      projectId: entry.projectId,
+      versionId: entry.versionId,
+      documentType: entry.documentType as DocumentType,
+      action: entry.action as AuditAction,
+      reviewerId: entry.reviewerId,
+      comment: entry.comment ?? undefined,
+      createdAt: iso(entry.createdAt),
+    };
   }
 
   /** 查询项目审核记录（分页） */
@@ -105,48 +121,61 @@ export class AuditService {
     projectId: string,
     options: { type?: DocumentType; limit?: number; offset?: number } = {},
   ): Promise<{ records: AuditRecordSummary[]; total: number }> {
-    return this.database.query((db) => {
-      let items = db.auditRecords.filter((r) => r.projectId === projectId);
+    const where: any = { projectId };
+    if (options.type) {
+      where.documentType = options.type;
+    }
 
-      if (options.type) {
-        items = items.filter((r) => r.documentType === options.type);
-      }
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 20;
 
-      items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const [records, total] = await this.prisma.$transaction([
+      this.prisma.auditRecord.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      this.prisma.auditRecord.count({ where }),
+    ]);
 
-      const total = items.length;
-      const offset = options.offset ?? 0;
-      const limit = options.limit ?? 20;
-      const records = items.slice(offset, offset + limit).map((record) => this.toAuditRecordSummary(db, record));
+    const summaries: AuditRecordSummary[] = [];
+    for (const record of records) {
+      summaries.push(await this.toAuditRecordSummary(record));
+    }
 
-      return { records, total };
-    });
+    return { records: summaries, total };
   }
 
   /** 获取指定版本的审核记录 */
   async getAuditRecordsForVersion(versionId: string): Promise<AuditRecordSummary[]> {
-    return this.database.query((db) =>
-      db.auditRecords
-        .filter((r) => r.versionId === versionId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .map((record) => this.toAuditRecordSummary(db, record)),
-    );
+    const records = await this.prisma.auditRecord.findMany({
+      where: { versionId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const summaries: AuditRecordSummary[] = [];
+    for (const record of records) {
+      summaries.push(await this.toAuditRecordSummary(record));
+    }
+    return summaries;
   }
 
   /** 将审核记录转换为包含审核人信息的摘要 */
-  private toAuditRecordSummary(
-    db: import("../common/database.types").DevDatabase,
-    record: AuditRecordEntry,
-  ): AuditRecordSummary {
-    const reviewer = db.users.find((user) => user.id === record.reviewerId);
+  private async toAuditRecordSummary(
+    record: { id: string; projectId: string; versionId: string; documentType: string; action: string; comment: string | null; createdAt: Date; reviewerId: string },
+  ): Promise<AuditRecordSummary> {
+    const reviewer = await this.prisma.user.findUnique({
+      where: { id: record.reviewerId },
+    });
     return {
       id: record.id,
       projectId: record.projectId,
       versionId: record.versionId,
-      documentType: record.documentType,
-      action: record.action,
-      comment: record.comment,
-      createdAt: record.createdAt,
+      documentType: record.documentType as DocumentType,
+      action: record.action as AuditAction,
+      comment: record.comment ?? undefined,
+      createdAt: iso(record.createdAt),
       reviewerDisplayName: reviewer?.displayName ?? "Unknown",
       reviewerEmail: reviewer?.email ?? "unknown@example.com",
     };
@@ -162,20 +191,23 @@ export class AuditService {
   }): Promise<void> {
     const { projectId, versionId, action, reviewerId } = params;
 
-    const data = await this.database.query((db) => {
-      const version = db.versions.find((v) => v.id === versionId);
-      const reviewer = db.users.find((u) => u.id === reviewerId);
-      const projectMembers = db.projectMembers.filter((m) => m.projectId === projectId);
-      const reviewerRoles: ProjectRole[] = ["project_admin", "reviewer"];
-      const reviewerMembers = projectMembers.filter((m) => reviewerRoles.includes(m.role));
+    const [version, reviewer, reviewerMembers] = await Promise.all([
+      this.prisma.version.findUnique({ where: { id: versionId } }),
+      this.prisma.user.findUnique({ where: { id: reviewerId } }),
+      this.prisma.projectMember.findMany({
+        where: {
+          projectId,
+          role: { in: ["project_admin", "reviewer"] },
+        },
+      }),
+    ]);
 
-      return {
-        versionCreatedBy: version?.createdBy,
-        versionTitle: version?.title ?? "Unknown",
-        reviewerName: reviewer?.displayName ?? "Unknown",
-        reviewerMemberUserIds: reviewerMembers.map((m) => m.userId),
-      };
-    });
+    const data = {
+      versionCreatedBy: version?.createdBy ?? undefined,
+      versionTitle: version?.title ?? "Unknown",
+      reviewerName: reviewer?.displayName ?? "Unknown",
+      reviewerMemberUserIds: reviewerMembers.map((m) => m.userId),
+    };
 
     if (action === "submitted") {
       // 通知审核员
