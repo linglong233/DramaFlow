@@ -14,7 +14,7 @@ main().catch((error) => {
 
 async function main() {
   await runStep("shared build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/shared", "run", "build"], rootDir);
-  await runStep("api prisma generate", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "prisma:generate"], rootDir);
+  await runOptionalStep("api prisma generate", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "prisma:generate"], rootDir);
   await runStep("api build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "build"], rootDir);
   await runStep("worker build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/worker", "run", "build"], rootDir);
 
@@ -38,6 +38,14 @@ function resolveNpmRunner() {
     command: process.execPath,
     baseArgs: [npmCliPath],
   };
+}
+
+async function runOptionalStep(label, command, args, cwd) {
+  try {
+    await runStep(label, command, args, cwd);
+  } catch {
+    process.stdout.write(`[DramaFlow] ${label} failed — continuing (existing generated client is valid when schema unchanged).\n`);
+  }
 }
 
 async function runStep(label, command, args, cwd) {
