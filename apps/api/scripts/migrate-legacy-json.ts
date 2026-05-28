@@ -686,6 +686,16 @@ async function validateImportedDatabase(): Promise<void> {
     LEFT JOIN "VersionDependency" vd ON vd.id = ii."dependencyId"
     WHERE ii."dependencyId" IS NOT NULL AND vd.id IS NULL
   `);
+  await assertNoInvalidRows("Impact issues with invalid source documents", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "Document" d ON d.id = ii."sourceDocumentId" AND d."projectId" = ii."projectId"
+    WHERE ii."sourceDocumentId" IS NOT NULL AND d.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid previous source versions", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "Version" v ON v.id = ii."previousSourceVersionId"
+    WHERE ii."previousSourceVersionId" IS NOT NULL AND v.id IS NULL
+  `);
   await assertNoInvalidRows("Impact issues with invalid target documents", Prisma.sql`
     SELECT ii.id FROM "ImpactIssue" ii
     LEFT JOIN "Document" d ON d.id = ii."targetDocumentId" AND d."projectId" = ii."projectId"
@@ -700,6 +710,22 @@ async function validateImportedDatabase(): Promise<void> {
     SELECT ii.id FROM "ImpactIssue" ii
     LEFT JOIN "Version" v ON v.id = ii."changedSourceVersionId"
     WHERE v.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid latest suggestions", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "ImpactSuggestion" s
+      ON s.id = ii."latestSuggestionId"
+      AND s."issueId" = ii.id
+      AND s."projectId" = ii."projectId"
+    WHERE ii."latestSuggestionId" IS NOT NULL AND s.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid accepted suggestions", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "ImpactSuggestion" s
+      ON s.id = ii."acceptedSuggestionId"
+      AND s."issueId" = ii.id
+      AND s."projectId" = ii."projectId"
+    WHERE ii."acceptedSuggestionId" IS NOT NULL AND s.id IS NULL
   `);
   await assertNoInvalidRows("Impact targets without issues", Prisma.sql`
     SELECT it.id FROM "ImpactTarget" it
@@ -735,6 +761,17 @@ async function validateImportedDatabase(): Promise<void> {
     SELECT s.id FROM "ImpactSuggestion" s
     LEFT JOIN "Job" j ON j.id = s."createdJobId"
     WHERE s."createdJobId" IS NOT NULL AND j.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact suggestions with invalid created documents", Prisma.sql`
+    SELECT s.id FROM "ImpactSuggestion" s
+    LEFT JOIN "Document" d ON d.id = s."createdDocumentId" AND d."projectId" = s."projectId"
+    WHERE s."createdDocumentId" IS NOT NULL AND d.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact suggestions with invalid created versions", Prisma.sql`
+    SELECT s.id FROM "ImpactSuggestion" s
+    LEFT JOIN "Version" v ON v.id = s."createdVersionId"
+    LEFT JOIN "Document" d ON d.id = v."documentId" AND d."projectId" = s."projectId"
+    WHERE s."createdVersionId" IS NOT NULL AND (v.id IS NULL OR d.id IS NULL)
   `);
   await assertNoInvalidRows("Impact issue events without issues", Prisma.sql`
     SELECT e.id FROM "ImpactIssueEvent" e

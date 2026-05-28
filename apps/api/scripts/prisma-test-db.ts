@@ -66,10 +66,15 @@ export function assertSafeTestDatabaseUrl(databaseUrl: string | undefined): stri
 
 export async function resetPrismaTestDatabase(): Promise<PrismaClient> {
   const databaseUrl = assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const migrateCommand = process.platform === "win32" ? "cmd.exe" : "npm";
+  const migrateArgs =
+    process.platform === "win32"
+      ? ["/d", "/s", "/c", "npm --workspace @dramaflow/api run prisma:migrate:deploy"]
+      : ["--workspace", "@dramaflow/api", "run", "prisma:migrate:deploy"];
 
   const migrate = spawnSync(
-    process.platform === "win32" ? "npm.cmd" : "npm",
-    ["--workspace", "@dramaflow/api", "run", "prisma:migrate:deploy"],
+    migrateCommand,
+    migrateArgs,
     {
       stdio: "inherit",
       env: {
@@ -79,7 +84,8 @@ export async function resetPrismaTestDatabase(): Promise<PrismaClient> {
     },
   );
   if (migrate.status !== 0) {
-    throw new Error("Prisma migration failed for API tests");
+    const detail = migrate.error ? `: ${migrate.error.message}` : "";
+    throw new Error(`Prisma migration failed for API tests${detail}`);
   }
 
   const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });

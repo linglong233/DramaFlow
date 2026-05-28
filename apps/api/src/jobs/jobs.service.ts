@@ -617,7 +617,7 @@ export class JobsService {
   }
 
   async claimNextJob() {
-    const claimedRows = await this.prisma.$queryRaw<Array<Prisma.JobGetPayload<object>>>`
+    const claimedRows = await this.prisma.$queryRaw<Array<Prisma.JobGetPayload<{}>>>`
       UPDATE "Job"
       SET
         status = CAST('running' AS "JobStatus"),

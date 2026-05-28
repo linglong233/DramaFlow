@@ -1,9 +1,8 @@
 /**
- * @fileoverview 开发态数据库类型定义
- * @module api/common
+ * @fileoverview 旧版 JSON 数据库导入类型定义
+ * @module api/scripts
  *
- * 定义 JSON 文件存储的数据库结构。
- * 运行时使用 DevDatabaseService 操作此结构。
+ * 定义旧版 dev-db.json 文件结构，仅供一次性导入脚本使用。
  */
 
 import type {
