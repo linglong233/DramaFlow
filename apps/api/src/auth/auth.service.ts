@@ -56,7 +56,7 @@ export class AuthService {
     @Inject(LlmProviderService) private readonly llmProviderService: LlmProviderService,
   ) {}
 
-  /** 用户注册，首个用户自动成为平台超级管理员，同时创建个人工作室 */
+  /** 用户注册，首个用户自动成为平台超级管理员；团队需要用户显式创建或通过邀请加入 */
   async register(input: RegisterInput) {
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
@@ -76,43 +76,16 @@ export class AuthService {
     const now = new Date();
     const passwordHash = await argon2.hash(input.password);
 
-    const user = await this.prisma.$transaction(async (tx) => {
-      const createdUser = await tx.user.create({
-        data: {
-          id: createId("user"),
-          email,
-          displayName,
-          passwordHash,
-          globalRole: userCount === 0 ? "platform_super_admin" : "user",
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-
-      const teamId = createId("team");
-      await tx.team.create({
-        data: {
-          id: teamId,
-          name: `${displayName}的个人工作室`,
-          slug: teamId,
-          defaultReviewPolicy: "bypass",
-          createdBy: createdUser.id,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-
-      await tx.teamMember.create({
-        data: {
-          id: createId("tm"),
-          teamId,
-          userId: createdUser.id,
-          role: "tenant_owner",
-          createdAt: now,
-        },
-      });
-
-      return createdUser;
+    const user = await this.prisma.user.create({
+      data: {
+        id: createId("user"),
+        email,
+        displayName,
+        passwordHash,
+        globalRole: userCount === 0 ? "platform_super_admin" : "user",
+        createdAt: now,
+        updatedAt: now,
+      },
     });
 
     return this.issueSession(this.toUserRecord(user));

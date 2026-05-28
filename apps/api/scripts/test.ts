@@ -180,7 +180,7 @@ function lastDoneResult<T extends Record<string, unknown>>(bodyText: string): T 
   return done.result;
 }
 
-async function registerUser(baseUrl: string, input: { email: string; displayName: string; password?: string }) {
+async function registerBareUser(baseUrl: string, input: { email: string; displayName: string; password?: string }) {
   const response = await originalFetch(`${baseUrl}/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -196,6 +196,51 @@ async function registerUser(baseUrl: string, input: { email: string; displayName
     accessToken: string;
     user: { id: string; email: string };
   }>;
+}
+
+async function createTeam(
+  baseUrl: string,
+  accessToken: string,
+  input: { name: string; defaultReviewPolicy?: "required" | "bypass" },
+) {
+  const response = await originalFetch(`${baseUrl}/teams`, {
+    method: "POST",
+    headers: authHeaders(accessToken, true),
+    body: JSON.stringify({
+      name: input.name,
+      defaultReviewPolicy: input.defaultReviewPolicy ?? "required",
+    }),
+  });
+
+  assert.equal(response.status, 201);
+  return response.json() as Promise<{
+    id: string;
+    name: string;
+    slug: string;
+    defaultReviewPolicy: "required" | "bypass";
+  }>;
+}
+
+async function registerUser(
+  baseUrl: string,
+  input: {
+    email: string;
+    displayName: string;
+    password?: string;
+    teamName?: string;
+    teamReviewPolicy?: "required" | "bypass";
+  },
+) {
+  const session = await registerBareUser(baseUrl, input);
+  const team = await createTeam(baseUrl, session.accessToken, {
+    name: input.teamName ?? `${input.displayName} ${session.user.id} Team`,
+    defaultReviewPolicy: input.teamReviewPolicy ?? "bypass",
+  });
+
+  return {
+    ...session,
+    team,
+  };
 }
 
 function authHeaders(accessToken: string, includeJson = false) {
@@ -216,6 +261,7 @@ async function listTeams(baseUrl: string, accessToken: string) {
     name: string;
     currentUserRole: string | null;
     canManage: boolean;
+    defaultReviewPolicy?: "required" | "bypass";
     llmConfig?: unknown;
   }>>;
 }
@@ -447,6 +493,52 @@ async function main() {
       "directUpload",
       "getAssetUrl",
     ]);
+  });
+
+  await runCase("registration does not create a team automatically", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerBareUser(baseUrl, {
+        email: "no-auto-team@example.com",
+        displayName: "No Auto Team",
+      });
+
+      const teams = await listTeams(baseUrl, user.accessToken);
+      assert.deepEqual(teams, []);
+
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          name: "Project Without Team",
+          description: "This should be blocked until a team exists.",
+        }),
+      });
+      assert.equal(projectResponse.status, 403);
+      const errorText = await projectResponse.text();
+      assert.match(errorText, /You must join a team before creating a project/);
+    });
+  });
+
+  await runCase("explicit team creation assigns the creator as tenant owner", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerBareUser(baseUrl, {
+        email: "explicit-team-owner@example.com",
+        displayName: "Explicit Team Owner",
+      });
+
+      const createdTeam = await createTeam(baseUrl, user.accessToken, {
+        name: "Explicit Studio",
+        defaultReviewPolicy: "required",
+      });
+
+      const teams = await listTeams(baseUrl, user.accessToken);
+      assert.equal(teams.length, 1);
+      assert.equal(teams[0]?.id, createdTeam.id);
+      assert.equal(teams[0]?.name, "Explicit Studio");
+      assert.equal(teams[0]?.currentUserRole, "tenant_owner");
+      assert.equal(teams[0]?.canManage, true);
+      assert.equal(teams[0]?.defaultReviewPolicy, "required");
+    });
   });
 
   await runCase("novel import session creation chunks text and latest restores it", async () => {
@@ -993,6 +1085,10 @@ async function main() {
       assert.equal(updatedProfile.displayName, "Director Stream");
       assert.equal(updatedProfile.llmConfig?.stream, true);
 
+      const createdTeam = await createTeam(baseUrl, registerPayload.accessToken, {
+        name: "Director Team",
+      });
+
       const teamsResponse = await originalFetch(`${baseUrl}/teams`, {
         headers: authHeaders,
       });
@@ -1000,7 +1096,7 @@ async function main() {
       const teams = await teamsResponse.json() as Array<{ id: string }>;
       assert.ok(teams.length > 0);
 
-      const teamId = teams[0].id;
+      const teamId = createdTeam.id;
       const teamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
         headers: authHeaders,
       });
