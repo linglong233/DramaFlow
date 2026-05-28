@@ -15,6 +15,7 @@ import { queryKeys } from "../lib/query-keys";
 import { useSession } from "../lib/use-session";
 import { useFeedback } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
+import type { TeamSummary } from "@dramaflow/shared";
 
 interface ProjectItem {
   id: string;
@@ -31,6 +32,11 @@ interface ProjectInviteItem {
   projectName: string;
   role: string;
   createdAt: string;
+}
+
+interface CreatedTeamPayload {
+  id: string;
+  name: string;
 }
 
 type ViewMode = "grid" | "list";
@@ -139,6 +145,8 @@ export function DashboardOverview() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
   const { feedback, setFeedback } = useFeedback();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -149,9 +157,34 @@ export function DashboardOverview() {
     queryFn: () => apiFetch("/projects"),
   });
 
+  const teamsQuery = useQuery<TeamSummary[]>({
+    queryKey: queryKeys.teams,
+    queryFn: () => apiFetch<TeamSummary[]>("/teams"),
+  });
+
   const invitesQuery = useQuery<{ invites: ProjectInviteItem[] }>({
     queryKey: ["pending-project-invites"],
     queryFn: () => apiFetch("/project-invites/pending"),
+  });
+
+  const createTeamMutation = useMutation({
+    mutationFn: (body: { name: string }) =>
+      apiFetch<CreatedTeamPayload>("/teams", {
+        method: "POST",
+        body: {
+          name: body.name,
+          defaultReviewPolicy: "required",
+        },
+      }),
+    onSuccess: async (team) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.teams });
+      setShowCreateTeam(false);
+      setNewTeamName("");
+      setFeedback({ message: t("dashboard.createTeamSuccess", { name: team.name }), error: null });
+    },
+    onError: (error: unknown) => {
+      setFeedback({ message: null, error: formatApiError(error, t, "dashboard.createTeamFailed") });
+    },
   });
 
   const createMutation = useMutation({
@@ -198,16 +231,47 @@ export function DashboardOverview() {
     return result;
   }, [projects, searchQuery, statusFilter]);
 
+  const teams = teamsQuery.data ?? [];
+  const hasTeams = teams.length > 0;
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasTeams) {
+      setShowCreate(false);
+      setShowCreateTeam(true);
+      setFeedback({ message: null, error: t("dashboard.noTeamProjectBlocked") });
+      return;
+    }
     if (!newName.trim()) return;
     createMutation.mutate({ name: newName.trim(), description: newDesc.trim() });
+  };
+
+  const handleCreateTeam = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = newTeamName.trim();
+    if (!name) return;
+    createTeamMutation.mutate({ name });
   };
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       setShowCreate(false);
+      setShowCreateTeam(false);
     }
+  };
+
+  const openCreateProject = () => {
+    setFeedback({ message: null, error: null });
+    if (!hasTeams) {
+      setShowCreateTeam(true);
+      return;
+    }
+    setShowCreate(true);
+  };
+
+  const openCreateTeam = () => {
+    setFeedback({ message: null, error: null });
+    setShowCreateTeam(true);
   };
 
   const displayName = session?.user.displayName ?? "";
@@ -245,6 +309,20 @@ export function DashboardOverview() {
         )}
       </div>
 
+      {!teamsQuery.isPending && !hasTeams ? (
+        <div className="projects-empty" style={{ marginBottom: "var(--space-5)" }}>
+          <div className="projects-empty-icon">
+            <EmptyIcon />
+          </div>
+          <div className="projects-empty-title">{t("dashboard.teamsOverview.emptyTitle")}</div>
+          <div className="projects-empty-desc">{t("dashboard.teamsOverview.emptyDescription")}</div>
+          <div className="projects-empty-desc">{t("dashboard.teamsOverview.inviteHint")}</div>
+          <button className="btn btn-primary" type="button" onClick={openCreateTeam}>
+            {t("dashboard.createTeam.title")}
+          </button>
+        </div>
+      ) : null}
+
       {/* Toolbar */}
       <div className="projects-toolbar">
         {projects.length > 0 && (
@@ -277,12 +355,24 @@ export function DashboardOverview() {
           </button>
         </div>
 
-        <button
-          className="btn btn-primary"
-          onClick={() => { setShowCreate(true); setFeedback({ message: null, error: null }); }}
-        >
-          {t("dashboard.createProject.title")}
-        </button>
+        {hasTeams ? (
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={openCreateProject}
+          >
+            {t("dashboard.createProject.title")}
+          </button>
+        ) : (
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={openCreateTeam}
+            disabled={teamsQuery.isPending}
+          >
+            {t("dashboard.createTeam.title")}
+          </button>
+        )}
       </div>
 
       {/* Status filter chips */}
@@ -349,6 +439,43 @@ export function DashboardOverview() {
         </div>
       )}
 
+      {showCreateTeam && (
+        <div className="create-project-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true">
+          <form onSubmit={handleCreateTeam} className="create-project-modal">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-4)" }}>
+              <div>
+                <div className="create-project-modal-title">{t("dashboard.createTeam.title")}</div>
+                <div className="create-project-modal-desc">{t("dashboard.createTeam.description")}</div>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowCreateTeam(false)} aria-label={t("common.cancel")}>
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="stack stack-gap-4">
+              <div>
+                <label className="form-label">{t("dashboard.createTeam.teamNameLabel")}</label>
+                <input
+                  id="create-team-name"
+                  className="input"
+                  placeholder={t("dashboard.createTeam.teamNamePlaceholder")}
+                  value={newTeamName}
+                  onChange={(event) => setNewTeamName(event.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="inline inline-gap-2" style={{ justifyContent: "flex-end" }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCreateTeam(false)}>
+                  {t("common.cancel")}
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={createTeamMutation.isPending || !newTeamName.trim()}>
+                  {createTeamMutation.isPending ? t("common.submitting") : t("dashboard.createTeam.submit")}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
       {invitesQuery.data?.invites.length ? (
         <div className="glass-panel" style={{ padding: "var(--space-4)", marginBottom: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
@@ -400,9 +527,9 @@ export function DashboardOverview() {
           <div className="projects-empty-desc">{t("dashboard.recentProjects.emptyDescription")}</div>
           <button
             className="btn btn-primary"
-            onClick={() => { setShowCreate(true); setFeedback({ message: null, error: null }); }}
+            onClick={hasTeams ? openCreateProject : openCreateTeam}
           >
-            {t("dashboard.createProject.title")}
+            {hasTeams ? t("dashboard.createProject.title") : t("dashboard.createTeam.title")}
           </button>
         </div>
       ) : filteredProjects.length === 0 ? (

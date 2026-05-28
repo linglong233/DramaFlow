@@ -102,6 +102,7 @@ export const zhCNMessages = {
     continueProject: "继续最近项目",
     createTeamSuccess: "团队“{name}”已创建，可以继续新建项目。",
     createTeamFailed: "创建团队失败。",
+    noTeamProjectBlocked: "创建项目前需要先创建或加入一个团队。",
     createProjectSuccess: "项目“{name}”已创建，下一步可以进入项目开始写剧本。",
     createProjectFailed: "创建项目失败。",
     loadErrorTitle: "工作台加载失败",
@@ -159,6 +160,7 @@ export const zhCNMessages = {
       description: "快速查看团队数量、默认审核策略和当前组织状态。",
       emptyTitle: "还没有团队",
       emptyDescription: "团队是项目归属和成员管理的基础，先创建 Team 再开始后续工作会更顺。",
+      inviteHint: "如果你是加入已有团队，请打开团队负责人发给你的邀请链接，注册或登录后即可加入。",
       defaultReviewPolicy: "默认审核：{mode}"
     },
     platformOverview: {
@@ -1734,6 +1736,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     continueProject: "Continue latest project",
     createTeamSuccess: "Team \"{name}\" has been created. You can create a project next.",
     createTeamFailed: "Failed to create the team.",
+    noTeamProjectBlocked: "Create or join a team before creating a project.",
     createProjectSuccess: "Project \"{name}\" has been created. You can open it and start the script workflow next.",
     createProjectFailed: "Failed to create the project.",
     loadErrorTitle: "Failed to load the workspace",
@@ -1791,6 +1794,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       description: "Quickly check team count, default review policy, and the current organization shape.",
       emptyTitle: "No teams yet",
       emptyDescription: "Teams are the base for project ownership and member management. Create one before moving on.",
+      inviteHint: "If you are joining an existing team, open the invite link from your team lead and sign in or register there.",
       defaultReviewPolicy: "Default review: {mode}"
     },
     platformOverview: {

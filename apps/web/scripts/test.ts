@@ -14,6 +14,7 @@ const imageConfigTs = readFileSync(join(scriptDir, "../lib/image-config.ts"), "u
 const providerEntryFormTsx = readFileSync(join(scriptDir, "../components/provider-entry-form.tsx"), "utf8");
 const profileSettingsPanelTsx = readFileSync(join(scriptDir, "../components/profile-settings-panel.tsx"), "utf8");
 const teamSettingsPanelTsx = readFileSync(join(scriptDir, "../components/team-settings-panel.tsx"), "utf8");
+const dashboardOverviewTsx = readFileSync(join(scriptDir, "../components/dashboard-overview.tsx"), "utf8");
 
 function assertRuleContains(selector: string, declarations: string[]) {
   const selectorStart = globalsCss.indexOf(`${selector} {`);
@@ -115,5 +116,14 @@ assertFileContains("team-settings-panel.tsx", teamSettingsPanelTsx, "VIDEO_PROVI
 // Team API key masking behavior tests
 assertFileContains("team-settings-panel.tsx", teamSettingsPanelTsx, "maskedApiKey={Boolean(draft.apiKey)}");
 assertFileDoesNotContain("team-settings-panel.tsx", teamSettingsPanelTsx, "maskedApiKey\n                        />");
+
+// Registration no longer creates teams automatically; dashboard must expose explicit team setup
+assertFileContains("dashboard-overview.tsx", dashboardOverviewTsx, "apiFetch<TeamSummary[]>(\"/teams\")");
+assertFileContains("dashboard-overview.tsx", dashboardOverviewTsx, "apiFetch<CreatedTeamPayload>(\"/teams\"");
+assertFileContains("dashboard-overview.tsx", dashboardOverviewTsx, "dashboard.teamsOverview.inviteHint");
+assertFileContains("dashboard-overview.tsx", dashboardOverviewTsx, "dashboard.noTeamProjectBlocked");
+assertFileContains("messages.ts", messagesTs, "inviteHint");
+assertFileContains("messages.ts", messagesTs, "如果你是加入已有团队");
+assertFileContains("messages.ts", messagesTs, "If you are joining an existing team");
 
 console.log("web tests passed");
