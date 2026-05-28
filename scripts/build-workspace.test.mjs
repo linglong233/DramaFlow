@@ -14,6 +14,11 @@ assert.ok(
   "web builds must use the workspace build script so start-all receives complete Next.js production outputs",
 );
 
+assert.ok(
+  buildWorkspaceSource.includes("Skipping api prisma generate (generated client is current)."),
+  "api prisma generate should be skipped when the generated client already matches schema.prisma",
+);
+
 assert.doesNotMatch(
   buildWorkspaceSource,
   /--experimental-build-mode|nextCliPath/u,

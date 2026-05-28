@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { access, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,6 +8,9 @@ const isWindows = process.platform === "win32";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const npmRunner = resolveNpmRunner();
 const buildStepTimeoutMs = parsePositiveInteger(process.env.DRAMAFLOW_BUILD_TIMEOUT_MS, 10 * 60 * 1000);
+const prismaSchemaPath = path.join(rootDir, "apps", "api", "prisma", "schema.prisma");
+const prismaGeneratedClientEntry = path.join(rootDir, "node_modules", ".prisma", "client", "index.js");
+const prismaSchemaHashPath = path.join(rootDir, "node_modules", ".prisma", "client", ".dramaflow-schema.sha256");
 
 main().catch((error) => {
   process.stderr.write(`${formatError(error)}\n`);
@@ -14,7 +19,13 @@ main().catch((error) => {
 
 async function main() {
   await runStep("shared build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/shared", "run", "build"], rootDir);
-  await runOptionalStep("api prisma generate", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "prisma:generate"], rootDir);
+  const prismaGenerateState = await getPrismaGenerateState();
+  if (prismaGenerateState.shouldGenerate) {
+    await runStep("api prisma generate", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "prisma:generate"], rootDir);
+    await writePrismaSchemaHash(prismaGenerateState.schemaHash);
+  } else {
+    process.stdout.write("[DramaFlow] Skipping api prisma generate (generated client is current).\n");
+  }
   await runStep("api build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/api", "run", "build"], rootDir);
   await runStep("worker build", npmRunner.command, [...npmRunner.baseArgs, "--workspace", "@dramaflow/worker", "run", "build"], rootDir);
 
@@ -40,11 +51,43 @@ function resolveNpmRunner() {
   };
 }
 
-async function runOptionalStep(label, command, args, cwd) {
+async function getPrismaGenerateState() {
+  const schemaHash = createHash("sha256").update(await readFile(prismaSchemaPath)).digest("hex");
+  if (!(await exists(prismaGeneratedClientEntry))) {
+    return { shouldGenerate: true, schemaHash };
+  }
+
+  if ((await readTextIfExists(prismaSchemaHashPath))?.trim() === schemaHash) {
+    return { shouldGenerate: false, schemaHash };
+  }
+
+  const [schemaStats, clientStats] = await Promise.all([stat(prismaSchemaPath), stat(prismaGeneratedClientEntry)]);
+  if (clientStats.mtimeMs >= schemaStats.mtimeMs) {
+    await writePrismaSchemaHash(schemaHash);
+    return { shouldGenerate: false, schemaHash };
+  }
+
+  return { shouldGenerate: true, schemaHash };
+}
+
+async function writePrismaSchemaHash(schemaHash) {
+  await writeFile(prismaSchemaHashPath, `${schemaHash}\n`, "utf8");
+}
+
+async function readTextIfExists(filePath) {
   try {
-    await runStep(label, command, args, cwd);
+    return await readFile(filePath, "utf8");
   } catch {
-    process.stdout.write(`[DramaFlow] ${label} failed — continuing (existing generated client is valid when schema unchanged).\n`);
+    return null;
+  }
+}
+
+async function exists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
   }
 }
 
