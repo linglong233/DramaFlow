@@ -10,14 +10,13 @@ DramaFlow 是一个面向导演与工作室的短剧生产平台 TypeScript mono
 - Worker：通过 API 内部接口领取任务的轮询型 Worker
 - 共享契约：`@dramaflow/shared`
 - 认证模型：JWT access token + 以 argon2 哈希保存的不透明 refresh token
-- 运行时持久化：`DevDatabaseService` 管理的 JSON 文件
-- 目标生产模型：面向 PostgreSQL 的 Prisma schema
+- 运行时持久化：Prisma ORM + PostgreSQL
 
 ## 当前状态
 
 DramaFlow 目前已经达到"开发可用"，但还不是完整生产化实现。
 
-- 运行时数据访问仍然使用文件型 `DevDatabaseService`；Prisma 还没有接入真实运行路径。
+- 运行时数据访问使用 Prisma ORM + PostgreSQL。提供一次性导入脚本用于从旧版 JSON 数据迁移。
 - 后台任务仍然使用简化的"轮询 Worker + API 内部接口"方案；Redis / BullMQ 是未来方向，不是当前依赖。
 - 项目工作区已改为按需拆分加载：`GET /projects/:id` 只返回 summary，版本、任务、时间线、导出分别走独立接口刷新。
 - 实时更新已通过 NestJS + Socket.IO gateway 提供，覆盖 `job.updated`、`review.updated`、`notification.created` 三类事件，同时保留轮询作为降级路径。
@@ -372,13 +371,28 @@ Copy-Item .env.example .env
 - `JWT_REFRESH_SECRET`
 - `INTERNAL_API_KEY`
 
-### 3. 构建工作区
+### 3. 设置数据库
+
+**方式 A：Docker Compose**（开发推荐）
+```bash
+docker compose up postgres -d
+```
+
+**方式 B：本地 PostgreSQL**
+确保 PostgreSQL 17+ 已运行，并且 `.env` 中的 `DATABASE_URL` 指向它。
+
+然后应用数据库迁移：
+```bash
+cd apps/api && npx prisma migrate deploy
+```
+
+### 4. 构建工作区
 
 ```bash
 npm run build
 ```
 
-### 4. 启动服务
+### 5. 启动服务
 
 推荐使用根目录启动器，它会自动复制 `.env`、检查端口、构建工作区、拉起 API/Web/Worker 并等待就绪。
 
@@ -410,7 +424,7 @@ npm run dev:web
 npm run dev:worker
 ```
 
-### 5. 打开本地地址
+### 6. 打开本地地址
 
 - Web：`http://localhost:3000`
 - 登录页：`http://localhost:3000/login`
@@ -437,7 +451,8 @@ npm run dev:worker
 
 | 变量 | 说明 |
 |------|------|
-| `DATA_DIR` | `dev-db.json` 所在目录 |
+| `DATABASE_URL` | PostgreSQL 连接字符串（如 `postgresql://user:pass@host:5432/db`） |
+| `LEGACY_DEV_DB_PATH` | 旧版 `dev-db.json` 路径，用于一次性导入（可选） |
 | `UPLOADS_DIR` | 本地上传目录 |
 | `STORAGE_DRIVER` | `local` 或 `s3` |
 | `LOCAL_STORAGE_PUBLIC_URL` | 本地文件公开访问前缀 |
@@ -497,6 +512,7 @@ npm run dev:worker
 
 仓库提供了偏演示/开发用途的 `docker-compose.yml`，会启动：
 
+- PostgreSQL 17
 - Web
 - API
 - Worker
@@ -511,6 +527,18 @@ docker compose up --build
 - Compose 使用 `npm run dev:*`，定位是开发和演示，不是加固后的生产部署方案。
 - Compose 设置了 `STORAGE_DRIVER=local`，因此 MinIO 默认不作为实际存储后端。
 - 默认只透传了部分 Provider 配置。如需真实 Provider 执行，需要把相关变量注入 API 容器。
+- API 容器启动时自动执行 `prisma migrate deploy` 应用迁移。
+
+## 从旧版 JSON 迁移
+
+如果你有旧版基于文件的 `dev-db.json`：
+
+```bash
+cd apps/api
+DATABASE_URL="postgresql://..." LEGACY_DEV_DB_PATH="/path/to/dev-db.json" npx tsx scripts/migrate-legacy-json.ts
+```
+
+目标 PostgreSQL 数据库必须为空（脚本会拒绝向非空数据库导入）。
 
 ## 常用命令
 

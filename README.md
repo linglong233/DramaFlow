@@ -10,14 +10,13 @@ DramaFlow is a TypeScript monorepo for a director- and studio-facing short-drama
 - Worker: polling worker that claims jobs from the API through internal endpoints
 - Shared contracts: `@dramaflow/shared`
 - Auth model: JWT access token + opaque refresh token stored as an argon2 hash
-- Runtime persistence: JSON files via `DevDatabaseService`
-- Target production model: Prisma schema for PostgreSQL
+- Runtime persistence: Prisma ORM with PostgreSQL
 
 ## Current State
 
 DramaFlow is development-ready, but not fully productionized.
 
-- Runtime data access uses the file-backed `DevDatabaseService`; Prisma is not wired into the live code path yet.
+- Runtime data access uses Prisma ORM backed by PostgreSQL. A one-time migration script is available for importing legacy JSON data.
 - Background jobs use a simplified polling worker + internal API flow; Redis / BullMQ is a future direction, not a current dependency.
 - The project workspace uses split data loading: `GET /projects/:id` returns summary data, while versions, jobs, timeline, and exports refresh through dedicated endpoints.
 - Realtime delivery is available through a NestJS + Socket.IO gateway for `job.updated`, `review.updated`, and `notification.created`, with polling as the fallback path.
@@ -372,13 +371,28 @@ At minimum, set secure values for:
 - `JWT_REFRESH_SECRET`
 - `INTERNAL_API_KEY`
 
-### 3. Build the workspace
+### 3. Set up the database
+
+**Option A: Docker Compose** (recommended for development)
+```bash
+docker compose up postgres -d
+```
+
+**Option B: Local PostgreSQL**
+Ensure PostgreSQL 17+ is running and `DATABASE_URL` in `.env` points to it.
+
+Then apply migrations:
+```bash
+cd apps/api && npx prisma migrate deploy
+```
+
+### 4. Build the workspace
 
 ```bash
 npm run build
 ```
 
-### 4. Start the services
+### 5. Start the services
 
 Recommended: use the root launcher, which copies `.env` if missing, checks ports, builds the workspace, launches API/Web/Worker, and waits for readiness.
 
@@ -410,7 +424,7 @@ npm run dev:web
 npm run dev:worker
 ```
 
-### 5. Open the local URLs
+### 6. Open the local URLs
 
 - Web: `http://localhost:3000`
 - Login: `http://localhost:3000/login`
@@ -437,7 +451,8 @@ npm run dev:worker
 
 | Variable | Description |
 |----------|-------------|
-| `DATA_DIR` | Directory for `dev-db.json` |
+| `DATABASE_URL` | PostgreSQL connection string (e.g. `postgresql://user:pass@host:5432/db`) |
+| `LEGACY_DEV_DB_PATH` | Path to legacy `dev-db.json` for one-time import (optional) |
 | `UPLOADS_DIR` | Local uploads directory |
 | `STORAGE_DRIVER` | `local` or `s3` |
 | `LOCAL_STORAGE_PUBLIC_URL` | Public base URL for locally served files |
@@ -497,6 +512,7 @@ npm run dev:worker
 
 The repository includes a demo-oriented `docker-compose.yml` that starts:
 
+- PostgreSQL 17
 - Web
 - API
 - Worker
@@ -511,6 +527,18 @@ Notes:
 - Compose uses `npm run dev:*`, aimed at development and demos, not hardened production deployment.
 - The Compose file sets `STORAGE_DRIVER=local`, so MinIO is not the active storage backend by default.
 - Only partial provider configuration is passed through by default. For live provider execution, pass the relevant provider variables to the API container.
+- The API container runs `prisma migrate deploy` on startup to apply pending migrations.
+
+## Migrating from Legacy JSON
+
+If you have a legacy `dev-db.json` file from the previous file-based database:
+
+```bash
+cd apps/api
+DATABASE_URL="postgresql://..." LEGACY_DEV_DB_PATH="/path/to/dev-db.json" npx tsx scripts/migrate-legacy-json.ts
+```
+
+The target PostgreSQL database must be empty (the script will refuse to import into a non-empty database).
 
 ## Common Commands
 

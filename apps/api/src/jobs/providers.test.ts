@@ -1038,9 +1038,8 @@ test("jobs service passes compressed first_last data URLs to openai video provid
   }).png().toBuffer();
   let capturedInput: Record<string, unknown> | undefined;
 
-  service.database = {
-    query: async (reader: (db: { jobs: Array<{ id: string; result?: unknown }> }) => unknown) =>
-      reader({ jobs: [{ id: "job-openai-video" }] }),
+  service.prisma = {
+    job: { findUnique: async () => null },
   };
   service.storageService = {
     getAssetUrl: async (_userId: string, assetId: string) => ({
