@@ -383,7 +383,7 @@ Ensure PostgreSQL 17+ is running and `DATABASE_URL` in `.env` points to it.
 
 Then apply migrations:
 ```bash
-cd apps/api && npx prisma migrate deploy
+npm --workspace @dramaflow/api run prisma:migrate:deploy
 ```
 
 ### 4. Build the workspace
@@ -452,6 +452,7 @@ npm run dev:worker
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string (e.g. `postgresql://user:pass@host:5432/db`) |
+| `TEST_DATABASE_URL` | PostgreSQL connection string for API test reset and integration tests; use a database name containing `test` |
 | `LEGACY_DEV_DB_PATH` | Path to legacy `dev-db.json` for one-time import (optional) |
 | `UPLOADS_DIR` | Local uploads directory |
 | `STORAGE_DRIVER` | `local` or `s3` |

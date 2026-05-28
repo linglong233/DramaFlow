@@ -12,7 +12,7 @@ import { PROJECT_PERMISSIONS } from "@dramaflow/shared";
 import { AdminController } from "../src/admin/admin.controller";
 import { AppModule } from "../src/app.module";
 import { AuthController } from "../src/auth/auth.controller";
-import { resetPrismaTestDatabase } from "./prisma-test-db";
+import { assertSafeTestDatabaseUrl, getTestDatabaseUrl, resetPrismaTestDatabase } from "./prisma-test-db";
 import { InternalJobsController } from "../src/jobs/internal-jobs.controller";
 import { OpenAiMediaProvider } from "../src/jobs/media-generation.provider";
 import { JobsController } from "../src/jobs/jobs.controller";
@@ -63,7 +63,9 @@ async function runCase(name: string, callback: () => Promise<void>) {
 
 async function withHttpApp<T>(callback: (baseUrl: string) => Promise<T>) {
   const tempRoot = await mkdtemp(join(tmpdir(), "dramaflow-api-test-"));
-  process.env.DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://dramaflow:dramaflow@localhost:5432/dramaflow_test?schema=public";
+  const testDatabaseUrl = assertSafeTestDatabaseUrl(getTestDatabaseUrl());
+  process.env.TEST_DATABASE_URL = testDatabaseUrl;
+  process.env.DATABASE_URL = testDatabaseUrl;
   process.env.UPLOADS_DIR = join(tempRoot, "uploads");
   process.env.STORAGE_DRIVER = "local";
   process.env.JWT_ACCESS_SECRET = "test-access-secret";
@@ -243,6 +245,35 @@ function assertMethodsStayOnPrototype(controller: object, methodNames: string[])
 }
 
 async function main() {
+  await runCase("prisma test database guard rejects production-like names", async () => {
+    assert.throws(
+      () => assertSafeTestDatabaseUrl("postgresql://dramaflow:dramaflow@localhost:5432/dramaflow_prod?schema=public"),
+      /Refusing to reset unsafe test database name/,
+    );
+  });
+
+  await runCase("prisma test database guard rejects non-test names by default", async () => {
+    assert.throws(
+      () => assertSafeTestDatabaseUrl("postgresql://dramaflow:dramaflow@localhost:5432/dramaflow?schema=public"),
+      /Use a database name containing "test"/,
+    );
+  });
+
+  await runCase("prisma test database guard accepts explicit test allowlist", async () => {
+    const previous = process.env.DRAMAFLOW_TEST_DATABASE_NAMES;
+    process.env.DRAMAFLOW_TEST_DATABASE_NAMES = "dramaflow_ci";
+    try {
+      const safeUrl = assertSafeTestDatabaseUrl("postgresql://dramaflow:dramaflow@localhost:5432/dramaflow_ci?schema=public");
+      assert.equal(safeUrl, "postgresql://dramaflow:dramaflow@localhost:5432/dramaflow_ci?schema=public");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.DRAMAFLOW_TEST_DATABASE_NAMES;
+      } else {
+        process.env.DRAMAFLOW_TEST_DATABASE_NAMES = previous;
+      }
+    }
+  });
+
   await runCase("mock script fallback without API key", async () => {
     process.env.OPENAI_COMPAT_API_KEY = "test-key";
     process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
@@ -843,6 +874,64 @@ async function main() {
       assert.equal(scriptVersion?.status, "draft");
       assert.equal(worldBibleVersion?.status, "draft");
       assert.equal(synopsisVersion?.status, "draft");
+    });
+  });
+
+  await runCase("internal job claim is atomic under concurrent workers", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "atomic-claim@example.com",
+        displayName: "Atomic Claim",
+      });
+      const teams = await listTeams(baseUrl, owner.accessToken);
+      const teamId = teams.find((team) => team.currentUserRole === "tenant_owner")?.id ?? teams[0].id;
+      const jsonHeaders = authHeaders(owner.accessToken, true);
+
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          teamId,
+          name: "Atomic Claim Project",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      const jobResponse = await originalFetch(`${baseUrl}/projects/${project.id}/script-jobs`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          title: "Atomic Claim",
+          genre: "Suspense",
+          premise: "Two workers race for one job.",
+          episodeGoal: "Only one worker wins.",
+        }),
+      });
+      assert.equal(jobResponse.status, 201);
+      const createdJob = await jobResponse.json() as { id: string };
+
+      const internalHeaders = { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" };
+      const [firstResponse, secondResponse] = await Promise.all([
+        originalFetch(`${baseUrl}/internal/jobs/next`, { headers: internalHeaders }),
+        originalFetch(`${baseUrl}/internal/jobs/next`, { headers: internalHeaders }),
+      ]);
+      assert.equal(firstResponse.status, 200);
+      assert.equal(secondResponse.status, 200);
+
+      const firstClaim = await firstResponse.json() as { id?: string; job?: null };
+      const secondClaim = await secondResponse.json() as { id?: string; job?: null };
+      const claimedIds = [firstClaim.id, secondClaim.id].filter(Boolean);
+      assert.deepEqual(claimedIds, [createdJob.id]);
+      assert.equal([firstClaim.job, secondClaim.job].filter((value) => value === null).length, 1);
+
+      const loadedJobResponse = await originalFetch(`${baseUrl}/jobs/${createdJob.id}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(loadedJobResponse.status, 200);
+      const loadedJob = await loadedJobResponse.json() as { status: string };
+      assert.equal(loadedJob.status, "running");
     });
   });
 

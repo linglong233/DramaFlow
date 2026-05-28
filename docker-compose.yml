@@ -33,7 +33,7 @@ services:
   api:
     image: node:24-bookworm
     working_dir: /workspace
-    command: bash -lc "npm install && npx --workspace @dramaflow/api prisma migrate deploy && npm run dev:api"
+    command: bash -lc "npm install && npm --workspace @dramaflow/api run prisma:migrate:deploy && npm run dev:api"
     ports:
       - "4000:4000"
     volumes:

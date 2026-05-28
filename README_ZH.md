@@ -383,7 +383,7 @@ docker compose up postgres -d
 
 然后应用数据库迁移：
 ```bash
-cd apps/api && npx prisma migrate deploy
+npm --workspace @dramaflow/api run prisma:migrate:deploy
 ```
 
 ### 4. 构建工作区
@@ -452,6 +452,7 @@ npm run dev:worker
 | 变量 | 说明 |
 |------|------|
 | `DATABASE_URL` | PostgreSQL 连接字符串（如 `postgresql://user:pass@host:5432/db`） |
+| `TEST_DATABASE_URL` | API 测试重置与集成测试使用的 PostgreSQL 连接字符串；数据库名应包含 `test` |
 | `LEGACY_DEV_DB_PATH` | 旧版 `dev-db.json` 路径，用于一次性导入（可选） |
 | `UPLOADS_DIR` | 本地上传目录 |
 | `STORAGE_DRIVER` | `local` 或 `s3` |

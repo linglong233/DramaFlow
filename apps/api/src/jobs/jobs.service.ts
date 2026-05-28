@@ -617,27 +617,30 @@ export class JobsService {
   }
 
   async claimNextJob() {
-    // Sort queued jobs by priority (high > normal > low), then by createdAt (oldest first)
-    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM "Job"
-      WHERE status = 'queued'
-      ORDER BY
-        CASE COALESCE(priority, 'normal')
-          WHEN 'high' THEN 0
-          WHEN 'normal' THEN 1
-          WHEN 'low' THEN 2
-        END,
-        "createdAt" ASC
-      LIMIT 1
-      FOR UPDATE SKIP LOCKED
+    const claimedRows = await this.prisma.$queryRaw<Array<Prisma.JobGetPayload<object>>>`
+      UPDATE "Job"
+      SET
+        status = CAST('running' AS "JobStatus"),
+        "updatedAt" = NOW()
+      WHERE id = (
+        SELECT id
+        FROM "Job"
+        WHERE status = CAST('queued' AS "JobStatus")
+        ORDER BY
+          CASE COALESCE(priority, CAST('normal' AS "JobPriority"))
+            WHEN CAST('high' AS "JobPriority") THEN 0
+            WHEN CAST('normal' AS "JobPriority") THEN 1
+            WHEN CAST('low' AS "JobPriority") THEN 2
+          END,
+          "createdAt" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING *
     `;
-    const queuedJobId = rows[0]?.id;
-    if (queuedJobId) {
-      const updated = await this.prisma.job.update({
-        where: { id: queuedJobId },
-        data: { status: "running", updatedAt: new Date() },
-      });
-      const record = this.toJobRecord(updated);
+    const claimed = claimedRows[0];
+    if (claimed) {
+      const record = this.toJobRecord(claimed);
       this.emitJobUpdated(record);
       return record;
     }

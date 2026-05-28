@@ -542,6 +542,222 @@ async function printCounts(): Promise<void> {
   console.log(JSON.stringify(counts, null, 2));
 }
 
+async function assertNoInvalidRows(label: string, query: Prisma.Sql): Promise<void> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(query);
+  if (rows.length > 0) {
+    const sampleIds = rows.slice(0, 10).map((row) => row.id).join(", ");
+    throw new Error(`${label}: ${rows.length} invalid row(s). Sample IDs: ${sampleIds}`);
+  }
+}
+
+async function validateImportedDatabase(): Promise<void> {
+  await assertNoInvalidRows("Projects without teams", Prisma.sql`
+    SELECT p.id FROM "Project" p
+    LEFT JOIN "Team" t ON t.id = p."teamId"
+    WHERE t.id IS NULL
+  `);
+  await assertNoInvalidRows("Documents without projects", Prisma.sql`
+    SELECT d.id FROM "Document" d
+    LEFT JOIN "Project" p ON p.id = d."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Versions without documents", Prisma.sql`
+    SELECT v.id FROM "Version" v
+    LEFT JOIN "Document" d ON d.id = v."documentId"
+    WHERE d.id IS NULL
+  `);
+  await assertNoInvalidRows("Documents with invalid current versions", Prisma.sql`
+    SELECT d.id FROM "Document" d
+    LEFT JOIN "Version" v ON v.id = d."currentVersionId" AND v."documentId" = d.id
+    WHERE d."currentVersionId" IS NOT NULL AND v.id IS NULL
+  `);
+  await assertNoInvalidRows("Documents with invalid draft versions", Prisma.sql`
+    SELECT d.id FROM "Document" d
+    LEFT JOIN "Version" v ON v.id = d."draftVersionId" AND v."documentId" = d.id
+    WHERE d."draftVersionId" IS NOT NULL AND v.id IS NULL
+  `);
+  await assertNoInvalidRows("Comments without versions", Prisma.sql`
+    SELECT c.id FROM "Comment" c
+    LEFT JOIN "Version" v ON v.id = c."versionId"
+    WHERE v.id IS NULL
+  `);
+  await assertNoInvalidRows("Comments with invalid parents", Prisma.sql`
+    SELECT c.id FROM "Comment" c
+    LEFT JOIN "Comment" parent ON parent.id = c."parentId"
+    WHERE c."parentId" IS NOT NULL AND parent.id IS NULL
+  `);
+  await assertNoInvalidRows("Jobs without projects", Prisma.sql`
+    SELECT j.id FROM "Job" j
+    LEFT JOIN "Project" p ON p.id = j."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Jobs with invalid documents", Prisma.sql`
+    SELECT j.id FROM "Job" j
+    LEFT JOIN "Document" d ON d.id = j."documentId" AND d."projectId" = j."projectId"
+    WHERE j."documentId" IS NOT NULL AND d.id IS NULL
+  `);
+  await assertNoInvalidRows("Assets without projects", Prisma.sql`
+    SELECT a.id FROM "Asset" a
+    LEFT JOIN "Project" p ON p.id = a."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Assets with invalid documents", Prisma.sql`
+    SELECT a.id FROM "Asset" a
+    LEFT JOIN "Document" d ON d.id = a."documentId" AND d."projectId" = a."projectId"
+    WHERE a."documentId" IS NOT NULL AND d.id IS NULL
+  `);
+  await assertNoInvalidRows("Assets with invalid versions", Prisma.sql`
+    SELECT a.id FROM "Asset" a
+    LEFT JOIN "Version" v ON v.id = a."versionId"
+    WHERE a."versionId" IS NOT NULL AND v.id IS NULL
+  `);
+  await assertNoInvalidRows("Audit configs without projects", Prisma.sql`
+    SELECT ac.id FROM "AuditConfig" ac
+    LEFT JOIN "Project" p ON p.id = ac."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Audit records without projects", Prisma.sql`
+    SELECT ar.id FROM "AuditRecord" ar
+    LEFT JOIN "Project" p ON p.id = ar."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Audit records without versions", Prisma.sql`
+    SELECT ar.id FROM "AuditRecord" ar
+    LEFT JOIN "Version" v ON v.id = ar."versionId"
+    WHERE v.id IS NULL
+  `);
+  await assertNoInvalidRows("Notifications without users", Prisma.sql`
+    SELECT n.id FROM "Notification" n
+    LEFT JOIN "User" u ON u.id = n."userId"
+    WHERE u.id IS NULL
+  `);
+  await assertNoInvalidRows("Notifications with invalid projects", Prisma.sql`
+    SELECT n.id FROM "Notification" n
+    LEFT JOIN "Project" p ON p.id = n."projectId"
+    WHERE n."projectId" IS NOT NULL AND p.id IS NULL
+  `);
+  await assertNoInvalidRows("Batch job groups without projects", Prisma.sql`
+    SELECT b.id FROM "BatchJobGroup" b
+    LEFT JOIN "Project" p ON p.id = b."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Timelines without projects", Prisma.sql`
+    SELECT t.id FROM "Timeline" t
+    LEFT JOIN "Project" p ON p.id = t."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Exports without projects", Prisma.sql`
+    SELECT e.id FROM "Export" e
+    LEFT JOIN "Project" p ON p.id = e."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Version dependencies without projects", Prisma.sql`
+    SELECT vd.id FROM "VersionDependency" vd
+    LEFT JOIN "Project" p ON p.id = vd."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Version dependencies with invalid source documents", Prisma.sql`
+    SELECT vd.id FROM "VersionDependency" vd
+    LEFT JOIN "Document" d ON d.id = vd."sourceDocumentId" AND d."projectId" = vd."projectId"
+    WHERE vd."sourceDocumentId" IS NOT NULL AND d.id IS NULL
+  `);
+  await assertNoInvalidRows("Version dependencies with invalid source versions", Prisma.sql`
+    SELECT vd.id FROM "VersionDependency" vd
+    LEFT JOIN "Version" v ON v.id = vd."sourceVersionId"
+    WHERE vd."sourceVersionId" IS NOT NULL AND v.id IS NULL
+  `);
+  await assertNoInvalidRows("Version dependencies with invalid target documents", Prisma.sql`
+    SELECT vd.id FROM "VersionDependency" vd
+    LEFT JOIN "Document" d ON d.id = vd."targetDocumentId" AND d."projectId" = vd."projectId"
+    WHERE d.id IS NULL
+  `);
+  await assertNoInvalidRows("Version dependencies with invalid target versions", Prisma.sql`
+    SELECT vd.id FROM "VersionDependency" vd
+    LEFT JOIN "Version" v ON v.id = vd."targetVersionId"
+    WHERE v.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues without projects", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "Project" p ON p.id = ii."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid dependencies", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "VersionDependency" vd ON vd.id = ii."dependencyId"
+    WHERE ii."dependencyId" IS NOT NULL AND vd.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid target documents", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "Document" d ON d.id = ii."targetDocumentId" AND d."projectId" = ii."projectId"
+    WHERE d.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid target versions", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "Version" v ON v.id = ii."targetVersionId"
+    WHERE v.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issues with invalid changed source versions", Prisma.sql`
+    SELECT ii.id FROM "ImpactIssue" ii
+    LEFT JOIN "Version" v ON v.id = ii."changedSourceVersionId"
+    WHERE v.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact targets without issues", Prisma.sql`
+    SELECT it.id FROM "ImpactTarget" it
+    LEFT JOIN "ImpactIssue" ii ON ii.id = it."issueId"
+    WHERE ii.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact targets with invalid projects", Prisma.sql`
+    SELECT it.id FROM "ImpactTarget" it
+    LEFT JOIN "Project" p ON p.id = it."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact targets with invalid documents", Prisma.sql`
+    SELECT it.id FROM "ImpactTarget" it
+    LEFT JOIN "Document" d ON d.id = it."documentId" AND d."projectId" = it."projectId"
+    WHERE it."documentId" IS NOT NULL AND d.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact targets with invalid versions", Prisma.sql`
+    SELECT it.id FROM "ImpactTarget" it
+    LEFT JOIN "Version" v ON v.id = it."versionId"
+    WHERE it."versionId" IS NOT NULL AND v.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact suggestions without issues", Prisma.sql`
+    SELECT s.id FROM "ImpactSuggestion" s
+    LEFT JOIN "ImpactIssue" ii ON ii.id = s."issueId"
+    WHERE ii.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact suggestions with invalid projects", Prisma.sql`
+    SELECT s.id FROM "ImpactSuggestion" s
+    LEFT JOIN "Project" p ON p.id = s."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact suggestions with invalid jobs", Prisma.sql`
+    SELECT s.id FROM "ImpactSuggestion" s
+    LEFT JOIN "Job" j ON j.id = s."createdJobId"
+    WHERE s."createdJobId" IS NOT NULL AND j.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issue events without issues", Prisma.sql`
+    SELECT e.id FROM "ImpactIssueEvent" e
+    LEFT JOIN "ImpactIssue" ii ON ii.id = e."issueId"
+    WHERE ii.id IS NULL
+  `);
+  await assertNoInvalidRows("Impact issue events with invalid projects", Prisma.sql`
+    SELECT e.id FROM "ImpactIssueEvent" e
+    LEFT JOIN "Project" p ON p.id = e."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Conversation sessions without projects", Prisma.sql`
+    SELECT cs.id FROM "ConversationSession" cs
+    LEFT JOIN "Project" p ON p.id = cs."projectId"
+    WHERE p.id IS NULL
+  `);
+  await assertNoInvalidRows("Novel import sessions without projects", Prisma.sql`
+    SELECT ns.id FROM "NovelImportSession" ns
+    LEFT JOIN "Project" p ON p.id = ns."projectId"
+    WHERE p.id IS NULL
+  `);
+}
+
 async function main(): Promise<void> {
   console.log("Reading legacy database...");
   const db = await readLegacyDatabase();
@@ -558,6 +774,9 @@ async function main(): Promise<void> {
     await importDocuments(tx, db);
     await importOperationalRecords(tx, db);
   });
+
+  console.log("Validating imported records...");
+  await validateImportedDatabase();
 
   console.log("Import complete. Record counts:");
   await printCounts();
