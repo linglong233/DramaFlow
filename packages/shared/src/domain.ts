@@ -784,6 +784,10 @@ export interface NovelImportChunkRecord {
   error?: string;
   startedAt?: string;
   completedAt?: string;
+  /** 用户确认该分块用于生成的时间。没有该字段表示未确认。 */
+  confirmedAt?: string;
+  /** 用户修改标题、拆分或合并分块的时间。没有该字段表示未经过手动调整。 */
+  adjustedAt?: string;
 }
 
 /** 小说导入写入结果 */

@@ -5,7 +5,9 @@ import type {
   NovelImportJobInput,
   ProjectMemberPermissionsResponse,
   ProjectMemberSummary,
+  SplitNovelImportChunkPayload,
   TeamPermissionTemplatesResponse,
+  UpdateNovelImportChunkTitlePayload,
   UpdateProjectMemberPermissionsPayload,
   UpdateTeamPermissionTemplatesPayload,
 } from "../src";
@@ -216,12 +218,25 @@ const sampleNovelImportSession: NovelImportSession = {
       text: "第一章\n她推开门。",
       status: "pending",
       scenes: [],
+      confirmedAt: "2026-06-02T00:00:00.000Z",
+      adjustedAt: "2026-06-02T00:00:00.000Z",
     },
   ],
   createdAt: "2026-05-20T00:00:00.000Z",
   updatedAt: "2026-05-20T00:00:00.000Z",
 };
 assert.equal(sampleNovelImportSession.chunks[0]?.status, "pending");
+
+const sampleUpdateChunkTitlePayload: UpdateNovelImportChunkTitlePayload = {
+  title: "第一章·修订",
+};
+assert.equal(sampleUpdateChunkTitlePayload.title, "第一章·修订");
+
+const sampleSplitChunkPayload: SplitNovelImportChunkPayload = {
+  splitAt: 12,
+  nextTitle: "第二章",
+};
+assert.equal(sampleSplitChunkPayload.splitAt, 12);
 
 // --- 权限解析导出断言 ---
 

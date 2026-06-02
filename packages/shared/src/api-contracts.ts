@@ -544,6 +544,17 @@ export interface CreateNovelImportSessionPayload {
   llmConfigSource?: LlmConfigSource;
 }
 
+/** 更新小说导入分块标题请求体 */
+export interface UpdateNovelImportChunkTitlePayload {
+  title: string;
+}
+
+/** 拆分小说导入分块请求体 */
+export interface SplitNovelImportChunkPayload {
+  splitAt: number;
+  nextTitle?: string;
+}
+
 /** 小说导入会话响应 */
 export interface NovelImportSessionResponse {
   session: NovelImportSession;
