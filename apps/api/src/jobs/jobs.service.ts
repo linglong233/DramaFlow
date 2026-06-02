@@ -1795,7 +1795,18 @@ export class JobsService {
     if (options.result !== undefined) {
       data.result = jsonInput(options.result);
     }
-    const record = await this.updateJobState(jobId, data);
+    // 仅在当前状态仍为 running 时更新，避免覆盖已经变为 failed/completed 的终态
+    const job = await this.prisma.job.updateMany({
+      where: { id: jobId, status: "running" },
+      data: { ...data, updatedAt: new Date() },
+    });
+    if (job.count === 0) {
+      const current = await this.prisma.job.findUnique({ where: { id: jobId } });
+      return current ? this.toJobRecord(current) : null as unknown as JobRecord;
+    }
+    const updated = await this.prisma.job.findUnique({ where: { id: jobId } });
+    const record = this.toJobRecord(updated!);
+    this.emitJobUpdated(record);
     return record;
   }
 
