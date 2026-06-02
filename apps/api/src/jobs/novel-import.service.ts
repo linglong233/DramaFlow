@@ -297,15 +297,20 @@ export class NovelImportService {
     chunk.adjustedAt = new Date().toISOString();
   }
 
+  /** 校验 session 状态是否允许编辑分块 */
+  private assertChunksEditable(session: NovelImportSession): void {
+    if (session.status === "queued" || session.status === "running" || session.status === "written") {
+      throw new BadRequestException(`Cannot modify chunks of a session with status "${session.status}"`);
+    }
+  }
+
   /** 获取可编辑的分块，校验 index 及 session 状态 */
   private async getEditableChunk(userId: string, sessionId: string, chunkIndex: number) {
     if (!Number.isInteger(chunkIndex)) {
       throw new BadRequestException("Chunk index must be an integer");
     }
     const session = await this.getSession(userId, sessionId);
-    if (session.status === "queued" || session.status === "running" || session.status === "written") {
-      throw new BadRequestException(`Cannot modify chunks of a session with status "${session.status}"`);
-    }
+    this.assertChunksEditable(session);
     const chunk = session.chunks[chunkIndex];
     if (!chunk) {
       throw new BadRequestException(`Chunk index ${chunkIndex} out of range`);
@@ -385,7 +390,8 @@ export class NovelImportService {
 
   /** 确认所有分块 */
   async confirmAllChunks(userId: string, sessionId: string) {
-    await this.getSession(userId, sessionId);
+    const session = await this.getSession(userId, sessionId);
+    this.assertChunksEditable(session);
     return this.updateSession(sessionId, (live) => {
       for (const chunk of live.chunks) {
         chunk.confirmedAt = new Date().toISOString();

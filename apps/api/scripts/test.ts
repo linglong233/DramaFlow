@@ -842,6 +842,184 @@ async function main() {
     });
   });
 
+  await runCase("confirm-all rejects queued and written sessions", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "confirm-all-guard@example.com",
+        displayName: "Confirm All Guard",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Confirm All Guard Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 创建会话
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "悬疑",
+          adaptationFocus: "保留核心反转",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const created = await sessionResponse.json() as { session: { id: string } };
+
+      // 确认分块并启动，使 session 进入 queued 状态
+      const confirmAllResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllResponse.status, 201);
+
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(startResponse.status, 201);
+
+      // session 此时为 queued，confirm-all 应该返回 400
+      const queuedConfirmAll = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(queuedConfirmAll.status, 400);
+      const queuedError = await queuedConfirmAll.json() as { message: string };
+      assert.ok(
+        queuedError.message.includes(`Cannot modify chunks of a session with status "queued"`),
+        `expected queued guard message, got: ${queuedError.message}`,
+      );
+    });
+  });
+
+  await runCase("confirm-all rejects written sessions", async () => {
+    process.env.OPENAI_COMPAT_API_KEY = "test-key";
+    process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+    process.env.OPENAI_TEXT_MODEL = "gpt-test";
+
+    const replies = [
+      "主要人物：林夏。核心冲突：门后秘密。目标集数：8。",
+      JSON.stringify({
+        characters: [{ id: "char-1", name: "林夏", appearance: "短发", personality: "冷静", tags: ["主角"], referenceImages: [], sortOrder: 0 }],
+        locations: [{ id: "loc-1", name: "旧公寓", description: "昏暗", referenceImages: [], sortOrder: 0 }],
+        styleGuide: { visualStyle: "都市悬疑" },
+      }),
+      "## 故事概览\n林夏发现秘密。\n\n## 分集大纲\n1. 门后秘密。",
+      JSON.stringify({
+        scenes: [{ id: "scene-1", heading: "INT. 旧公寓 - 夜", synopsis: "林夏推开门。", characters: ["林夏"], dialogue: [], directorNote: "压低环境声。" }],
+        summary: "第一块。",
+        continuityNotes: "电话即将响起。",
+      }),
+      JSON.stringify({
+        scenes: [{ id: "scene-2", heading: "INT. 旧公寓 - 夜", synopsis: "电话响起。", characters: ["林夏"], dialogue: [], directorNote: "铃声突出。" }],
+        summary: "第二块。",
+        continuityNotes: "秘密升级。",
+      }),
+    ];
+
+    globalThis.fetch = (async () => {
+      const content = replies.shift() ?? "{}";
+      const sseBody = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(sseBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "confirm-written@example.com",
+        displayName: "Confirm Written",
+      });
+      const updateProfileResponse = await originalFetch(`${baseUrl}/auth/me`, {
+        method: "PATCH",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "test-key",
+            baseUrl: "https://example.test/v1",
+            model: "gpt-test",
+            stream: true,
+          },
+        }),
+      });
+      assert.equal(updateProfileResponse.status, 200);
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Written Session Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 创建会话
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "都市悬疑",
+          adaptationFocus: "强化悬念",
+          llmConfigSource: "personal",
+        }),
+      });
+      const { session } = await sessionResponse.json() as { session: { id: string } };
+
+      // 确认分块并启动生成
+      const confirmAllBeforeStart = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllBeforeStart.status, 201);
+
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      const { job } = await startResponse.json() as { job: { id: string } };
+
+      // worker 处理生成任务
+      const processResponse = await originalFetch(`${baseUrl}/internal/jobs/${job.id}/process`, {
+        method: "POST",
+        headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+      });
+      assert.equal(processResponse.status, 201);
+
+      // 写入草稿使 session 进入 written 状态
+      const writeResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/write-drafts`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(writeResponse.status, 201);
+
+      // session 此时为 written，confirm-all 应该返回 400
+      const writtenConfirmAll = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(writtenConfirmAll.status, 400);
+      const writtenError = await writtenConfirmAll.json() as { message: string };
+      assert.ok(
+        writtenError.message.includes(`Cannot modify chunks of a session with status "written"`),
+        `expected written guard message, got: ${writtenError.message}`,
+      );
+    });
+  });
+
   await runCase("novel import worker guard rejects runSession for unconfirmed chunks", async () => {
     // 此测试验证 runSession 内部的守卫：
     // 即使通过 retryChunk 端点（不校验分块确认）创建了一个 runSession 类型的任务，
