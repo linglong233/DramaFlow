@@ -9,7 +9,7 @@ export const synopsisConfig: GeneratorConfig = {
   id: "synopsis",
   labelKey: "projectWorkspace.generate.synopsisLabel",
   hintKey: "synopsisGeneration.description",
-  modes: ["quick", "conversational", "novelImport"],
+  modes: ["quick", "conversational"],
   outputType: "text",
   streamEndpoint: "", // set dynamically via buildPayload path
   quickFields: [
