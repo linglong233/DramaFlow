@@ -135,6 +135,9 @@ assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, '"novelImport"'
 assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, "modeNovelImport");
 assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "queryKeys.novelImportLatest");
 assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "confirm-all");
+assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "ignoredLatestSessionId");
+assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "setIgnoredLatestSessionId(session.id)");
+assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "session.id === ignoredLatestSessionId");
 assertFileDoesNotContain("synopsis.ts", synopsisTs, '"novelImport"');
 assertFileDoesNotContain("script.ts", scriptTs, '"novelImport"');
 

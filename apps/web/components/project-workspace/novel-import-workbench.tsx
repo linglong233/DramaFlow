@@ -49,6 +49,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
   const [step, setStep] = useState<WizardStep>("setup");
   const [previewTab, setPreviewTab] = useState<PreviewTab>("worldBible");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [ignoredLatestSessionId, setIgnoredLatestSessionId] = useState<string | null>(null);
   const [draft, setDraft] = useState<SetupDraft>({
     text: "",
     targetEpisodeCount: 12,
@@ -77,7 +78,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
   // 挂载时自动恢复会话状态
   useEffect(() => {
     const session = latestQuery.data?.session;
-    if (!session || activeSessionId) return;
+    if (!session || activeSessionId || session.id === ignoredLatestSessionId) return;
     setActiveSessionId(session.id);
     if (session.status === "written") {
       setStep("written");
@@ -91,7 +92,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
       // failed / cancelled → 回到分块校对，允许重试
       setStep("chunks");
     }
-  }, [activeSessionId, latestQuery.data?.session]);
+  }, [activeSessionId, ignoredLatestSessionId, latestQuery.data?.session]);
 
   // ── 查询：当前会话详情（轮询） ──
 
@@ -123,6 +124,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
       ),
     onSuccess: (payload) => {
       setActiveSessionId(payload.session.id);
+      setIgnoredLatestSessionId(null);
       // 创建成功后进入分块校对步骤
       setStep("chunks");
       queryClient.setQueryData(
@@ -277,6 +279,9 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
   );
 
   const handleNewImport = useCallback(() => {
+    if (session) {
+      setIgnoredLatestSessionId(session.id);
+    }
     setActiveSessionId(null);
     setStep("setup");
     setPreviewTab("worldBible");
@@ -289,7 +294,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
     });
     setEditingChunkIndex(null);
     setSplitDialogIndex(null);
-  }, []);
+  }, [session]);
 
   // ── 分块编辑操作 ──
 
