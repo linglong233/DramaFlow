@@ -120,10 +120,15 @@ export class NovelImportService {
     return this.toNovelImportSession(session);
   }
 
-  async attachJob(userId: string, sessionId: string, jobId: string) {
+  async attachJob(userId: string, sessionId: string, jobId: string, options?: { requireConfirmedChunks?: boolean }) {
     const session = await this.getSession(userId, sessionId);
     if (session.status === "queued" || session.status === "running" || session.status === "written") {
       throw new BadRequestException(`Cannot start a session with status "${session.status}"`);
+    }
+    if (options?.requireConfirmedChunks) {
+      if (session.chunks.some((chunk) => !chunk.confirmedAt)) {
+        throw new BadRequestException("Novel import chunks must be confirmed before generation");
+      }
     }
     const updated = await this.prisma.novelImportSession.update({
       where: { id: session.id },
@@ -248,6 +253,108 @@ export class NovelImportService {
       throw new NotFoundException("Novel import session not found");
     }
     return session;
+  }
+
+  // ===== 分块校对辅助方法 =====
+
+  /** 获取可编辑的分块，校验 index 及 session 状态 */
+  private async getEditableChunk(userId: string, sessionId: string, chunkIndex: number) {
+    if (!Number.isInteger(chunkIndex)) {
+      throw new BadRequestException("Chunk index must be an integer");
+    }
+    const session = await this.getSession(userId, sessionId);
+    if (session.status === "queued" || session.status === "running" || session.status === "written") {
+      throw new BadRequestException(`Cannot modify chunks of a session with status "${session.status}"`);
+    }
+    const chunk = session.chunks[chunkIndex];
+    if (!chunk) {
+      throw new BadRequestException(`Chunk index ${chunkIndex} out of range`);
+    }
+    return { session, chunk };
+  }
+
+  /** 更新分块标题 */
+  async updateChunkTitle(userId: string, sessionId: string, chunkIndex: number, title: string) {
+    await this.getEditableChunk(userId, sessionId, chunkIndex);
+    return this.updateSession(sessionId, (live) => {
+      live.chunks[chunkIndex].title = title.trim();
+      live.chunks[chunkIndex].adjustedAt = new Date().toISOString();
+      delete live.chunks[chunkIndex].confirmedAt;
+    });
+  }
+
+  /** 拆分分块 */
+  async splitChunk(userId: string, sessionId: string, chunkIndex: number, splitAt: number, nextTitle?: string) {
+    await this.getEditableChunk(userId, sessionId, chunkIndex);
+    if (!Number.isInteger(splitAt)) {
+      throw new BadRequestException("Split position must be an integer");
+    }
+    const session = await this.getSession(userId, sessionId);
+    const chunk = session.chunks[chunkIndex];
+    if (splitAt <= 0 || splitAt >= chunk.text.length) {
+      throw new BadRequestException("Split position must be within the chunk text");
+    }
+    const leftText = chunk.text.slice(0, splitAt).trim();
+    const rightText = chunk.text.slice(splitAt).trim();
+    if (!leftText || !rightText) {
+      throw new BadRequestException("Split would produce an empty chunk");
+    }
+    const newChunk: NovelImportChunkRecord = {
+      index: chunkIndex + 1,
+      title: nextTitle?.trim() || undefined,
+      text: rightText,
+      status: "pending",
+      scenes: [],
+      adjustedAt: new Date().toISOString(),
+    };
+    return this.updateSession(sessionId, (live) => {
+      live.chunks[chunkIndex].text = leftText;
+      live.chunks[chunkIndex].adjustedAt = new Date().toISOString();
+      delete live.chunks[chunkIndex].confirmedAt;
+      live.chunks.splice(chunkIndex + 1, 0, newChunk);
+      for (let i = 0; i < live.chunks.length; i++) {
+        live.chunks[i].index = i;
+      }
+      delete live.scriptPreview;
+    });
+  }
+
+  /** 合并分块到前一个 */
+  async mergeChunkIntoPrevious(userId: string, sessionId: string, chunkIndex: number) {
+    if (chunkIndex <= 0) {
+      throw new BadRequestException("Cannot merge the first chunk");
+    }
+    await this.getEditableChunk(userId, sessionId, chunkIndex);
+    return this.updateSession(sessionId, (live) => {
+      live.chunks[chunkIndex - 1].text += "\n\n" + live.chunks[chunkIndex].text;
+      live.chunks[chunkIndex - 1].status = "pending";
+      live.chunks[chunkIndex - 1].scenes = [];
+      live.chunks[chunkIndex - 1].adjustedAt = new Date().toISOString();
+      delete live.chunks[chunkIndex - 1].confirmedAt;
+      live.chunks.splice(chunkIndex, 1);
+      for (let i = 0; i < live.chunks.length; i++) {
+        live.chunks[i].index = i;
+      }
+      delete live.scriptPreview;
+    });
+  }
+
+  /** 确认单个分块 */
+  async confirmChunk(userId: string, sessionId: string, chunkIndex: number) {
+    await this.getEditableChunk(userId, sessionId, chunkIndex);
+    return this.updateSession(sessionId, (live) => {
+      live.chunks[chunkIndex].confirmedAt = new Date().toISOString();
+    });
+  }
+
+  /** 确认所有分块 */
+  async confirmAllChunks(userId: string, sessionId: string) {
+    await this.getSession(userId, sessionId);
+    return this.updateSession(sessionId, (live) => {
+      for (const chunk of live.chunks) {
+        chunk.confirmedAt = new Date().toISOString();
+      }
+    });
   }
 
   // ===== Pipeline orchestration =====
