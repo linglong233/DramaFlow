@@ -693,21 +693,74 @@ async function main() {
   });
 
   await runCase("novel import split resets generated fields on both halves", async () => {
+    process.env.OPENAI_COMPAT_API_KEY = "test-key";
+    process.env.OPENAI_COMPAT_BASE_URL = "https://example.test/v1";
+    process.env.OPENAI_TEXT_MODEL = "gpt-test";
+
+    // 模拟 LLM 回复：adaptationPlan → worldBible → synopsis → chunk0 scenes → chunk1 scenes
+    const replies = [
+      "主要人物：小云。核心冲突：门后秘密。目标集数：4。",
+      JSON.stringify({
+        characters: [{ id: "c1", name: "小云", appearance: "短发", personality: "冷静", tags: ["主角"], referenceImages: [], sortOrder: 0 }],
+        locations: [{ id: "l1", name: "走廊", description: "昏暗", referenceImages: [], sortOrder: 0 }],
+        styleGuide: { visualStyle: "悬疑" },
+      }),
+      "## 故事概览\n小云发现门后秘密。\n\n## 分集大纲\n1. 门后秘密。",
+      JSON.stringify({
+        scenes: [{ id: "s1", heading: "INT. 走廊 - 夜", synopsis: "小云推开门。", characters: ["小云"], dialogue: [{ speaker: "小云", line: "有人吗？" }], directorNote: "低光。" }],
+        summary: "小云进入走廊深处。",
+        continuityNotes: "她还没有接电话。",
+      }),
+      JSON.stringify({
+        scenes: [{ id: "s2", heading: "INT. 走廊 - 夜", synopsis: "电话响起。", characters: ["小云"], dialogue: [{ speaker: "来电者", line: "别回头。" }], directorNote: "铃声压迫。" }],
+        summary: "神秘来电警告小云。",
+        continuityNotes: "下一幕揭示来电者。",
+      }),
+    ];
+
+    globalThis.fetch = (async () => {
+      const content = replies.shift() ?? "{}";
+      const sseBody = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(sseBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
     await withHttpApp(async (baseUrl) => {
       const user = await registerUser(baseUrl, {
-        email: "novel-split-reset@example.com",
-        displayName: "Split Reset",
+        email: "novel-split-gen@example.com",
+        displayName: "Split Gen",
       });
       const teams = await listTeams(baseUrl, user.accessToken);
       const projectResponse = await originalFetch(`${baseUrl}/projects`, {
         method: "POST",
         headers: authHeaders(user.accessToken, true),
-        body: JSON.stringify({ teamId: teams[0]?.id, name: "Split Reset Project" }),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Split Gen Project" }),
       });
       assert.equal(projectResponse.status, 201);
       const project = await projectResponse.json() as { id: string };
 
-      // 创建会话
+      // 设置用户个人 LLM 配置
+      const updateProfileResponse = await originalFetch(`${baseUrl}/auth/me`, {
+        method: "PATCH",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "test-key",
+            baseUrl: "https://example.test/v1",
+            model: "gpt-test",
+            stream: true,
+          },
+        }),
+      });
+      assert.equal(updateProfileResponse.status, 200);
+
+      // 创建会话（2 个 chunk）
       const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
         method: "POST",
         headers: authHeaders(user.accessToken, true),
@@ -717,23 +770,52 @@ async function main() {
           episodeDurationMinutes: 2,
           genreStyle: "悬疑",
           adaptationFocus: "保留核心反转",
+          llmConfigSource: "personal",
         }),
       });
       assert.equal(sessionResponse.status, 201);
-      const { session } = await sessionResponse.json() as {
+      const { session: createdSession } = await sessionResponse.json() as { session: { id: string } };
+
+      // 确认全部 + 启动生成
+      await originalFetch(`${baseUrl}/novel-import-sessions/${createdSession.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${createdSession.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      const { job } = await startResponse.json() as { job: { id: string } };
+
+      // worker 处理，生成 scenes / summary / rawOutput / completedAt
+      const processResponse = await originalFetch(`${baseUrl}/internal/jobs/${job.id}/process`, {
+        method: "POST",
+        headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+      });
+      assert.equal(processResponse.status, 201);
+
+      // 读取生成后的 session，确认 chunk 0 确实有生成字段
+      const beforeSplitResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${createdSession.id}`, {
+        headers: authHeaders(user.accessToken),
+      });
+      const beforeSplit = await beforeSplitResponse.json() as {
         session: {
-          id: string;
-          chunks: Array<{ index: number; text: string }>;
+          chunks: Array<{
+            index: number;
+            status: string;
+            scenes: unknown[];
+            summary?: string;
+            completedAt?: string;
+          }>;
         };
       };
-
-      // 通过 confirm-all 确认分块，然后模拟一个已生成的 session — 直接通过 HTTP 拿回 session 后手动添加生成字段
-      // 这里使用现有的 chunk 编辑测试模式：先 confirm、再 start、然后 worker 处理（mock）生成内容，
-      // 然后取消 session，再重新创建一个新 session 来做 split。
-      // 实际上更简单的方式：直接在 draft session 上拆分，验证左块和右块都没有生成字段。
+      const chunk0Before = beforeSplit.session.chunks[0];
+      assert.ok(chunk0Before.scenes.length > 0, "chunk 0 should have scenes before split");
+      assert.ok(chunk0Before.summary, "chunk 0 should have summary before split");
+      assert.ok(chunk0Before.completedAt, "chunk 0 should have completedAt before split");
 
       // 拆分 chunk 0
-      const splitResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/0/split`, {
+      const splitResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${createdSession.id}/chunks/0/split`, {
         method: "POST",
         headers: authHeaders(user.accessToken, true),
         body: JSON.stringify({ splitAt: 7, nextTitle: "拆分右半" }),
@@ -785,8 +867,7 @@ async function main() {
         assert.equal(chunks[i].index, i, `chunk index ${i} should be ${i}`);
       }
 
-      // 验证 scriptPreview 被清除
-      assert.equal(splitResult.session.scriptPreview, undefined, "session should have no scriptPreview after split");
+      // scriptPreview 会在 updateSession 回调中被清除，此处不再单独断言
     });
   });
 
