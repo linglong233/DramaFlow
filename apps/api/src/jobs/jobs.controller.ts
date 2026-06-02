@@ -13,6 +13,7 @@ import {
   Get,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -25,6 +26,8 @@ import type {
   CreateImpactSuggestionPayload,
   CreateNovelImportSessionPayload,
   CreateScriptJobPayload,
+  SplitNovelImportChunkPayload,
+  UpdateNovelImportChunkTitlePayload,
   CreateStoryboardJobPayload,
   CreateSynopsisJobPayload,
   CreateVideoJobPayload,
@@ -281,7 +284,9 @@ export class JobsController {
       action: "runSession",
       sessionId,
     });
-    const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id);
+    const updated = await this.novelImportService.attachJob(user.id, sessionId, job.id, {
+      requireConfirmedChunks: true,
+    });
     return { session: updated, job };
   }
 
@@ -340,6 +345,83 @@ export class JobsController {
     @Param("id") sessionId: string,
   ) {
     return this.novelImportService.writeDrafts(user.id, sessionId);
+  }
+
+  @Patch("novel-import-sessions/:id/chunks/:index/title")
+  async updateNovelImportChunkTitle(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+    @Param("index") index: string,
+    @Body() body: UpdateNovelImportChunkTitlePayload,
+  ) {
+    const chunkIndex = Number(index);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      throw new BadRequestException("Chunk index must be a non-negative integer");
+    }
+    const session = await this.novelImportService.updateChunkTitle(
+      user.id, sessionId, chunkIndex, body.title,
+    );
+    return { session };
+  }
+
+  @Post("novel-import-sessions/:id/chunks/:index/split")
+  async splitNovelImportChunk(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+    @Param("index") index: string,
+    @Body() body: SplitNovelImportChunkPayload,
+  ) {
+    const chunkIndex = Number(index);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      throw new BadRequestException("Chunk index must be a non-negative integer");
+    }
+    const session = await this.novelImportService.splitChunk(
+      user.id, sessionId, chunkIndex, body.splitAt, body.nextTitle,
+    );
+    return { session };
+  }
+
+  @Post("novel-import-sessions/:id/chunks/:index/merge-previous")
+  async mergeNovelImportChunkPrevious(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+    @Param("index") index: string,
+  ) {
+    const chunkIndex = Number(index);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      throw new BadRequestException("Chunk index must be a non-negative integer");
+    }
+    const session = await this.novelImportService.mergeChunkIntoPrevious(
+      user.id, sessionId, chunkIndex,
+    );
+    return { session };
+  }
+
+  @Post("novel-import-sessions/:id/chunks/:index/confirm")
+  async confirmNovelImportChunk(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+    @Param("index") index: string,
+  ) {
+    const chunkIndex = Number(index);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      throw new BadRequestException("Chunk index must be a non-negative integer");
+    }
+    const session = await this.novelImportService.confirmChunk(
+      user.id, sessionId, chunkIndex,
+    );
+    return { session };
+  }
+
+  @Post("novel-import-sessions/:id/chunks/confirm-all")
+  async confirmAllNovelImportChunks(
+    @CurrentUser() user: { id: string },
+    @Param("id") sessionId: string,
+  ) {
+    const session = await this.novelImportService.confirmAllChunks(
+      user.id, sessionId,
+    );
+    return { session };
   }
 
   @Post("projects/:id/novel-import/stream")
