@@ -9828,6 +9828,126 @@ textarea.input {
   }
 }
 
+/* ── Novel Import Workbench ── */
+
+.novel-import-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.novel-import-workbench__summary {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.novel-import-workbench__layout {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.novel-import-workbench__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-width: 200px;
+  flex-shrink: 0;
+}
+
+.novel-import-workbench__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.novel-import-workbench__side {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.novel-import-workbench__task {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+
+.novel-import-workbench__task--active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.novel-import-workbench__task--warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.novel-import-workbench__task--done {
+  color: var(--text-tertiary);
+}
+
+.novel-import-workbench__task--done::before {
+  content: "✓ ";
+  color: var(--success-text);
+}
+
+.novel-import-workbench__chunk {
+  display: table-row;
+}
+
+.novel-import-workbench__chunk > td {
+  padding: var(--space-2) var(--space-2);
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.novel-import-workbench__chunk--active > td {
+  background: var(--accent-subtle);
+}
+
+.novel-import-workbench__chunk--failed > td {
+  background: var(--danger-bg);
+}
+
+.novel-import-workbench__chunk--stale > td {
+  background: var(--warning-bg);
+}
+
+.novel-import-workbench button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 980px) {
+  .novel-import-workbench__layout {
+    flex-direction: column;
+  }
+
+  .novel-import-workbench__tasks {
+    flex-direction: row;
+    min-width: auto;
+    overflow-x: auto;
+  }
+
+  .novel-import-workbench__side {
+    width: 100%;
+  }
+}
+
 /* ── Step Wizard ── */
 .gen-step-bar {
   display: flex;
