@@ -229,7 +229,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
         }
       };
       reader.onerror = () =>
-        setFeedback({ message: null, error: "文件读取失败" });
+        setFeedback({ message: null, error: t("novelImport.fileReadError") });
       reader.readAsText(file, "utf-8");
       event.target.value = "";
     },
@@ -583,11 +583,11 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                     <tr style={{ borderBottom: "1px solid var(--border)" }}>
                       <th style={{ padding: "0.4rem", textAlign: "left", width: 40 }}>#</th>
                       <th style={{ padding: "0.4rem", textAlign: "left" }}>{t("novelImport.workbench.editTitle")}</th>
-                      <th style={{ padding: "0.4rem", textAlign: "right", width: 60 }}>字数</th>
-                      <th style={{ padding: "0.4rem", textAlign: "center", width: 70 }}>状态</th>
-                      <th style={{ padding: "0.4rem", textAlign: "center", width: 50 }}>确认</th>
-                      <th style={{ padding: "0.4rem", textAlign: "center", width: 50 }}>调整</th>
-                      <th style={{ padding: "0.4rem", textAlign: "center", width: 160 }}>操作</th>
+                      <th style={{ padding: "0.4rem", textAlign: "right", width: 60 }}>{t("novelImport.workbench.thCharCount")}</th>
+                      <th style={{ padding: "0.4rem", textAlign: "center", width: 70 }}>{t("novelImport.workbench.thStatus")}</th>
+                      <th style={{ padding: "0.4rem", textAlign: "center", width: 50 }}>{t("novelImport.workbench.thConfirm")}</th>
+                      <th style={{ padding: "0.4rem", textAlign: "center", width: 50 }}>{t("novelImport.workbench.thAdjust")}</th>
+                      <th style={{ padding: "0.4rem", textAlign: "center", width: 160 }}>{t("novelImport.workbench.thActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -648,7 +648,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                                   setEditingTitle(chunk.title ?? "");
                                 }}
                               >
-                                {chunk.title || `分块 ${chunk.index + 1}`}
+                                {chunk.title || t("novelImport.workbench.chunkFallbackTitle", { index: chunk.index + 1 })}
                               </span>
                             )}
                           </td>
@@ -906,18 +906,18 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
               <div className="novel-import-workbench__summary" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.85rem", marginBottom: "1rem" }}>
                 {session.worldBible && (
                   <>
-                    <span>角色: {session.worldBible.characters.length}</span>
-                    <span>场景: {session.worldBible.locations.length}</span>
-                    {session.worldBible.styleGuide?.visualStyle && <span>视觉风格: ✓</span>}
+                    <span>{t("novelImport.workbench.summaryCharacters")}: {session.worldBible.characters.length}</span>
+                    <span>{t("novelImport.workbench.summaryLocations")}: {session.worldBible.locations.length}</span>
+                    {session.worldBible.styleGuide?.visualStyle && <span>{t("novelImport.workbench.summaryVisualStyle")}: ✓</span>}
                   </>
                 )}
-                {session.synopsis && <span>大纲: ✓</span>}
+                {session.synopsis && <span>{t("novelImport.workbench.summarySynopsis")}: ✓</span>}
                 {session.scriptPreview && (
-                  <span>场景数: {session.scriptPreview.scenes.length}</span>
+                  <span>{t("novelImport.workbench.summarySceneCount")}: {session.scriptPreview.scenes.length}</span>
                 )}
                 {(() => {
                   const failedCount = session.chunks.filter((c) => c.status === "failed" || c.status === "stale").length;
-                  return failedCount > 0 ? <span style={{ color: "var(--text-error, red)" }}>失败/过期: {failedCount}</span> : null;
+                  return failedCount > 0 ? <span style={{ color: "var(--text-error, red)" }}>{t("novelImport.workbench.summaryFailedStale")}: {failedCount}</span> : null;
                 })()}
               </div>
 
@@ -930,7 +930,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                 >
                   {t("novelImport.workbench.worldBibleDoc")}
                   {session.worldBible
-                    ? ` (${session.worldBible.characters.length} 角色)`
+                    ? ` (${session.worldBible.characters.length} ${t("novelImport.workbench.tabCharacters")})`
                     : ""}
                 </button>
                 <button
@@ -947,7 +947,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                 >
                   {t("novelImport.workbench.scriptDoc")}
                   {session.scriptPreview
-                    ? ` (${session.scriptPreview.scenes.length} 场景)`
+                    ? ` (${session.scriptPreview.scenes.length} ${t("novelImport.workbench.tabScenes")})`
                     : ""}
                 </button>
               </div>
@@ -1011,13 +1011,13 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
               {session.writeResult && (
                 <div className="novel-import-workbench__write-result" style={{ fontSize: "0.85rem" }}>
                   <div style={{ marginBottom: "0.5rem" }}>
-                    <strong>{t("novelImport.workbench.worldBibleDoc")}</strong>: 版本 {session.writeResult.worldBibleVersionId}
+                    <strong>{t("novelImport.workbench.worldBibleDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.worldBibleVersionId}
                   </div>
                   <div style={{ marginBottom: "0.5rem" }}>
-                    <strong>{t("novelImport.workbench.synopsisDoc")}</strong>: 版本 {session.writeResult.synopsisVersionId}
+                    <strong>{t("novelImport.workbench.synopsisDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.synopsisVersionId}
                   </div>
                   <div style={{ marginBottom: "0.5rem" }}>
-                    <strong>{t("novelImport.workbench.scriptDoc")}</strong>: 版本 {session.writeResult.scriptVersionId}
+                    <strong>{t("novelImport.workbench.scriptDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.scriptVersionId}
                   </div>
                 </div>
               )}
