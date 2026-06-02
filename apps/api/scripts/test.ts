@@ -604,6 +604,138 @@ async function main() {
     });
   });
 
+  await runCase("novel import chunk editing title split merge and confirm updates session", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-chunk-edit@example.com",
+        displayName: "Chunk Editor",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Chunk Edit Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 创建会话
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章 门后\n她推开门。走廊尽头有光。\n\n第二章 来电\n电话响了。她犹豫了一下。",
+          targetEpisodeCount: 4,
+          episodeDurationMinutes: 2,
+          genreStyle: "悬疑",
+          adaptationFocus: "保留核心反转",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const { session } = await sessionResponse.json() as { session: { id: string; chunks: Array<{ index: number; title?: string; text: string; confirmedAt?: string }> } };
+
+      // 修改标题
+      const patchTitleResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/0/title`, {
+        method: "PATCH",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ title: "序幕" }),
+      });
+      assert.equal(patchTitleResponse.status, 200);
+      const patched = await patchTitleResponse.json() as { session: { chunks: Array<{ index: number; title?: string; adjustedAt?: string; confirmedAt?: string }> } };
+      assert.equal(patched.session.chunks[0].title, "序幕");
+      assert.ok(patched.session.chunks[0].adjustedAt, "chunk 0 should have adjustedAt after title edit");
+      assert.equal(patched.session.chunks[0].confirmedAt, undefined, "confirmedAt should be cleared after title edit");
+
+      // 拆分
+      const splitResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/0/split`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ splitAt: 7, nextTitle: "拆分后" }),
+      });
+      assert.equal(splitResponse.status, 201);
+      const split = await splitResponse.json() as { session: { chunks: Array<{ index: number; title?: string; text: string }> } };
+      assert.equal(split.session.chunks.length, 3, "should have 3 chunks after split");
+      assert.equal(split.session.chunks[0].text, "第一章 门后");
+      assert.equal(split.session.chunks[1].title, "拆分后");
+      assert.ok(split.session.chunks.every((c) => c.index === split.session.chunks.indexOf(c)), "indices should be sequential");
+
+      // 合并到上一块
+      const mergeResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/1/merge-previous`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(mergeResponse.status, 201);
+      const merged = await mergeResponse.json() as { session: { chunks: Array<{ index: number; text: string }> } };
+      assert.equal(merged.session.chunks.length, 2, "should have 2 chunks after merge");
+      assert.ok(merged.session.chunks[0].text.includes("第一章 门后"), "merged text should contain first part");
+      assert.ok(merged.session.chunks[0].text.includes("拆分后") || merged.session.chunks[0].text.length > 8, "merged text should contain split part");
+      assert.ok(merged.session.chunks.every((c) => c.index === merged.session.chunks.indexOf(c)), "indices should be sequential after merge");
+
+      // 确认单个分块
+      const confirmOneResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/0/confirm`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmOneResponse.status, 201);
+      const confirmedOne = await confirmOneResponse.json() as { session: { chunks: Array<{ confirmedAt?: string }> } };
+      assert.ok(confirmedOne.session.chunks[0].confirmedAt, "chunk 0 should have confirmedAt");
+      assert.equal(confirmedOne.session.chunks[1].confirmedAt, undefined, "chunk 1 should not have confirmedAt yet");
+
+      // 确认全部
+      const confirmAllResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllResponse.status, 201);
+      const confirmedAll = await confirmAllResponse.json() as { session: { chunks: Array<{ confirmedAt?: string }> } };
+      assert.ok(confirmedAll.session.chunks.every((c) => c.confirmedAt), "all chunks should have confirmedAt after confirm-all");
+    });
+  });
+
+  await runCase("novel import start requires confirmed chunks", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-unconfirmed@example.com",
+        displayName: "Unconfirmed Starter",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Unconfirmed Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 创建会话
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "悬疑",
+          adaptationFocus: "保留核心反转",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const created = await sessionResponse.json() as { session: { id: string } };
+
+      // 直接 start，没有确认分块
+      const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(startResponse.status, 400);
+      const errorBody = await startResponse.json() as { message: string };
+      assert.ok(
+        errorBody.message.includes("Novel import chunks must be confirmed before generation"),
+        `error should mention confirmation requirement, got: ${errorBody.message}`,
+      );
+    });
+  });
+
   await runCase("novel import session start queues a worker job and cancel marks session", async () => {
     await withHttpApp(async (baseUrl) => {
       const user = await registerUser(baseUrl, {
@@ -632,6 +764,14 @@ async function main() {
       });
       assert.equal(sessionResponse.status, 201);
       const created = await sessionResponse.json() as { session: { id: string } };
+
+      const confirmAllResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllResponse.status, 201);
+      const confirmedAll = await confirmAllResponse.json() as { session: { chunks: Array<{ confirmedAt?: string }> } };
+      assert.ok(confirmedAll.session.chunks.every((c) => c.confirmedAt), "all chunks should have confirmedAt");
 
       const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
         method: "POST",
@@ -750,6 +890,12 @@ async function main() {
         }),
       });
       const { session } = await sessionResponse.json() as { session: { id: string } };
+
+      const confirmAllBeforeStart = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllBeforeStart.status, 201);
 
       const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/start`, {
         method: "POST",
@@ -910,6 +1056,12 @@ async function main() {
       });
       assert.equal(sessionResponse.status, 201);
       const created = await sessionResponse.json() as { session: { id: string } };
+
+      const confirmAllResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllResponse.status, 201);
 
       const startResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
         method: "POST",
