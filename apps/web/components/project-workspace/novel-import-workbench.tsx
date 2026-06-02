@@ -1015,13 +1015,13 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
               {/* 写入结果 */}
               {session.writeResult && (
                 <div className="novel-import-workbench__write-result">
-                  <div style={{ marginBottom: "0.5rem" }}>
+                  <div>
                     <strong>{t("novelImport.workbench.worldBibleDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.worldBibleVersionId}
                   </div>
-                  <div style={{ marginBottom: "0.5rem" }}>
+                  <div>
                     <strong>{t("novelImport.workbench.synopsisDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.synopsisVersionId}
                   </div>
-                  <div style={{ marginBottom: "0.5rem" }}>
+                  <div>
                     <strong>{t("novelImport.workbench.scriptDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.scriptVersionId}
                   </div>
                 </div>
@@ -1095,13 +1095,13 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
 
             {/* 世界观文档 */}
             <div className="novel-import-workbench__target-row">
-              <span className="novel-import-workbench__target-icon">世界</span>
+              <span className="novel-import-workbench__target-icon">{t("novelImport.workbench.worldBibleDoc")}</span>
               <span>{worldBibleDoc ? worldBibleDoc.title : t("novelImport.workbench.worldBibleDoc")}</span>
             </div>
 
             {/* 大纲文档 */}
             <div className="novel-import-workbench__target-row">
-              <span className="novel-import-workbench__target-icon">大纲</span>
+              <span className="novel-import-workbench__target-icon">{t("novelImport.workbench.synopsisDoc")}</span>
               <span>
                 {synopsisDoc
                   ? synopsisDoc.title
@@ -1111,7 +1111,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
 
             {/* 剧本文档 */}
             <div className="novel-import-workbench__target-row">
-              <span className="novel-import-workbench__target-icon">剧本</span>
+              <span className="novel-import-workbench__target-icon">{t("novelImport.workbench.scriptDoc")}</span>
               <span>{scriptDoc ? scriptDoc.title : t("novelImport.workbench.scriptDoc")}</span>
             </div>
 
