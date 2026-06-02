@@ -283,6 +283,20 @@ export class NovelImportService {
 
   // ===== 分块校对辅助方法 =====
 
+  /** 重置分块的生成状态，使其回到待重新生成 */
+  private resetChunkForRegeneration(chunk: NovelImportChunkRecord): void {
+    chunk.status = "pending";
+    chunk.scenes = [];
+    delete chunk.summary;
+    delete chunk.continuityNotes;
+    delete chunk.rawOutput;
+    delete chunk.error;
+    delete chunk.startedAt;
+    delete chunk.completedAt;
+    delete chunk.confirmedAt;
+    chunk.adjustedAt = new Date().toISOString();
+  }
+
   /** 获取可编辑的分块，校验 index 及 session 状态 */
   private async getEditableChunk(userId: string, sessionId: string, chunkIndex: number) {
     if (!Number.isInteger(chunkIndex)) {
@@ -335,8 +349,7 @@ export class NovelImportService {
     };
     return this.updateSession(sessionId, (live) => {
       live.chunks[chunkIndex].text = leftText;
-      live.chunks[chunkIndex].adjustedAt = new Date().toISOString();
-      delete live.chunks[chunkIndex].confirmedAt;
+      this.resetChunkForRegeneration(live.chunks[chunkIndex]);
       live.chunks.splice(chunkIndex + 1, 0, newChunk);
       for (let i = 0; i < live.chunks.length; i++) {
         live.chunks[i].index = i;
@@ -353,10 +366,7 @@ export class NovelImportService {
     await this.getEditableChunk(userId, sessionId, chunkIndex);
     return this.updateSession(sessionId, (live) => {
       live.chunks[chunkIndex - 1].text += "\n\n" + live.chunks[chunkIndex].text;
-      live.chunks[chunkIndex - 1].status = "pending";
-      live.chunks[chunkIndex - 1].scenes = [];
-      live.chunks[chunkIndex - 1].adjustedAt = new Date().toISOString();
-      delete live.chunks[chunkIndex - 1].confirmedAt;
+      this.resetChunkForRegeneration(live.chunks[chunkIndex - 1]);
       live.chunks.splice(chunkIndex, 1);
       for (let i = 0; i < live.chunks.length; i++) {
         live.chunks[i].index = i;

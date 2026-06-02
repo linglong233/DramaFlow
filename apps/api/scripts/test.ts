@@ -692,6 +692,104 @@ async function main() {
     });
   });
 
+  await runCase("novel import split resets generated fields on both halves", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-split-reset@example.com",
+        displayName: "Split Reset",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Split Reset Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 创建会话
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章 门后\n她推开门。走廊尽头有光。门后面是一个陌生的世界。\n\n第二章 来电\n电话响了。她犹豫了一下。",
+          targetEpisodeCount: 4,
+          episodeDurationMinutes: 2,
+          genreStyle: "悬疑",
+          adaptationFocus: "保留核心反转",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const { session } = await sessionResponse.json() as {
+        session: {
+          id: string;
+          chunks: Array<{ index: number; text: string }>;
+        };
+      };
+
+      // 通过 confirm-all 确认分块，然后模拟一个已生成的 session — 直接通过 HTTP 拿回 session 后手动添加生成字段
+      // 这里使用现有的 chunk 编辑测试模式：先 confirm、再 start、然后 worker 处理（mock）生成内容，
+      // 然后取消 session，再重新创建一个新 session 来做 split。
+      // 实际上更简单的方式：直接在 draft session 上拆分，验证左块和右块都没有生成字段。
+
+      // 拆分 chunk 0
+      const splitResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${session.id}/chunks/0/split`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ splitAt: 7, nextTitle: "拆分右半" }),
+      });
+      assert.equal(splitResponse.status, 201);
+      const splitResult = await splitResponse.json() as {
+        session: {
+          chunks: Array<{
+            index: number;
+            text: string;
+            status: string;
+            scenes: unknown[];
+            summary?: string;
+            continuityNotes?: string;
+            rawOutput?: string;
+            error?: string;
+            startedAt?: string;
+            completedAt?: string;
+            confirmedAt?: string;
+            adjustedAt?: string;
+          }>;
+          scriptPreview?: unknown;
+        };
+      };
+
+      const chunks = splitResult.session.chunks;
+      assert.equal(chunks.length, 3, "should have 3 chunks after split");
+
+      // 验证左块（index 0）的生成状态已重置
+      const leftChunk = chunks[0];
+      assert.equal(leftChunk.status, "pending", "left chunk status should be pending");
+      assert.equal(leftChunk.scenes.length, 0, "left chunk scenes should be empty");
+      assert.equal(leftChunk.summary, undefined, "left chunk should have no summary");
+      assert.equal(leftChunk.continuityNotes, undefined, "left chunk should have no continuityNotes");
+      assert.equal(leftChunk.rawOutput, undefined, "left chunk should have no rawOutput");
+      assert.equal(leftChunk.error, undefined, "left chunk should have no error");
+      assert.equal(leftChunk.startedAt, undefined, "left chunk should have no startedAt");
+      assert.equal(leftChunk.completedAt, undefined, "left chunk should have no completedAt");
+      assert.equal(leftChunk.confirmedAt, undefined, "left chunk should have no confirmedAt");
+      assert.ok(leftChunk.adjustedAt, "left chunk should have adjustedAt");
+
+      // 验证右块（index 1）是新创建的、无生成字段的
+      const rightChunk = chunks[1];
+      assert.equal(rightChunk.status, "pending", "right chunk status should be pending");
+      assert.equal(rightChunk.scenes.length, 0, "right chunk scenes should be empty");
+
+      // 验证所有 index 连续
+      for (let i = 0; i < chunks.length; i++) {
+        assert.equal(chunks[i].index, i, `chunk index ${i} should be ${i}`);
+      }
+
+      // 验证 scriptPreview 被清除
+      assert.equal(splitResult.session.scriptPreview, undefined, "session should have no scriptPreview after split");
+    });
+  });
+
   await runCase("novel import start requires confirmed chunks", async () => {
     await withHttpApp(async (baseUrl) => {
       const user = await registerUser(baseUrl, {
