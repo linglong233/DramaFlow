@@ -120,15 +120,41 @@ export class NovelImportService {
     return this.toNovelImportSession(session);
   }
 
-  async attachJob(userId: string, sessionId: string, jobId: string, options?: { requireConfirmedChunks?: boolean }) {
+  /** 在创建任务前校验是否可以启动生成，失败时抛出 BadRequestException */
+  async assertCanStartGeneration(userId: string, sessionId: string): Promise<NovelImportSession> {
     const session = await this.getSession(userId, sessionId);
+    this.assertSessionCanStartGeneration(session);
+    return session;
+  }
+
+  private assertSessionCanStartGeneration(session: NovelImportSession): void {
     if (session.status === "queued" || session.status === "running" || session.status === "written") {
       throw new BadRequestException(`Cannot start a session with status "${session.status}"`);
     }
+    if (session.chunks.length === 0) {
+      throw new BadRequestException("Novel import session has no chunks");
+    }
+    if (session.chunks.some((chunk) => !chunk.confirmedAt)) {
+      throw new BadRequestException("Novel import chunks must be confirmed before generation");
+    }
+  }
+
+  /** Worker 执行前校验：只检查分块确认状态（不检查 session status，因为此时已是 queued/running） */
+  private assertChunksConfirmedForGeneration(session: NovelImportSession): void {
+    if (session.chunks.length === 0) {
+      throw new BadRequestException("Novel import session has no chunks");
+    }
+    if (session.chunks.some((chunk) => !chunk.confirmedAt)) {
+      throw new BadRequestException("Novel import chunks must be confirmed before generation");
+    }
+  }
+
+  async attachJob(userId: string, sessionId: string, jobId: string, options?: { requireConfirmedChunks?: boolean }) {
+    const session = await this.getSession(userId, sessionId);
     if (options?.requireConfirmedChunks) {
-      if (session.chunks.some((chunk) => !chunk.confirmedAt)) {
-        throw new BadRequestException("Novel import chunks must be confirmed before generation");
-      }
+      this.assertSessionCanStartGeneration(session);
+    } else if (session.status === "queued" || session.status === "running" || session.status === "written") {
+      throw new BadRequestException(`Cannot start a session with status "${session.status}"`);
     }
     const updated = await this.prisma.novelImportSession.update({
       where: { id: session.id },
@@ -365,6 +391,10 @@ export class NovelImportService {
     resolveLlmConfig: (userId: string, projectId: string, source?: LlmConfigSource) => Promise<LlmProviderConfig>,
     streamLlm: (systemPrompt: string, messages: Array<{ role: string; content: string }>, config?: LlmProviderConfig) => AsyncGenerator<StreamChunk>,
   ) {
+    // 在生成内容前校验分块是否已确认（不检查 status，因为此时 status 已是 "queued" 或 "running"）
+    const preCheckSession = await this.getSession(userId, sessionId);
+    this.assertChunksConfirmedForGeneration(preCheckSession);
+
     let session = await this.markSessionRunning(userId, sessionId, "adaptationPlan", 5);
     const config = await resolveLlmConfig(userId, session.projectId, session.options.llmConfigSource);
 

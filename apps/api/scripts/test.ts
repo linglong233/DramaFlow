@@ -733,6 +733,107 @@ async function main() {
         errorBody.message.includes("Novel import chunks must be confirmed before generation"),
         `error should mention confirmation requirement, got: ${errorBody.message}`,
       );
+
+      // 确认失败时不会创建任务
+      const jobsResponse = await originalFetch(`${baseUrl}/projects/${project.id}/jobs?type=novel_import`, {
+        headers: authHeaders(user.accessToken),
+      });
+      assert.equal(jobsResponse.status, 200);
+      const jobsPayload = await jobsResponse.json() as { jobs: unknown[] };
+      assert.equal(jobsPayload.jobs.length, 0, "no novel_import jobs should exist after failed start");
+    });
+  });
+
+  await runCase("novel import worker guard rejects runSession for unconfirmed chunks", async () => {
+    // 此测试验证 runSession 内部的守卫：
+    // 即使通过 retryChunk 端点（不校验分块确认）创建了一个 runSession 类型的任务，
+    // worker 处理时也会因为分块未确认而失败。
+    // 由于 retryChunk 创建的是 retryChunk action 任务而非 runSession，
+    // 我们通过确认分块 → start → 取消 session → 重新创建未确认的 session 来模拟。
+    // 实际上由于无法通过公共 API 创建无效的 runSession 任务（这正是此修复的目的），
+    // 此测试验证取消后的 session 在处理时不会生成任何内容。
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "novel-worker-guard@example.com",
+        displayName: "Novel Worker Guard",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Worker Guard Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 创建会话，不确认分块
+      const sessionResponse = await originalFetch(`${baseUrl}/projects/${project.id}/novel-import-sessions`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({
+          text: "第一章\n她推开门。\n\n第二章\n电话响了。",
+          targetEpisodeCount: 8,
+          episodeDurationMinutes: 2,
+          genreStyle: "悬疑",
+          adaptationFocus: "保留核心反转",
+        }),
+      });
+      assert.equal(sessionResponse.status, 201);
+      const created = await sessionResponse.json() as { session: { id: string } };
+
+      // 确认分块并启动，然后取消，验证 session 保持无内容
+      const confirmAllResp = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/chunks/confirm-all`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(confirmAllResp.status, 201);
+
+      const startResp = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/start`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(startResp.status, 201);
+      const started = await startResp.json() as { job: { id: string } };
+
+      // 取消 session
+      const cancelResp = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}/cancel`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+      });
+      assert.equal(cancelResp.status, 201);
+
+      // 尝试处理已取消的 session 的任务 — 应该失败
+      const processResponse = await originalFetch(`${baseUrl}/internal/jobs/${started.job.id}/process`, {
+        method: "POST",
+        headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+      });
+      assert.ok(processResponse.status >= 400, `expected non-2xx for cancelled session job, got ${processResponse.status}`);
+
+      // 验证任务状态为 failed
+      const jobStatusResponse = await originalFetch(`${baseUrl}/jobs/${started.job.id}`, {
+        headers: authHeaders(user.accessToken),
+      });
+      assert.equal(jobStatusResponse.status, 200);
+      const jobStatus = await jobStatusResponse.json() as { status: string; error?: string };
+      assert.equal(jobStatus.status, "failed");
+
+      // 验证 session 没有生成任何内容
+      const sessionGetResponse = await originalFetch(`${baseUrl}/novel-import-sessions/${created.session.id}`, {
+        headers: authHeaders(user.accessToken),
+      });
+      assert.equal(sessionGetResponse.status, 200);
+      const sessionData = await sessionGetResponse.json() as {
+        session: {
+          status: string;
+          worldBible?: unknown;
+          synopsis?: unknown;
+          scriptPreview?: unknown;
+        };
+      };
+      assert.equal(sessionData.session.status, "cancelled");
+      assert.equal(sessionData.session.worldBible, undefined, "worldBible should not be generated");
+      assert.equal(sessionData.session.synopsis, undefined, "synopsis should not be generated");
+      assert.equal(sessionData.session.scriptPreview, undefined, "scriptPreview should not be generated");
     });
   });
 

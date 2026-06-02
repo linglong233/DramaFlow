@@ -279,7 +279,7 @@ export class JobsController {
     @CurrentUser() user: { id: string },
     @Param("id") sessionId: string,
   ) {
-    const session = await this.novelImportService.getSession(user.id, sessionId);
+    const session = await this.novelImportService.assertCanStartGeneration(user.id, sessionId);
     const job = await this.jobsService.createNovelImportJob(user.id, session.projectId, {
       action: "runSession",
       sessionId,
