@@ -408,9 +408,9 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
 
   return (
     <div className="novel-import-workbench">
-      <div className="novel-import-workbench__layout" style={{ display: "flex", gap: "1rem" }}>
+      <div className="novel-import-workbench__layout">
         {/* ── 左侧主区域 ── */}
-        <div className="novel-import-workbench__main" style={{ flex: 1, minWidth: 0 }}>
+        <div className="novel-import-workbench__main">
           {/* 任务清单 */}
           <div className="novel-import-workbench__tasks">
             {tasks.map((task, i) => {
@@ -583,9 +583,9 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
 
               {/* 分块列表 */}
               <div className="novel-import-workbench__chunk-table">
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                <table className="novel-import-workbench__chunk-table-inner">
                   <thead>
-                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <tr className="novel-import-workbench__chunk-thead">
                       <th style={{ padding: "0.4rem", textAlign: "left", width: 40 }}>#</th>
                       <th style={{ padding: "0.4rem", textAlign: "left" }}>{t("novelImport.workbench.editTitle")}</th>
                       <th style={{ padding: "0.4rem", textAlign: "right", width: 60 }}>{t("novelImport.workbench.thCharCount")}</th>
@@ -604,11 +604,11 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                         <tr
                           key={chunk.index}
                           style={{
-                            borderBottom: "1px solid var(--border)",
+                            borderBottom: "1px solid var(--border-subtle)",
                             background: chunk.status === "failed"
-                              ? "var(--bg-error, rgba(255,0,0,0.05))"
+                              ? "var(--danger-bg)"
                               : chunk.status === "stale"
-                                ? "var(--bg-warning, rgba(255,165,0,0.05))"
+                                ? "var(--warning-bg)"
                                 : "transparent",
                           }}
                         >
@@ -723,8 +723,8 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                             </div>
                             {/* 拆分对话框 */}
                             {isSplitting && (
-                              <div style={{ marginTop: "0.5rem", padding: "0.5rem", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg-elevated, #fff)" }}>
-                                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", fontSize: "0.85rem" }}>
+                              <div className="novel-import-workbench__split-panel">
+                                <div className="novel-import-workbench__split-fields">
                                   <label>
                                     {t("novelImport.workbench.splitAt")} (1–{chunk.text.length - 1})
                                     <input
@@ -908,7 +908,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
               )}
 
               {/* 摘要统计 */}
-              <div className="novel-import-workbench__summary" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.85rem", marginBottom: "1rem" }}>
+              <div className="novel-import-workbench__summary">
                 {session.worldBible && (
                   <>
                     <span>{t("novelImport.workbench.summaryCharacters")}: {session.worldBible.characters.length}</span>
@@ -922,7 +922,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
                 )}
                 {(() => {
                   const failedCount = session.chunks.filter((c) => c.status === "failed" || c.status === "stale").length;
-                  return failedCount > 0 ? <span style={{ color: "var(--text-error, red)" }}>{t("novelImport.workbench.summaryFailedStale")}: {failedCount}</span> : null;
+                  return failedCount > 0 ? <span style={{ color: "var(--danger-text)" }}>{t("novelImport.workbench.summaryFailedStale")}: {failedCount}</span> : null;
                 })()}
               </div>
 
@@ -1014,7 +1014,7 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
 
               {/* 写入结果 */}
               {session.writeResult && (
-                <div className="novel-import-workbench__write-result" style={{ fontSize: "0.85rem" }}>
+                <div className="novel-import-workbench__write-result">
                   <div style={{ marginBottom: "0.5rem" }}>
                     <strong>{t("novelImport.workbench.worldBibleDoc")}</strong>: {t("novelImport.workbench.versionLabel")} {session.writeResult.worldBibleVersionId}
                   </div>
@@ -1085,29 +1085,23 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
         </div>
 
         {/* ── 右侧边栏：写入目标 ── */}
-        <div className="novel-import-workbench__side" style={{ width: 260, flexShrink: 0 }}>
+        <div className="novel-import-workbench__side">
           <div
             className="novel-import-workbench__targets"
-            style={{
-              padding: "1rem",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              fontSize: "0.85rem",
-            }}
           >
-            <h4 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem" }}>
+            <h4>
               {t("novelImport.workbench.writeTargets")}
             </h4>
 
             {/* 世界观文档 */}
-            <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ width: 16, textAlign: "center" }}>🌍</span>
+            <div className="novel-import-workbench__target-row">
+              <span className="novel-import-workbench__target-icon">世界</span>
               <span>{worldBibleDoc ? worldBibleDoc.title : t("novelImport.workbench.worldBibleDoc")}</span>
             </div>
 
             {/* 大纲文档 */}
-            <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ width: 16, textAlign: "center" }}>📋</span>
+            <div className="novel-import-workbench__target-row">
+              <span className="novel-import-workbench__target-icon">大纲</span>
               <span>
                 {synopsisDoc
                   ? synopsisDoc.title
@@ -1116,23 +1110,14 @@ export function NovelImportWorkbench({ projectId, project }: Props) {
             </div>
 
             {/* 剧本文档 */}
-            <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ width: 16, textAlign: "center" }}>🎬</span>
+            <div className="novel-import-workbench__target-row">
+              <span className="novel-import-workbench__target-icon">剧本</span>
               <span>{scriptDoc ? scriptDoc.title : t("novelImport.workbench.scriptDoc")}</span>
             </div>
 
             {/* 安全提示 */}
             <div
               className="novel-import-workbench__safety-note"
-              style={{
-                marginTop: "0.75rem",
-                padding: "0.5rem",
-                background: "var(--bg-info, rgba(0,100,255,0.05))",
-                borderRadius: 4,
-                color: "var(--text-secondary)",
-                fontSize: "0.8rem",
-                lineHeight: 1.5,
-              }}
             >
               {t("novelImport.workbench.writeSafety")}
             </div>

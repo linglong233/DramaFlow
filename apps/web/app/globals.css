@@ -9839,8 +9839,18 @@ textarea.input {
 
 .novel-import-workbench__summary {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-4);
   flex-wrap: wrap;
+  font-size: 13px;
+  margin-bottom: var(--space-4);
+}
+
+.novel-import-workbench__write-result {
+  font-size: 13px;
+}
+
+.novel-import-workbench__write-result > div {
+  margin-bottom: var(--space-2);
 }
 
 .novel-import-workbench__layout {
@@ -9930,6 +9940,78 @@ textarea.input {
 .novel-import-workbench button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 写入目标面板 */
+.novel-import-workbench__targets {
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.novel-import-workbench__targets h4 {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+}
+
+.novel-import-workbench__target-row {
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.novel-import-workbench__target-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.novel-import-workbench__safety-note {
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  background: var(--info-bg);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 分块表格 */
+.novel-import-workbench__chunk-table-inner {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.novel-import-workbench__chunk-thead {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* 拆分对话框 */
+.novel-import-workbench__split-panel {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+
+.novel-import-workbench__split-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 13px;
 }
 
 @media (max-width: 980px) {
