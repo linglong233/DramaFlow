@@ -47,13 +47,14 @@ import { WorldBibleEditor } from "./project-workspace/world-bible-editor";
 import { SynopsisEditor } from "./project-workspace/synopsis-editor";
 import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
+import { NovelImportWorkbench } from "./project-workspace/novel-import-workbench";
 import { useRealtime } from "./realtime-provider";
 
 // Workspace modes: document (with sub-tabs: view/edit/generate/versions), info, tasks, timeline
 type WorkspaceMode = "document" | "info" | "tasks" | "timeline";
 
 // Sub-tabs within document mode
-type DocSubTab = "view" | "edit" | "generate" | "versions";
+type DocSubTab = "view" | "edit" | "generate" | "versions" | "novelImport";
 
 // Backward-compat mapping for old URL mode params
 const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
@@ -524,6 +525,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       const subParam = searchParams.get("sub");
       if (subParam === "generate") setDocSubTab("generate");
       else if (subParam === "edit") setDocSubTab("edit");
+      else if (subParam === "novelImport") setDocSubTab("novelImport");
       else if (subParam === "view" || !subParam) {
         // Only reset if coming from external navigation
         if (currentMode !== "document") setDocSubTab("view");
@@ -803,6 +805,17 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       <VersionManagementIcon />
                       {t("projectWorkspace.workspace.modeVersions")}
                     </button>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      className={`uw-sub-tab${docSubTab === "novelImport" ? " uw-sub-tab--active" : ""}`}
+                      role="tab"
+                      aria-selected={docSubTab === "novelImport"}
+                      onClick={() => handleSubTabChange("novelImport")}
+                      type="button"
+                    >
+                      <SparkleIcon />
+                      {t("projectWorkspace.workspace.modeNovelImport")}
+                    </button>
                   </div>
                 )}
 
@@ -955,6 +968,13 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       allVersions={rawVersions}
                       allDocuments={documents.map((d) => ({ id: d.id, title: d.title }))}
                     />
+                  )}
+                </div>
+
+                {/* 小说导入子标签页 */}
+                <div style={{ display: mode === "document" && docSubTab === "novelImport" ? undefined : "none" }}>
+                  {mode === "document" && (
+                    <NovelImportWorkbench projectId={projectId} project={payload} />
                   )}
                 </div>
 

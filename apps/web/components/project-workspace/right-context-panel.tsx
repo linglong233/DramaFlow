@@ -43,7 +43,7 @@ interface Props {
   selectedVersionId: string;
   selectedVersion: Pick<VersionRecord, "id" | "title" | "versionNumber" | "status" | "content" | "createdAt"> | null;
   currentMode: string;
-  docSubTab?: "view" | "edit" | "generate" | "versions";
+  docSubTab?: "view" | "edit" | "generate" | "versions" | "novelImport";
   isEditing: boolean;
   onStartEdit: () => void;
   onFeedback: (msg: { message: string | null; error: string | null }) => void;
