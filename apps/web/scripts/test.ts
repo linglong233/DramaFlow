@@ -15,6 +15,10 @@ const providerEntryFormTsx = readFileSync(join(scriptDir, "../components/provide
 const profileSettingsPanelTsx = readFileSync(join(scriptDir, "../components/profile-settings-panel.tsx"), "utf8");
 const teamSettingsPanelTsx = readFileSync(join(scriptDir, "../components/team-settings-panel.tsx"), "utf8");
 const dashboardOverviewTsx = readFileSync(join(scriptDir, "../components/dashboard-overview.tsx"), "utf8");
+const unifiedWorkspaceTsx = readFileSync(join(scriptDir, "../components/unified-workspace.tsx"), "utf8");
+const novelImportWorkbenchTsx = readFileSync(join(scriptDir, "../components/project-workspace/novel-import-workbench.tsx"), "utf8");
+const synopsisTs = readFileSync(join(scriptDir, "../components/project-workspace/generation/generators/synopsis.ts"), "utf8");
+const scriptTs = readFileSync(join(scriptDir, "../components/project-workspace/generation/generators/script.ts"), "utf8");
 
 function assertRuleContains(selector: string, declarations: string[]) {
   const selectorStart = globalsCss.indexOf(`${selector} {`);
@@ -125,5 +129,13 @@ assertFileContains("dashboard-overview.tsx", dashboardOverviewTsx, "dashboard.no
 assertFileContains("messages.ts", messagesTs, "inviteHint");
 assertFileContains("messages.ts", messagesTs, "如果你是加入已有团队");
 assertFileContains("messages.ts", messagesTs, "If you are joining an existing team");
+
+// 小说导入工作台集成检查
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, '"novelImport"');
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, "modeNovelImport");
+assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "queryKeys.novelImportLatest");
+assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "confirm-all");
+assertFileDoesNotContain("synopsis.ts", synopsisTs, '"novelImport"');
+assertFileDoesNotContain("script.ts", scriptTs, '"novelImport"');
 
 console.log("web tests passed");
