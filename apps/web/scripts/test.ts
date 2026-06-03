@@ -17,6 +17,8 @@ const teamSettingsPanelTsx = readFileSync(join(scriptDir, "../components/team-se
 const dashboardOverviewTsx = readFileSync(join(scriptDir, "../components/dashboard-overview.tsx"), "utf8");
 const unifiedWorkspaceTsx = readFileSync(join(scriptDir, "../components/unified-workspace.tsx"), "utf8");
 const novelImportWorkbenchTsx = readFileSync(join(scriptDir, "../components/project-workspace/novel-import-workbench.tsx"), "utf8");
+const productionOverviewTsx = readFileSync(join(scriptDir, "../components/project-workspace/production-overview.tsx"), "utf8");
+const useProductionOverviewTs = readFileSync(join(scriptDir, "../lib/hooks/use-production-overview.ts"), "utf8");
 const synopsisTs = readFileSync(join(scriptDir, "../components/project-workspace/generation/generators/synopsis.ts"), "utf8");
 const scriptTs = readFileSync(join(scriptDir, "../components/project-workspace/generation/generators/script.ts"), "utf8");
 
@@ -140,5 +142,30 @@ assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "setIg
 assertFileContains("novel-import-workbench.tsx", novelImportWorkbenchTsx, "session.id === ignoredLatestSessionId");
 assertFileDoesNotContain("synopsis.ts", synopsisTs, '"novelImport"');
 assertFileDoesNotContain("script.ts", scriptTs, '"novelImport"');
+
+// 制作总览集成检查
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, '"overview" | "document" | "info" | "tasks" | "timeline"');
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, "modeOverview");
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, "ProductionOverview");
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, "handleProductionNavigate");
+assertFileContains("unified-workspace.tsx", unifiedWorkspaceTsx, 'mode === "timeline" || mode === "overview"');
+
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "ProductionStageKey");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "ProductionStageStatus");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, '"project_info"');
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, '"world_bible"');
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, '"timeline_export"');
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, 'metadata?.source === "shot_composition"');
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "normalizeStoryboardContent");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "normalizeWorldBibleContent");
+
+assertFileContains("production-overview.tsx", productionOverviewTsx, "useProductionOverview");
+assertFileContains("production-overview.tsx", productionOverviewTsx, "onNavigate");
+assertFileContains("production-overview.tsx", productionOverviewTsx, "production-overview__pipeline");
+
+assertFileContains("messages.ts", messagesTs, "modeOverview");
+assertFileContains("messages.ts", messagesTs, "productionOverview");
+assertFileContains("messages.ts", messagesTs, "制作总览");
+assertFileContains("messages.ts", messagesTs, "Production");
 
 console.log("web tests passed");

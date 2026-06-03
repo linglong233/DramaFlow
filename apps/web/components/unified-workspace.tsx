@@ -48,16 +48,19 @@ import { SynopsisEditor } from "./project-workspace/synopsis-editor";
 import { TaskPanel } from "./project-workspace/task-panel";
 import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { NovelImportWorkbench } from "./project-workspace/novel-import-workbench";
+import { ProductionOverview } from "./project-workspace/production-overview";
+import type { ProductionNavigationTarget } from "../lib/hooks/use-production-overview";
 import { useRealtime } from "./realtime-provider";
 
 // Workspace modes: document (with sub-tabs: view/edit/generate/versions), info, tasks, timeline
-type WorkspaceMode = "document" | "info" | "tasks" | "timeline";
+type WorkspaceMode = "overview" | "document" | "info" | "tasks" | "timeline";
 
 // Sub-tabs within document mode
 type DocSubTab = "view" | "edit" | "generate" | "versions" | "novelImport";
 
 // Backward-compat mapping for old URL mode params
 const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
+  overview: "overview",
   view: "document",
   edit: "document",
   document: "document",
@@ -183,9 +186,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   useWorkspaceRealtime(projectId);
 
   // Parse initial mode with backward compat
-  const rawMode = searchParams.get("mode") || "document";
+  const rawMode = searchParams.get("mode") || "overview";
   const rawSub = searchParams.get("sub") || "";
-  const initialMode = MODE_COMPAT_MAP[rawMode] || "document";
+  const initialMode = MODE_COMPAT_MAP[rawMode] || "overview";
 
   const [mode, setMode] = useState<WorkspaceMode>(initialMode);
   const [isEditing, setIsEditing] = useState(rawMode === "edit"); // If came from edit redirect
@@ -226,13 +229,13 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const timelineQuery = useQuery({
     queryKey: queryKeys.timeline(projectId),
     queryFn: () => apiFetch<TimelineResponse>(`/projects/${projectId}/timeline`),
-    enabled: Boolean(projectQuery.data) && mode === "timeline",
+    enabled: Boolean(projectQuery.data) && (mode === "timeline" || mode === "overview"),
   });
 
   const exportsQuery = useQuery({
     queryKey: queryKeys.exports(projectId),
     queryFn: () => apiFetch<ExportRecord[]>(`/projects/${projectId}/exports`),
-    enabled: Boolean(projectQuery.data) && mode === "timeline",
+    enabled: Boolean(projectQuery.data) && (mode === "timeline" || mode === "overview"),
   });
 
   const rawDocuments = projectQuery.data?.documents ?? [];
@@ -513,9 +516,23 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     router.replace(`?${params.toString()}`, { scroll: false });
   }
 
+  function handleProductionNavigate(target: ProductionNavigationTarget) {
+    if (target.documentType) {
+      const doc = documents.find((item) => item.type === target.documentType);
+      if (doc && doc.id !== VIRTUAL_VIDEO_DOC_ID) {
+        setSelectedDocId(doc.id);
+        setSelectedVersionId(doc.currentVersionId ?? doc.versions[0]?.id ?? "");
+      }
+    }
+    if (target.subTab) {
+      setDocSubTab(target.subTab);
+    }
+    handleModeChange(target.mode);
+  }
+
   // Sync URL -> state (for external navigation like sidebar links)
   useEffect(() => {
-    const currentMode = searchParams.get("mode") || "document";
+    const currentMode = searchParams.get("mode") || "overview";
     const mapped = MODE_COMPAT_MAP[currentMode] || currentMode;
     if (mapped !== mode) {
       setMode(mapped as WorkspaceMode);
@@ -534,6 +551,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   }, [mode, searchParams]);
 
   const modeConfig = [
+    { key: "overview" as const, label: t("projectWorkspace.workspace.modeOverview"), icon: TimelineIcon },
     { key: "info" as const, label: t("projectWorkspace.workspace.modeInfo"), icon: InfoIcon },
     { key: "document" as const, label: t("projectWorkspace.workspace.modeDocument"), icon: DocumentIcon },
     { key: "tasks" as const, label: t("projectWorkspace.workspace.modeTasks"), icon: TaskIcon },
@@ -589,7 +607,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const isInfoMode = mode === "info";
   const isTasksMode = mode === "tasks";
   const isTimelineMode = mode === "timeline";
-  const showThreeColumnLayout = !isInfoMode && !isTasksMode && !isTimelineMode;
+  const isOverviewMode = mode === "overview";
+  const showThreeColumnLayout = !isOverviewMode && !isInfoMode && !isTasksMode && !isTimelineMode;
   const isDocumentMode = mode === "document";
 
   return (
@@ -678,6 +697,18 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       <div className="uw-feedback">
         <InlineFeedback message={feedback.message} error={feedback.error} />
       </div>
+
+      {/* Overview mode: 总览面板 */}
+      {isOverviewMode && (
+        <div className="uw-info-scroll">
+          <div className="uw-info-inner">
+            <ProductionOverview
+              payload={payload}
+              onNavigate={handleProductionNavigate}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Info mode: full-width content */}
       {isInfoMode && (

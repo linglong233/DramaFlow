@@ -368,6 +368,7 @@ export const zhCNMessages = {
       modeTasks: "任务",
       modeTimeline: "时间线",
       modeExport: "导出",
+      modeOverview: "制作总览",
       collapsePanel: "收起面板",
       expandPanel: "展开面板",
       quickActions: "快捷操作",
@@ -628,6 +629,130 @@ export const zhCNMessages = {
       permissionsSaved: "项目成员权限已保存。",
       permissionsSaveFailed: "项目成员权限保存失败。",
       permissionsNoAccess: "你没有管理项目权限的权限。",
+    },
+    productionOverview: {
+      title: "制作总览",
+      subtitle: "项目各阶段的进度与状态",
+      nextStep: "下一步",
+      blockersTitle: "阻塞项",
+      blockersEmpty: "暂无阻塞项",
+      openTasks: "{count} 个待办",
+      go: "前往",
+      status: {
+        notStarted: "未开始",
+        inProgress: "进行中",
+        needsAction: "需要操作",
+        blocked: "已阻塞",
+        completed: "已完成"
+      },
+      summary: {
+        totalShots: "总镜头",
+        imageReady: "图片就绪",
+        videoReady: "视频就绪",
+        activeJobs: "活跃任务",
+        failedJobs: "失败任务",
+        successfulExports: "成功导出"
+      },
+      stages: {
+        projectInfo: {
+          title: "项目信息",
+          summary: "项目基本信息",
+          detailComplete: "项目信息已完善",
+          detailIncomplete: "项目信息未完善",
+          action: "完善项目信息",
+          metricName: "项目名称",
+          metricGenre: "类型"
+        },
+        worldBible: {
+          title: "世界观",
+          summary: "角色与场景设定",
+          detailComplete: "已创建 {count} 个设定",
+          detailIncomplete: "尚未创建世界观设定",
+          action: "创建世界观",
+          metricCharacters: "角色",
+          metricLocations: "场景"
+        },
+        synopsis: {
+          title: "大纲",
+          summary: "故事大纲与场景规划",
+          detailComplete: "大纲已就绪",
+          detailFailed: "大纲生成失败",
+          detailIncomplete: "尚未创建大纲",
+          action: "创建大纲",
+          metricScenes: "场景"
+        },
+        script: {
+          title: "剧本",
+          summary: "剧本与场景编写",
+          detailComplete: "已编写 {scenes} 个场景",
+          detailIncomplete: "尚未创建剧本",
+          action: "创建剧本",
+          metricScenes: "场景",
+          blockerSynopsisTitle: "缺少大纲",
+          blockerSynopsisDetail: "请先创建并审核大纲"
+        },
+        storyboard: {
+          title: "分镜",
+          summary: "分镜与镜头规划",
+          detailComplete: "已规划 {shots} 个镜头",
+          detailFailed: "分镜生成失败",
+          detailIncomplete: "尚未创建分镜",
+          action: "创建分镜",
+          metricShots: "镜头",
+          blockerScriptTitle: "缺少剧本",
+          blockerScriptDetail: "请先创建并审核剧本"
+        },
+        image: {
+          title: "图片",
+          summary: "图片素材生成",
+          detail: "{ready}/{total} 已就绪",
+          action: "生成图片",
+          metricReady: "就绪",
+          blockerStoryboardTitle: "缺少分镜",
+          blockerStoryboardDetail: "请先完成分镜规划"
+        },
+        video: {
+          title: "视频",
+          summary: "视频素材生成",
+          detail: "{ready}/{total} 已就绪",
+          action: "生成视频",
+          metricReady: "就绪",
+          blockerStoryboardTitle: "缺少分镜",
+          blockerStoryboardDetail: "请先完成分镜规划"
+        },
+        audioSubtitle: {
+          title: "音频与字幕",
+          summary: "音频与字幕素材",
+          detail: "{ready}/{total} 已就绪",
+          action: "生成素材",
+          metricAudio: "音频",
+          metricSubtitle: "字幕",
+          blockerStoryboardTitle: "缺少分镜",
+          blockerStoryboardDetail: "请先完成分镜规划"
+        },
+        shotComposition: {
+          title: "镜头合成",
+          summary: "镜头合成与审核",
+          detail: "{approved}/{total} 已审核",
+          action: "审核镜头",
+          metricApproved: "已审核",
+          metricReview: "待审核",
+          blockerVideoTitle: "缺少视频",
+          blockerVideoDetail: "请先生成视频素材"
+        },
+        timelineExport: {
+          title: "时间线与导出",
+          summary: "时间线编排与导出",
+          detailComplete: "已导出 {count} 个文件",
+          detailFailed: "导出失败",
+          detailIncomplete: "尚未导出",
+          action: "开始导出",
+          metricExports: "导出",
+          metricTracks: "轨道",
+          blockerVideoTitle: "缺少视频",
+          blockerVideoDetail: "请先生成视频素材"
+        }
+      }
     }
   },
   errors: {
@@ -2045,6 +2170,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       modeTasks: "Tasks",
       modeTimeline: "Timeline",
       modeExport: "Export",
+      modeOverview: "Production",
       collapsePanel: "Collapse Panel",
       expandPanel: "Expand Panel",
       quickActions: "Quick Actions",
@@ -2305,6 +2431,130 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       permissionsSaved: "Project member permissions saved.",
       permissionsSaveFailed: "Failed to save project member permissions.",
       permissionsNoAccess: "You do not have permission to manage project permissions.",
+    },
+    productionOverview: {
+      title: "Production Overview",
+      subtitle: "Progress and status of each project stage",
+      nextStep: "Next Step",
+      blockersTitle: "Blockers",
+      blockersEmpty: "No blockers",
+      openTasks: "{count} tasks",
+      go: "Go",
+      status: {
+        notStarted: "Not Started",
+        inProgress: "In Progress",
+        needsAction: "Needs Action",
+        blocked: "Blocked",
+        completed: "Completed"
+      },
+      summary: {
+        totalShots: "Total Shots",
+        imageReady: "Images Ready",
+        videoReady: "Videos Ready",
+        activeJobs: "Active Jobs",
+        failedJobs: "Failed Jobs",
+        successfulExports: "Successful Exports"
+      },
+      stages: {
+        projectInfo: {
+          title: "Project Info",
+          summary: "Basic project information",
+          detailComplete: "Project info is complete",
+          detailIncomplete: "Project info is incomplete",
+          action: "Complete project info",
+          metricName: "Project Name",
+          metricGenre: "Genre"
+        },
+        worldBible: {
+          title: "World Bible",
+          summary: "Characters and locations",
+          detailComplete: "{count} entries created",
+          detailIncomplete: "No world bible entries yet",
+          action: "Create World Bible",
+          metricCharacters: "Characters",
+          metricLocations: "Locations"
+        },
+        synopsis: {
+          title: "Synopsis",
+          summary: "Story synopsis and scene planning",
+          detailComplete: "Synopsis is ready",
+          detailFailed: "Synopsis generation failed",
+          detailIncomplete: "No synopsis created yet",
+          action: "Create Synopsis",
+          metricScenes: "Scenes"
+        },
+        script: {
+          title: "Script",
+          summary: "Script and scene writing",
+          detailComplete: "{scenes} scenes written",
+          detailIncomplete: "No script created yet",
+          action: "Create Script",
+          metricScenes: "Scenes",
+          blockerSynopsisTitle: "Missing Synopsis",
+          blockerSynopsisDetail: "Please create and review a synopsis first"
+        },
+        storyboard: {
+          title: "Storyboard",
+          summary: "Storyboard and shot planning",
+          detailComplete: "{shots} shots planned",
+          detailFailed: "Storyboard generation failed",
+          detailIncomplete: "No storyboard created yet",
+          action: "Create Storyboard",
+          metricShots: "Shots",
+          blockerScriptTitle: "Missing Script",
+          blockerScriptDetail: "Please create and review a script first"
+        },
+        image: {
+          title: "Images",
+          summary: "Image asset generation",
+          detail: "{ready}/{total} ready",
+          action: "Generate Images",
+          metricReady: "Ready",
+          blockerStoryboardTitle: "Missing Storyboard",
+          blockerStoryboardDetail: "Please complete storyboard planning first"
+        },
+        video: {
+          title: "Videos",
+          summary: "Video asset generation",
+          detail: "{ready}/{total} ready",
+          action: "Generate Videos",
+          metricReady: "Ready",
+          blockerStoryboardTitle: "Missing Storyboard",
+          blockerStoryboardDetail: "Please complete storyboard planning first"
+        },
+        audioSubtitle: {
+          title: "Audio & Subtitles",
+          summary: "Audio and subtitle assets",
+          detail: "{ready}/{total} ready",
+          action: "Generate Assets",
+          metricAudio: "Audio",
+          metricSubtitle: "Subtitles",
+          blockerStoryboardTitle: "Missing Storyboard",
+          blockerStoryboardDetail: "Please complete storyboard planning first"
+        },
+        shotComposition: {
+          title: "Shot Composition",
+          summary: "Shot composition and review",
+          detail: "{approved}/{total} reviewed",
+          action: "Review Shots",
+          metricApproved: "Reviewed",
+          metricReview: "Pending Review",
+          blockerVideoTitle: "Missing Videos",
+          blockerVideoDetail: "Please generate video assets first"
+        },
+        timelineExport: {
+          title: "Timeline & Export",
+          summary: "Timeline assembly and export",
+          detailComplete: "{count} files exported",
+          detailFailed: "Export failed",
+          detailIncomplete: "No exports yet",
+          action: "Start Export",
+          metricExports: "Exports",
+          metricTracks: "Tracks",
+          blockerVideoTitle: "Missing Videos",
+          blockerVideoDetail: "Please generate video assets first"
+        }
+      }
     }
   },
   errors: {
