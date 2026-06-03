@@ -8472,60 +8472,61 @@ textarea.input {
 
 /* ========================
    PRODUCTION OVERVIEW (production-overview)
-   制片总览面板 — 嵌入工作区 info mode
+   制作总览 - 项目工作区 overview mode
    ======================== */
 
 .production-overview {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  min-width: 0;
 }
 
-/* ── 顶部区域（标题 + 项目名 + 题材） ── */
 .production-overview__header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.production-overview__header-title {
-  font-size: 16px;
+.production-overview__title {
+  margin: 0;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
-.production-overview__header-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+.production-overview__project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-.production-overview__header-project {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.production-overview__header-genre {
+.production-overview__project-genre {
   display: inline-flex;
   align-items: center;
-  padding: 1px 8px;
+  justify-self: end;
+  max-width: 180px;
+  min-width: 0;
+  padding: 2px 8px;
   border-radius: var(--radius-sm);
   background: var(--accent-subtle);
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ── 摘要指标区 ── */
 .production-overview__summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -8533,132 +8534,129 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+  padding: var(--space-3);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  min-width: 0;
 }
 
 .production-overview__metric-value {
   font-size: 20px;
+  line-height: 1.2;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .production-overview__metric-label {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
-/* ── 下一步建议卡片 ── */
-.production-overview__next {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--accent-subtle);
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  border-radius: var(--radius-sm);
-  min-width: 0;
-}
-
-.production-overview__next-icon {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  color: var(--accent);
-}
-
-.production-overview__next-text {
-  flex: 1;
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.4;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.production-overview__next-action {
-  flex-shrink: 0;
-}
-
-/* ── 生产线地图区 ── */
-.production-overview__pipeline {
+.production-overview__next-section,
+.production-overview__blockers {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.production-overview__pipeline-title {
+.production-overview__section-title {
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  padding-bottom: var(--space-1);
 }
 
-/* ── 单个阶段节点 ── */
-.production-overview__stage {
-  display: flex;
+.production-overview__next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
   padding: var(--space-3) var(--space-4);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.production-overview__next-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.production-overview__next-stage {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.production-overview__next-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.production-overview__pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.production-overview__stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 168px;
+  padding: var(--space-3);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
-  min-width: 0;
+}
+
+.production-overview__stage::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  right: calc(-1 * var(--space-3));
+  width: var(--space-3);
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.production-overview__stage:nth-child(5n)::after {
+  display: none;
 }
 
 .production-overview__stage:hover {
   background: var(--bg-elevated);
 }
 
-.production-overview__stage-left {
-  display: flex;
+.production-overview__stage-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
-  flex: 1;
   min-width: 0;
 }
 
-.production-overview__stage-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.production-overview__stage-badge {
-  flex-shrink: 0;
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-}
-
-.production-overview__stage-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.production-overview__stage-count {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-/* ── 状态指示点 ── */
 .production-overview__status-dot {
   width: 8px;
   height: 8px;
@@ -8666,24 +8664,90 @@ textarea.input {
   flex-shrink: 0;
 }
 
-/* ── 阶段状态修饰 ── */
+.production-overview__stage-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
 
-/* 未开始 — 弱化边框 */
+.production-overview__stage-status {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.production-overview__stage-summary,
+.production-overview__stage-detail {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.production-overview__stage-detail {
+  color: var(--text-tertiary);
+}
+
+.production-overview__stage-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+.production-overview__stage-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.production-overview__stage-metric-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.production-overview__stage-metric-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.production-overview__stage .btn {
+  width: 100%;
+}
+
 .production-overview__stage--not-started {
   border-color: var(--border-subtle);
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .production-overview__stage--not-started .production-overview__status-dot {
   background: var(--text-tertiary);
 }
 
-.production-overview__stage--not-started .production-overview__stage-badge {
+.production-overview__stage--not-started .production-overview__stage-status {
   color: var(--text-tertiary);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
 }
 
-/* 进行中 — 强调色 */
 .production-overview__stage--in-progress {
   border-color: rgba(56, 189, 248, 0.25);
   background: rgba(56, 189, 248, 0.04);
@@ -8694,12 +8758,11 @@ textarea.input {
   box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
 }
 
-.production-overview__stage--in-progress .production-overview__stage-badge {
+.production-overview__stage--in-progress .production-overview__stage-status {
   color: var(--accent);
   background: var(--accent-subtle);
 }
 
-/* 需要操作 — 危险色 */
 .production-overview__stage--needs-action {
   border-color: rgba(239, 68, 68, 0.25);
   background: rgba(239, 68, 68, 0.04);
@@ -8710,27 +8773,25 @@ textarea.input {
   box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
 }
 
-.production-overview__stage--needs-action .production-overview__stage-badge {
+.production-overview__stage--needs-action .production-overview__stage-status {
   color: var(--danger-text);
   background: var(--danger-bg);
 }
 
-/* 阻塞 — 灰色锁定 */
 .production-overview__stage--blocked {
   border-color: var(--border-subtle);
-  opacity: 0.45;
+  opacity: 0.65;
 }
 
 .production-overview__stage--blocked .production-overview__status-dot {
   background: var(--text-tertiary);
 }
 
-.production-overview__stage--blocked .production-overview__stage-badge {
+.production-overview__stage--blocked .production-overview__stage-status {
   color: var(--text-tertiary);
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* 已完成 — 成功色 */
 .production-overview__stage--completed {
   border-color: rgba(34, 197, 94, 0.2);
 }
@@ -8739,67 +8800,76 @@ textarea.input {
   background: var(--success-text);
 }
 
-.production-overview__stage--completed .production-overview__stage-badge {
+.production-overview__stage--completed .production-overview__stage-status {
   color: var(--success-text);
   background: var(--success-bg);
 }
 
-.production-overview__stage--completed .production-overview__stage-name {
-  color: var(--text-secondary);
+.production-overview__blocker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--danger-bg);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: var(--radius-sm);
 }
 
-/* ── 阻塞清单区 ── */
-.production-overview__blockers {
+.production-overview__blocker-info {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-}
-
-.production-overview__blockers-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--danger-text);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.production-overview__blocker-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--danger-bg);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--danger-text);
-  line-height: 1.4;
+  gap: 2px;
   min-width: 0;
 }
 
-.production-overview__blocker-item-text {
-  flex: 1;
+.production-overview__blocker-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger-text);
 }
 
-/* ── 响应式 ── */
+.production-overview__blocker-detail,
+.production-overview__blockers-empty {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
 
 @media (max-width: 980px) {
+  .production-overview__header,
+  .production-overview__next,
+  .production-overview__blocker {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .production-overview__project-genre {
+    justify-self: start;
+  }
+
   .production-overview__summary {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .production-overview__pipeline {
+    grid-template-columns: 1fr;
   }
 
   .production-overview__stage {
-    /* 防止按钮挤压标题 */
-    flex-wrap: wrap;
+    min-height: 0;
   }
 
-  .production-overview__stage-right {
-    width: 100%;
-    padding-left: 28px;
-    justify-content: flex-end;
+  .production-overview__stage::after {
+    display: none;
   }
 }
 
@@ -8808,26 +8878,17 @@ textarea.input {
     grid-template-columns: 1fr;
   }
 
-  .production-overview__stage {
-    flex-wrap: nowrap;
-    padding: var(--space-2) var(--space-3);
+  .production-overview__stage-header {
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .production-overview__stage-right {
-    width: auto;
-    padding-left: 0;
+  .production-overview__stage-status {
+    grid-column: 2;
+    justify-self: start;
   }
 
-  .production-overview__stage-count {
-    display: none;
-  }
-
-  .production-overview__metric {
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .production-overview__metric-value {
-    font-size: 16px;
+  .production-overview__stage-metrics {
+    grid-template-columns: 1fr;
   }
 }
 

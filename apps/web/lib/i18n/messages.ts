@@ -645,6 +645,13 @@ export const zhCNMessages = {
         blocked: "已阻塞",
         completed: "已完成"
       },
+      actions: {
+        viewProject: "查看项目",
+        viewDocument: "查看文档",
+        viewStoryboard: "查看分镜",
+        viewTimeline: "查看时间线",
+        viewExports: "查看导出"
+      },
       summary: {
         totalShots: "总镜头",
         imageReady: "图片就绪",
@@ -2446,6 +2453,13 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
         needsAction: "Needs Action",
         blocked: "Blocked",
         completed: "Completed"
+      },
+      actions: {
+        viewProject: "View Project",
+        viewDocument: "View Document",
+        viewStoryboard: "View Storyboard",
+        viewTimeline: "View Timeline",
+        viewExports: "View Exports"
       },
       summary: {
         totalShots: "Total Shots",

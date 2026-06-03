@@ -42,6 +42,21 @@ const statusClassMap: Record<ProductionStageStatus, string> = {
   completed: "production-overview__stage--completed",
 };
 
+function getStatusLabel(status: ProductionStageStatus, t: TranslateFn): string {
+  switch (status) {
+    case "not_started":
+      return t("projectWorkspace.productionOverview.status.notStarted" as Parameters<TranslateFn>[0]);
+    case "in_progress":
+      return t("projectWorkspace.productionOverview.status.inProgress" as Parameters<TranslateFn>[0]);
+    case "needs_action":
+      return t("projectWorkspace.productionOverview.status.needsAction" as Parameters<TranslateFn>[0]);
+    case "blocked":
+      return t("projectWorkspace.productionOverview.status.blocked" as Parameters<TranslateFn>[0]);
+    case "completed":
+      return t("projectWorkspace.productionOverview.status.completed" as Parameters<TranslateFn>[0]);
+  }
+}
+
 // =============================================
 // 子组件
 // =============================================
@@ -91,9 +106,11 @@ function NextStageCard({
 function StageCard({
   stage,
   onNavigate,
+  t,
 }: {
   stage: ProductionStage;
   onNavigate: (target: ProductionNavigationTarget) => void;
+  t: TranslateFn;
 }) {
   const handleClick = useCallback(() => {
     onNavigate(stage.navigation);
@@ -104,9 +121,18 @@ function StageCard({
       <div className="production-overview__stage-header">
         <span className={`production-overview__status-dot production-overview__status-dot--${stage.status}`} />
         <span className="production-overview__stage-title">{stage.title}</span>
+        <span className="production-overview__stage-status">{getStatusLabel(stage.status, t)}</span>
       </div>
       <span className="production-overview__stage-summary">{stage.summary}</span>
       <span className="production-overview__stage-detail">{stage.detail}</span>
+      <div className="production-overview__stage-metrics">
+        {stage.metrics.map((metric) => (
+          <span className="production-overview__stage-metric" key={metric.label}>
+            <span className="production-overview__stage-metric-value">{metric.value}</span>
+            <span className="production-overview__stage-metric-label">{metric.label}</span>
+          </span>
+        ))}
+      </div>
       <button
         type="button"
         className="btn btn-secondary"
@@ -190,7 +216,7 @@ export function ProductionOverview({ payload, onNavigate }: Props) {
       {/* ── 生产线地图 ── */}
       <div className="production-overview__pipeline">
         {overview.stages.map((stage) => (
-          <StageCard key={stage.key} stage={stage} onNavigate={onNavigate} />
+          <StageCard key={stage.key} stage={stage} onNavigate={onNavigate} t={t} />
         ))}
       </div>
 

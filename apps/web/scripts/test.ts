@@ -22,6 +22,13 @@ const useProductionOverviewTs = readFileSync(join(scriptDir, "../lib/hooks/use-p
 const synopsisTs = readFileSync(join(scriptDir, "../components/project-workspace/generation/generators/synopsis.ts"), "utf8");
 const scriptTs = readFileSync(join(scriptDir, "../components/project-workspace/generation/generators/script.ts"), "utf8");
 
+import {
+  buildProductionOverviewModel,
+  type ProductionStage,
+} from "../lib/hooks/use-production-overview";
+import type { ProjectWorkspacePayload } from "@dramaflow/shared";
+import type { TranslateFn } from "../lib/i18n";
+
 function assertRuleContains(selector: string, declarations: string[]) {
   const selectorStart = globalsCss.indexOf(`${selector} {`);
   assert.notEqual(selectorStart, -1, `Expected CSS rule for ${selector}`);
@@ -52,6 +59,140 @@ function assertFileDoesNotContain(filename: string, content: string, forbidden: 
     !content.includes(forbidden),
     `Expected ${filename} not to include "${forbidden}"`,
   );
+}
+
+const testT: TranslateFn = ((key, params) => {
+  const keyText = String(key);
+  if (keyText.endsWith(".actions.viewProject")) return "查看项目";
+  if (keyText.endsWith(".actions.viewDocument")) return "查看文档";
+  if (keyText.endsWith(".actions.viewStoryboard")) return "查看分镜";
+  if (keyText.endsWith(".actions.viewTimeline")) return "查看时间线";
+  if (keyText.endsWith(".actions.viewExports")) return "查看导出";
+  let text = keyText;
+  for (const [name, value] of Object.entries(params ?? {})) {
+    text = text.replaceAll(`{${name}}`, String(value));
+  }
+  return text;
+}) as TranslateFn;
+
+function baseProductionPayload(
+  overrides: Partial<ProjectWorkspacePayload> = {},
+): ProjectWorkspacePayload {
+  return {
+    team: {
+      id: "team-1",
+      name: "制作团队",
+      defaultReviewPolicy: "required",
+    },
+    project: {
+      id: "project-1",
+      name: "夜色追光",
+      description: "都市悬疑短剧",
+      genre: "悬疑",
+      coverUrl: "",
+      status: "draft",
+      reviewPolicyMode: "inherit",
+      createdAt: "2026-06-03T00:00:00.000Z",
+      updatedAt: "2026-06-03T00:00:00.000Z",
+    },
+    members: [],
+    invites: [],
+    pendingReviews: [],
+    documents: [],
+    versions: [],
+    jobs: [],
+    currentUserPermissions: [
+      "project.view",
+      "project.edit",
+      "job.manage",
+      "timeline.edit",
+      "export.create",
+    ],
+    ...overrides,
+  };
+}
+
+function getStage(
+  payload: ProjectWorkspacePayload,
+  key: ProductionStage["key"],
+): ProductionStage {
+  const model = buildProductionOverviewModel(payload, testT);
+  const stage = model.stages.find((item) => item.key === key);
+  assert.ok(stage, `Expected production stage ${key}`);
+  return stage;
+}
+
+function payloadWithOneVideoAndComposition(
+  status: "submitted" | "pending_review" | "rejected" | "approved",
+): ProjectWorkspacePayload {
+  return baseProductionPayload({
+    documents: [
+      {
+        id: "storyboard-doc",
+        projectId: "project-1",
+        type: "storyboard",
+        title: "分镜",
+        currentVersionId: "storyboard-version",
+      },
+      {
+        id: "video-doc",
+        projectId: "project-1",
+        type: "video",
+        title: "镜头视频",
+        shotId: "shot-1",
+        currentVersionId: "video-version",
+      },
+    ],
+    versions: [
+      {
+        id: "storyboard-version",
+        documentId: "storyboard-doc",
+        versionNumber: 1,
+        status: "approved",
+        title: "分镜版本",
+        content: {
+          overview: "一集分镜",
+          shots: [
+            {
+              id: "shot-1",
+              sceneId: "scene-1",
+              shotLabel: "1-1",
+              framing: "MS",
+              cameraMove: "static",
+              durationSeconds: 3,
+              visualDescription: "主角看向窗外",
+            },
+          ],
+          mediaBindings: {},
+        },
+        metadata: {},
+        createdBy: "user-1",
+        createdAt: "2026-06-03T00:00:00.000Z",
+      },
+      {
+        id: "video-version",
+        documentId: "video-doc",
+        versionNumber: 1,
+        status: "approved",
+        title: "视频素材",
+        content: { assetUrl: "https://example.com/video.mp4" },
+        metadata: {},
+        createdBy: "user-1",
+        createdAt: "2026-06-03T00:00:00.000Z",
+      },
+      {
+        id: "composition-version",
+        documentId: "video-doc",
+        versionNumber: 2,
+        status,
+        title: "合成视频",
+        content: { assetUrl: "https://example.com/composition.mp4" },
+        metadata: { source: "shot_composition" },
+        createdBy: "user-1",
+        createdAt: "2026-06-03T00:00:00.000Z",
+      },
+    ],
+  });
 }
 
 assertRuleContains(".app-main:has(.gen-root--conversational)", [
@@ -167,5 +308,92 @@ assertFileContains("messages.ts", messagesTs, "modeOverview");
 assertFileContains("messages.ts", messagesTs, "productionOverview");
 assertFileContains("messages.ts", messagesTs, "制作总览");
 assertFileContains("messages.ts", messagesTs, "Production");
+
+// 制作总览验收 - 静态断言
+assertFileContains("globals.css", globalsCss, ".production-overview__title");
+assertFileContains("globals.css", globalsCss, ".production-overview__stage-title");
+assertFileContains("globals.css", globalsCss, ".production-overview__stage-metrics");
+assertFileContains("globals.css", globalsCss, ".production-overview__blocker");
+assertFileDoesNotContain("globals.css", globalsCss, ".production-overview__header-title");
+assertFileDoesNotContain("globals.css", globalsCss, ".production-overview__stage-name");
+assertFileDoesNotContain("globals.css", globalsCss, ".production-overview__blocker-item");
+assertFileContains("production-overview.tsx", productionOverviewTsx, "stage.metrics.map");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "compositionNeedsActionCount");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, 'status === "rejected"');
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "count:");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "ready:");
+assertFileContains("use-production-overview.ts", useProductionOverviewTs, "total:");
+assertFileContains("messages.ts", messagesTs, "viewProject");
+assertFileContains("messages.ts", messagesTs, "viewDocument");
+assertFileContains("messages.ts", messagesTs, "viewStoryboard");
+assertFileContains("messages.ts", messagesTs, "viewTimeline");
+assertFileContains("messages.ts", messagesTs, "viewExports");
+
+// 制作总览验收 - 模型计算断言
+for (const status of ["submitted", "pending_review", "rejected"] as const) {
+  const stage = getStage(payloadWithOneVideoAndComposition(status), "shot_composition");
+  assert.equal(stage.status, "needs_action", `Expected ${status} composition to need action`);
+}
+
+const readOnlyWorldBibleStage = getStage(
+  baseProductionPayload({
+    currentUserPermissions: ["project.view"],
+    documents: [
+      {
+        id: "world-doc",
+        projectId: "project-1",
+        type: "world_bible",
+        title: "世界观",
+        currentVersionId: "world-version",
+      },
+    ],
+    versions: [
+      {
+        id: "world-version",
+        documentId: "world-doc",
+        versionNumber: 1,
+        status: "approved",
+        title: "世界观版本",
+        content: {
+          characters: [{ id: "char-1", name: "主角" }],
+          locations: [],
+          rules: [],
+          tone: "",
+          visualStyle: "",
+        },
+        metadata: {},
+        createdBy: "user-1",
+        createdAt: "2026-06-03T00:00:00.000Z",
+      },
+    ],
+  }),
+  "world_bible",
+);
+assert.equal(readOnlyWorldBibleStage.primaryAction, "查看文档");
+assert.deepEqual(readOnlyWorldBibleStage.navigation, {
+  mode: "document",
+  documentType: "world_bible",
+  subTab: "view",
+});
+
+const noJobManageImageStage = getStage(
+  baseProductionPayload({
+    currentUserPermissions: ["project.view", "project.edit"],
+    documents: payloadWithOneVideoAndComposition("approved").documents,
+    versions: payloadWithOneVideoAndComposition("approved").versions,
+  }),
+  "image",
+);
+assert.equal(noJobManageImageStage.primaryAction, "查看分镜");
+
+const readOnlyTimelineStage = getStage(
+  baseProductionPayload({
+    currentUserPermissions: ["project.view"],
+    documents: payloadWithOneVideoAndComposition("approved").documents,
+    versions: payloadWithOneVideoAndComposition("approved").versions,
+  }),
+  "timeline_export",
+);
+assert.equal(readOnlyTimelineStage.primaryAction, "查看时间线");
 
 console.log("web tests passed");

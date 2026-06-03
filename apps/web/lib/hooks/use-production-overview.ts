@@ -99,6 +99,7 @@ interface ShotProductionStats {
   subtitleReadyCount: number;
   compositionApprovedCount: number;
   compositionReviewCount: number;
+  compositionNeedsActionCount: number;
 }
 
 // =============================================
@@ -171,6 +172,25 @@ function hasAssetUrl(version: { content: unknown } | undefined): boolean {
   return Boolean(c?.assetUrl);
 }
 
+function hasPermission(
+  payload: ProjectWorkspacePayload,
+  permission: ProjectWorkspacePayload["currentUserPermissions"][number],
+): boolean {
+  return payload.currentUserPermissions.includes(permission);
+}
+
+function canGenerateDocuments(payload: ProjectWorkspacePayload): boolean {
+  return hasPermission(payload, "project.edit") && hasPermission(payload, "job.manage");
+}
+
+function viewDocumentAction(t: TranslateFn): string {
+  return t("projectWorkspace.productionOverview.actions.viewDocument" as Parameters<TranslateFn>[0]);
+}
+
+function viewStoryboardAction(t: TranslateFn): string {
+  return t("projectWorkspace.productionOverview.actions.viewStoryboard" as Parameters<TranslateFn>[0]);
+}
+
 // =============================================
 // 分镜与素材统计
 // =============================================
@@ -193,6 +213,7 @@ function computeShotProductionStats(
   let subtitleReadyCount = 0;
   let compositionApprovedCount = 0;
   let compositionReviewCount = 0;
+  let compositionNeedsActionCount = 0;
 
   for (const shot of shots) {
     const hasDialogue = Boolean(shot.dialogue?.trim());
@@ -249,9 +270,15 @@ function computeShotProductionStats(
           v.metadata?.source === "shot_composition" &&
           (v.status === "submitted" || v.status === "pending_review"),
       );
+      const compositionNeedsAction = videoVersions.some(
+        (v) =>
+          v.metadata?.source === "shot_composition" &&
+          (v.status === "submitted" || v.status === "pending_review" || v.status === "rejected"),
+      );
 
       if (compositionApproved) compositionApprovedCount++;
       if (compositionReview) compositionReviewCount++;
+      if (compositionNeedsAction) compositionNeedsActionCount++;
     }
   }
 
@@ -264,6 +291,7 @@ function computeShotProductionStats(
     subtitleReadyCount,
     compositionApprovedCount,
     compositionReviewCount,
+    compositionNeedsActionCount,
   };
 }
 
@@ -301,6 +329,7 @@ function buildProjectInfoStage(
   const hasDescOrGenre = Boolean(description?.trim()) || Boolean(genre?.trim());
 
   const status: ProductionStageStatus = (hasName && hasDescOrGenre) ? "completed" : "needs_action";
+  const canEditProject = hasPermission(payload, "project.edit");
 
   return {
     key: "project_info",
@@ -310,8 +339,10 @@ function buildProjectInfoStage(
     detail: status === "completed"
       ? t("projectWorkspace.productionOverview.stages.projectInfo.detailComplete" as Parameters<TranslateFn>[0])
       : t("projectWorkspace.productionOverview.stages.projectInfo.detailIncomplete" as Parameters<TranslateFn>[0]),
-    primaryAction: t("projectWorkspace.productionOverview.stages.projectInfo.action" as Parameters<TranslateFn>[0]),
-    navigation: { mode: "info" },
+    primaryAction: canEditProject
+      ? t("projectWorkspace.productionOverview.stages.projectInfo.action" as Parameters<TranslateFn>[0])
+      : t("projectWorkspace.productionOverview.actions.viewProject" as Parameters<TranslateFn>[0]),
+    navigation: { mode: "info" as const },
     blockers: [],
     metrics: [
       { label: t("projectWorkspace.productionOverview.stages.projectInfo.metricName" as Parameters<TranslateFn>[0]), value: hasName ? "1" : "0" },
@@ -338,6 +369,7 @@ function buildWorldBibleStage(
   let status: ProductionStageStatus;
   const hasCurrentVersion = Boolean(doc?.currentVersionId);
   const hasDraftVersion = Boolean(doc?.draftVersionId);
+  const canEditProject = hasPermission(payload, "project.edit");
 
   if (hasCurrentVersion && hasAnyContent) {
     status = "completed";
@@ -356,12 +388,19 @@ function buildWorldBibleStage(
     summary: t("projectWorkspace.productionOverview.stages.worldBible.summary" as Parameters<TranslateFn>[0]),
     detail: status === "completed"
       ? t("projectWorkspace.productionOverview.stages.worldBible.detailComplete" as Parameters<TranslateFn>[0], {
-          characters: String(worldBible?.characters?.length ?? 0),
-          locations: String(worldBible?.locations?.length ?? 0),
+          count: String(
+            (worldBible?.characters?.length ?? 0) +
+            (worldBible?.locations?.length ?? 0) +
+            (worldBible?.styleGuide ? 1 : 0),
+          ),
         })
       : t("projectWorkspace.productionOverview.stages.worldBible.detailIncomplete" as Parameters<TranslateFn>[0]),
-    primaryAction: t("projectWorkspace.productionOverview.stages.worldBible.action" as Parameters<TranslateFn>[0]),
-    navigation: { mode: "document", documentType: "world_bible", subTab: "edit" },
+    primaryAction: canEditProject
+      ? t("projectWorkspace.productionOverview.stages.worldBible.action" as Parameters<TranslateFn>[0])
+      : viewDocumentAction(t),
+    navigation: canEditProject
+      ? { mode: "document", documentType: "world_bible", subTab: "edit" }
+      : { mode: "document", documentType: "world_bible", subTab: "view" },
     blockers: [],
     metrics: [
       { label: t("projectWorkspace.productionOverview.stages.worldBible.metricCharacters" as Parameters<TranslateFn>[0]), value: String(worldBible?.characters?.length ?? 0) },
@@ -398,9 +437,15 @@ function buildSynopsisStage(
     status = "not_started";
   }
 
+  const canGenerate = canGenerateDocuments(payload);
   const navigation: ProductionNavigationTarget = hasCurrentVersion
     ? { mode: "document", documentType: "synopsis", subTab: "view" }
-    : { mode: "document", documentType: "synopsis", subTab: "generate" };
+    : canGenerate
+      ? { mode: "document", documentType: "synopsis", subTab: "generate" }
+      : { mode: "document", documentType: "synopsis", subTab: "view" };
+  const primaryAction = hasCurrentVersion || !canGenerate
+    ? viewDocumentAction(t)
+    : t("projectWorkspace.productionOverview.stages.synopsis.action" as Parameters<TranslateFn>[0]);
 
   return {
     key: "synopsis",
@@ -412,7 +457,7 @@ function buildSynopsisStage(
       : synopsisJob?.status === "failed"
         ? t("projectWorkspace.productionOverview.stages.synopsis.detailFailed" as Parameters<TranslateFn>[0])
         : t("projectWorkspace.productionOverview.stages.synopsis.detailIncomplete" as Parameters<TranslateFn>[0]),
-    primaryAction: t("projectWorkspace.productionOverview.stages.synopsis.action" as Parameters<TranslateFn>[0]),
+    primaryAction,
     navigation,
     blockers: [],
     metrics: [
@@ -464,9 +509,15 @@ function buildScriptStage(
     status = "not_started";
   }
 
+  const canGenerate = canGenerateDocuments(payload);
   const navigation: ProductionNavigationTarget = hasCurrentVersion
     ? { mode: "document", documentType: "script", subTab: "view" }
-    : { mode: "document", documentType: "script", subTab: "generate" };
+    : canGenerate
+      ? { mode: "document", documentType: "script", subTab: "generate" }
+      : { mode: "document", documentType: "script", subTab: "view" };
+  const primaryAction = hasCurrentVersion || !canGenerate
+    ? viewDocumentAction(t)
+    : t("projectWorkspace.productionOverview.stages.script.action" as Parameters<TranslateFn>[0]);
 
   return {
     key: "script",
@@ -476,7 +527,7 @@ function buildScriptStage(
     detail: status === "completed"
       ? t("projectWorkspace.productionOverview.stages.script.detailComplete" as Parameters<TranslateFn>[0], { scenes: String(sceneCount) })
       : t("projectWorkspace.productionOverview.stages.script.detailIncomplete" as Parameters<TranslateFn>[0]),
-    primaryAction: t("projectWorkspace.productionOverview.stages.script.action" as Parameters<TranslateFn>[0]),
+    primaryAction,
     navigation,
     blockers,
     metrics: [
@@ -528,9 +579,15 @@ function buildStoryboardStage(
     status = "not_started";
   }
 
+  const canGenerate = canGenerateDocuments(payload);
   const navigation: ProductionNavigationTarget = hasCurrentVersion && shotCount > 0
     ? { mode: "document", documentType: "storyboard", subTab: "view" }
-    : { mode: "document", documentType: "storyboard", subTab: "generate" };
+    : canGenerate
+      ? { mode: "document", documentType: "storyboard", subTab: "generate" }
+      : { mode: "document", documentType: "storyboard", subTab: "view" };
+  const primaryAction = (hasCurrentVersion && shotCount > 0) || !canGenerate
+    ? viewStoryboardAction(t)
+    : t("projectWorkspace.productionOverview.stages.storyboard.action" as Parameters<TranslateFn>[0]);
 
   return {
     key: "storyboard",
@@ -542,7 +599,7 @@ function buildStoryboardStage(
       : storyboardJob?.status === "failed"
         ? t("projectWorkspace.productionOverview.stages.storyboard.detailFailed" as Parameters<TranslateFn>[0])
         : t("projectWorkspace.productionOverview.stages.storyboard.detailIncomplete" as Parameters<TranslateFn>[0]),
-    primaryAction: t("projectWorkspace.productionOverview.stages.storyboard.action" as Parameters<TranslateFn>[0]),
+    primaryAction,
     navigation,
     blockers,
     metrics: [
@@ -565,6 +622,7 @@ function buildImageStage(
 
   let status: ProductionStageStatus;
   const blockers: ProductionBlocker[] = [];
+  const canManageJobs = hasPermission(payload, "job.manage");
 
   if (storyboardMissing) {
     status = "blocked";
@@ -594,7 +652,9 @@ function buildImageStage(
       ready: String(stats.imageReadyCount),
       total: String(stats.shotCount),
     }),
-    primaryAction: t("projectWorkspace.productionOverview.stages.image.action" as Parameters<TranslateFn>[0]),
+    primaryAction: canManageJobs
+      ? t("projectWorkspace.productionOverview.stages.image.action" as Parameters<TranslateFn>[0])
+      : viewStoryboardAction(t),
     navigation: { mode: "document", documentType: "storyboard", subTab: "view" },
     blockers,
     metrics: [
@@ -617,6 +677,7 @@ function buildVideoStage(
 
   let status: ProductionStageStatus;
   const blockers: ProductionBlocker[] = [];
+  const canManageJobs = hasPermission(payload, "job.manage");
 
   if (storyboardMissing) {
     status = "blocked";
@@ -646,7 +707,9 @@ function buildVideoStage(
       ready: String(stats.videoReadyCount),
       total: String(stats.shotCount),
     }),
-    primaryAction: t("projectWorkspace.productionOverview.stages.video.action" as Parameters<TranslateFn>[0]),
+    primaryAction: canManageJobs
+      ? t("projectWorkspace.productionOverview.stages.video.action" as Parameters<TranslateFn>[0])
+      : viewStoryboardAction(t),
     navigation: { mode: "document", documentType: "storyboard", subTab: "view" },
     blockers,
     metrics: [
@@ -667,8 +730,7 @@ function buildAudioSubtitleStage(
 
   let status: ProductionStageStatus;
   const blockers: ProductionBlocker[] = [];
-
-  // 没有分镜 = blocked
+  const canManageJobs = hasPermission(payload, "job.manage");
   if (stats.shotCount === 0) {
     status = "blocked";
     blockers.push({
@@ -703,11 +765,12 @@ function buildAudioSubtitleStage(
     title: t("projectWorkspace.productionOverview.stages.audioSubtitle.title" as Parameters<TranslateFn>[0]),
     summary: t("projectWorkspace.productionOverview.stages.audioSubtitle.summary" as Parameters<TranslateFn>[0]),
     detail: t("projectWorkspace.productionOverview.stages.audioSubtitle.detail" as Parameters<TranslateFn>[0], {
-      audio: String(stats.audioReadyCount),
-      subtitle: String(stats.subtitleReadyCount),
-      dialogue: String(stats.dialogueShotCount),
+      ready: String(stats.audioReadyCount),
+      total: String(stats.dialogueShotCount),
     }),
-    primaryAction: t("projectWorkspace.productionOverview.stages.audioSubtitle.action" as Parameters<TranslateFn>[0]),
+    primaryAction: canManageJobs
+      ? t("projectWorkspace.productionOverview.stages.audioSubtitle.action" as Parameters<TranslateFn>[0])
+      : viewStoryboardAction(t),
     navigation: { mode: "document", documentType: "storyboard", subTab: "view" },
     blockers,
     metrics: [
@@ -726,6 +789,7 @@ function buildShotCompositionStage(
 ): ProductionStage {
   const activeCompositionJobs = getActiveJobsByType(payload, "shot_composition");
   const failedCompositionJobs = getFailedJobsByType(payload, "shot_composition");
+  const canManageJobs = hasPermission(payload, "job.manage");
 
   let status: ProductionStageStatus;
   const blockers: ProductionBlocker[] = [];
@@ -740,18 +804,17 @@ function buildShotCompositionStage(
       detail: t("projectWorkspace.productionOverview.stages.shotComposition.blockerVideoDetail" as Parameters<TranslateFn>[0]),
       navigation: { mode: "document", documentType: "storyboard", subTab: "view" },
     });
+  } else if (failedCompositionJobs.length > 0 || stats.compositionNeedsActionCount > 0) {
+    status = "needs_action";
   } else if (stats.compositionApprovedCount === stats.shotCount && stats.shotCount > 0) {
     status = "completed";
   } else if (
     activeCompositionJobs.length > 0 ||
-    stats.compositionReviewCount > 0 ||
     (stats.compositionApprovedCount > 0 && stats.compositionApprovedCount < stats.shotCount)
   ) {
     status = "in_progress";
-  } else if (failedCompositionJobs.length > 0 || stats.compositionApprovedCount === 0) {
-    status = "needs_action";
   } else {
-    status = "not_started";
+    status = "needs_action";
   }
 
   return {
@@ -764,7 +827,9 @@ function buildShotCompositionStage(
       review: String(stats.compositionReviewCount),
       total: String(stats.shotCount),
     }),
-    primaryAction: t("projectWorkspace.productionOverview.stages.shotComposition.action" as Parameters<TranslateFn>[0]),
+    primaryAction: canManageJobs
+      ? t("projectWorkspace.productionOverview.stages.shotComposition.action" as Parameters<TranslateFn>[0])
+      : viewStoryboardAction(t),
     navigation: { mode: "document", documentType: "storyboard", subTab: "view" },
     blockers,
     metrics: [
@@ -792,6 +857,8 @@ function buildTimelineExportStage(
   );
 
   const hasVideoAssets = stats.videoReadyCount > 0;
+  const canEditTimeline = hasPermission(payload, "timeline.edit");
+  const canCreateExport = hasPermission(payload, "export.create");
 
   let status: ProductionStageStatus;
   const blockers: ProductionBlocker[] = [];
@@ -831,7 +898,11 @@ function buildTimelineExportStage(
       : status === "needs_action"
         ? t("projectWorkspace.productionOverview.stages.timelineExport.detailFailed" as Parameters<TranslateFn>[0])
         : t("projectWorkspace.productionOverview.stages.timelineExport.detailIncomplete" as Parameters<TranslateFn>[0]),
-    primaryAction: t("projectWorkspace.productionOverview.stages.timelineExport.action" as Parameters<TranslateFn>[0]),
+    primaryAction: successfulExports.length > 0
+      ? t("projectWorkspace.productionOverview.actions.viewExports" as Parameters<TranslateFn>[0])
+      : (canEditTimeline || canCreateExport)
+        ? t("projectWorkspace.productionOverview.stages.timelineExport.action" as Parameters<TranslateFn>[0])
+        : t("projectWorkspace.productionOverview.actions.viewTimeline" as Parameters<TranslateFn>[0]),
     navigation: { mode: "timeline" },
     blockers,
     metrics: [
@@ -898,6 +969,24 @@ function pickNextStage(stages: ProductionStage[]): ProductionStage | null {
 // Hook
 // =============================================
 
+export function buildProductionOverviewModel(
+  payload: ProjectWorkspacePayload,
+  t: TranslateFn,
+): ProductionOverviewModel {
+  const stats = computeShotProductionStats(payload);
+  const stages = buildStages(payload, t, stats);
+  const summaryMetrics = buildSummaryMetrics(payload, stats, t);
+  const nextStage = pickNextStage(stages);
+  const allBlockers = stages.flatMap((s) => s.blockers);
+
+  return {
+    stages,
+    summaryMetrics,
+    nextStage,
+    blockers: allBlockers,
+  };
+}
+
 /**
  * 从 ProjectWorkspacePayload 派生制作总览数据
  * @param payload - 项目工作区完整数据
@@ -908,18 +997,5 @@ export function useProductionOverview(
   payload: ProjectWorkspacePayload,
   t: TranslateFn,
 ): ProductionOverviewModel {
-  return useMemo(() => {
-    const stats = computeShotProductionStats(payload);
-    const stages = buildStages(payload, t, stats);
-    const summaryMetrics = buildSummaryMetrics(payload, stats, t);
-    const nextStage = pickNextStage(stages);
-    const allBlockers = stages.flatMap((s) => s.blockers);
-
-    return {
-      stages,
-      summaryMetrics,
-      nextStage,
-      blockers: allBlockers,
-    };
-  }, [payload, t]);
+  return useMemo(() => buildProductionOverviewModel(payload, t), [payload, t]);
 }
