@@ -703,8 +703,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         <div className="uw-info-scroll">
           <div className="uw-info-inner">
             <ProductionOverview
+              projectId={projectId}
               payload={payload}
               onNavigate={handleProductionNavigate}
+              onFeedback={setFeedback}
             />
           </div>
         </div>

@@ -650,7 +650,15 @@ export const zhCNMessages = {
         viewDocument: "查看文档",
         viewStoryboard: "查看分镜",
         viewTimeline: "查看时间线",
-        viewExports: "查看导出"
+        viewExports: "查看导出",
+        batchImages: "批量生成图片",
+        batchVideos: "批量生成视频",
+        retryJob: "重试任务",
+        openTasks: "查看任务",
+        openStoryboard: "进入分镜",
+        selectedShots: "已选 {count} 个镜头",
+        clearSelection: "清除选择",
+        noJobPermission: "当前账号没有任务管理权限"
       },
       summary: {
         totalShots: "总镜头",
@@ -759,6 +767,47 @@ export const zhCNMessages = {
           blockerVideoTitle: "缺少视频",
           blockerVideoDetail: "请先生成视频素材"
         }
+      },
+      health: {
+        ready: "可推进",
+        attention: "需关注",
+        blocked: "受阻",
+        done: "已完成",
+        detail: "生产健康度 {score} 分"
+      },
+      readiness: {
+        title: "准备度检查"
+      },
+      risk: {
+        title: "风险队列",
+        empty: "当前没有需要处理的生产风险。",
+        failedJob: "任务失败",
+        failedJobFallback: "任务执行失败，请查看任务详情。",
+        pendingReview: "存在待审核版本",
+        missingImage: "镜头 {shot} 缺图片",
+        missingVideo: "镜头 {shot} 缺视频",
+        missingAudio: "镜头 {shot} 缺语音",
+        composition: "镜头 {shot} 合成需处理"
+      },
+      matrix: {
+        title: "镜头生产矩阵",
+        ready: "已就绪",
+        missing: "缺失",
+        notRequired: "不需要",
+        timeline: "时间线"
+      },
+      filters: {
+        all: "全部",
+        missing_image: "缺图片",
+        missing_video: "缺视频",
+        missing_audio: "缺语音",
+        missing_composition: "缺合成",
+        failed_job: "任务失败",
+        ready_for_timeline: "可入线"
+      },
+      feedback: {
+        actionQueued: "生产任务已提交。",
+        actionFailed: "生产操作失败。"
       }
     }
   },
@@ -2459,7 +2508,15 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
         viewDocument: "View Document",
         viewStoryboard: "View Storyboard",
         viewTimeline: "View Timeline",
-        viewExports: "View Exports"
+        viewExports: "View Exports",
+        batchImages: "Batch images",
+        batchVideos: "Batch videos",
+        retryJob: "Retry job",
+        openTasks: "Open tasks",
+        openStoryboard: "Open storyboard",
+        selectedShots: "{count} shots selected",
+        clearSelection: "Clear selection",
+        noJobPermission: "You do not have job management permission"
       },
       summary: {
         totalShots: "Total Shots",
@@ -2568,6 +2625,47 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
           blockerVideoTitle: "Missing Videos",
           blockerVideoDetail: "Please generate video assets first"
         }
+      },
+      health: {
+        ready: "Ready",
+        attention: "Attention",
+        blocked: "Blocked",
+        done: "Done",
+        detail: "Production health {score}"
+      },
+      readiness: {
+        title: "Readiness Checks"
+      },
+      risk: {
+        title: "Risk Queue",
+        empty: "No production risks need attention.",
+        failedJob: "Job failed",
+        failedJobFallback: "The job failed. Open task details for more context.",
+        pendingReview: "Version awaiting review",
+        missingImage: "Shot {shot} is missing an image",
+        missingVideo: "Shot {shot} is missing a video",
+        missingAudio: "Shot {shot} is missing audio",
+        composition: "Shot {shot} composition needs attention"
+      },
+      matrix: {
+        title: "Shot Production Matrix",
+        ready: "Ready",
+        missing: "Missing",
+        notRequired: "Not required",
+        timeline: "Timeline"
+      },
+      filters: {
+        all: "All",
+        missing_image: "Missing image",
+        missing_video: "Missing video",
+        missing_audio: "Missing audio",
+        missing_composition: "Missing comp",
+        failed_job: "Failed job",
+        ready_for_timeline: "Ready for timeline"
+      },
+      feedback: {
+        actionQueued: "Production task submitted.",
+        actionFailed: "Production action failed."
       }
     }
   },
