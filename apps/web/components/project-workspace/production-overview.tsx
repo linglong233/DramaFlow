@@ -14,6 +14,7 @@ import type { ProjectWorkspacePayload } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../../lib/api";
 import { useI18n, type TranslateFn } from "../../lib/i18n";
+import { useToast } from "../toast-provider";
 import { queryKeys } from "../../lib/query-keys";
 import {
   useProductionOverview,
@@ -237,24 +238,26 @@ function ShotProductionMatrix({
   selectedShotIds,
   onToggle,
   onOpen,
+  t,
 }: {
   rows: ProductionShotRow[];
   selectedShotIds: Set<string>;
   onToggle: (shotId: string) => void;
   onOpen: (action: ProductionAction) => void;
+  t: TranslateFn;
 }) {
   return (
     <div className="production-overview__matrix">
       <div className="production-overview__matrix-row production-overview__matrix-row--head">
         <span />
-        <span>Shot</span>
-        <span>Scene</span>
-        <span>Image</span>
-        <span>Video</span>
-        <span>Audio</span>
-        <span>Subtitle</span>
-        <span>Comp</span>
-        <span>Timeline</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.shot")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.scene")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.image")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.video")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.audio")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.subtitle")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.composition")}</span>
+        <span>{t("projectWorkspace.productionOverview.matrix.columns.timeline")}</span>
         <span />
       </div>
       {rows.map((row) => (
@@ -289,6 +292,7 @@ function ShotProductionMatrix({
 
 export function ProductionOverview({ projectId, payload, onNavigate, onFeedback }: Props) {
   const { t } = useI18n();
+  const toast = useToast();
   const overview = useProductionOverview(payload, t);
   const queryClient = useQueryClient();
   const [shotFilter, setShotFilter] = useState<ProductionShotFilter>("all");
@@ -330,19 +334,23 @@ export function ProductionOverview({ projectId, payload, onNavigate, onFeedback 
     },
     onSuccess: (_result, action) => {
       if (action.type !== "navigate") {
+        const msg = t("projectWorkspace.productionOverview.feedback.actionQueued" as Parameters<TranslateFn>[0]);
         onFeedback?.({
-          message: t("projectWorkspace.productionOverview.feedback.actionQueued" as Parameters<TranslateFn>[0]),
+          message: msg,
           error: null,
         });
+        toast.success(msg);
         invalidateProductionQueries();
         setSelectedShotIds(new Set());
       }
     },
     onError: (error) => {
+      const errMsg = formatApiError(error, t, "projectWorkspace.productionOverview.feedback.actionFailed" as Parameters<TranslateFn>[0]);
       onFeedback?.({
         message: null,
-        error: formatApiError(error, t, "projectWorkspace.productionOverview.feedback.actionFailed" as Parameters<TranslateFn>[0]),
+        error: errMsg,
       });
+      toast.error(errMsg);
     },
   });
 
@@ -495,6 +503,7 @@ export function ProductionOverview({ projectId, payload, onNavigate, onFeedback 
             });
           }}
           onOpen={(action) => actionMutation.mutate(action)}
+          t={t}
         />
       </section>
     </div>

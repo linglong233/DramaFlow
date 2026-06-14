@@ -15,6 +15,7 @@ import { queryKeys } from "../lib/query-keys";
 import { useSession } from "../lib/use-session";
 import { useFeedback } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
+import { useToast } from "./toast-provider";
 import type { TeamSummary } from "@dramaflow/shared";
 
 interface ProjectItem {
@@ -148,6 +149,7 @@ export function DashboardOverview() {
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const { feedback, setFeedback } = useFeedback();
+  const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -180,10 +182,14 @@ export function DashboardOverview() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.teams });
       setShowCreateTeam(false);
       setNewTeamName("");
-      setFeedback({ message: t("dashboard.createTeamSuccess", { name: team.name }), error: null });
+      const msg = t("dashboard.createTeamSuccess", { name: team.name });
+      setFeedback({ message: msg, error: null });
+      toast.success(msg);
     },
     onError: (error: unknown) => {
-      setFeedback({ message: null, error: formatApiError(error, t, "dashboard.createTeamFailed") });
+      const errMsg = formatApiError(error, t, "dashboard.createTeamFailed");
+      setFeedback({ message: null, error: errMsg });
+      toast.error(errMsg);
     },
   });
 
@@ -195,10 +201,14 @@ export function DashboardOverview() {
       setShowCreate(false);
       setNewName("");
       setNewDesc("");
-      setFeedback({ message: t("dashboard.createProject.success"), error: null });
+      const msg = t("dashboard.createProject.success");
+      setFeedback({ message: msg, error: null });
+      toast.success(msg);
     },
     onError: (error: unknown) => {
-      setFeedback({ message: null, error: formatApiError(error, t) });
+      const errMsg = formatApiError(error, t);
+      setFeedback({ message: null, error: errMsg });
+      toast.error(errMsg);
     },
   });
 
@@ -208,10 +218,14 @@ export function DashboardOverview() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["pending-project-invites"] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-      setFeedback({ message: "Project invitation accepted.", error: null });
+      const msg = t("dashboard.inviteAcceptedToast");
+      setFeedback({ message: msg, error: null });
+      toast.success(msg);
     },
     onError: (error: unknown) => {
-      setFeedback({ message: null, error: formatApiError(error, t) });
+      const errMsg = formatApiError(error, t, "dashboard.inviteAcceptFailed");
+      setFeedback({ message: null, error: errMsg });
+      toast.error(errMsg);
     },
   });
 
@@ -480,18 +494,18 @@ export function DashboardOverview() {
         <div className="glass-panel" style={{ padding: "var(--space-4)", marginBottom: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>Pending project invites</div>
-              <div className="muted text-sm">Accept an invite to add the project to your workspace.</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>{t("dashboard.pendingInvites.title")}</div>
+              <div className="muted text-sm">{t("dashboard.pendingInvites.description")}</div>
             </div>
-            <div className="muted text-sm">{invitesQuery.data.invites.length} pending</div>
+            <div className="muted text-sm">{t("dashboard.pendingInvites.count", { count: invitesQuery.data.invites.length })}</div>
           </div>
           <div style={{ display: "grid", gap: "var(--space-3)" }}>
             {invitesQuery.data.invites.map((invite) => (
               <div key={invite.id} style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", alignItems: "center", padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-subtle)" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <strong>{invite.projectName}</strong>
-                  <span className="muted text-sm">Role: {invite.role}</span>
-                  <span className="muted text-sm">Invited {formatDate(invite.createdAt)}</span>
+                  <span className="muted text-sm">{t("dashboard.pendingInvites.role", { role: invite.role })}</span>
+                  <span className="muted text-sm">{t("dashboard.pendingInvites.invitedDate", { date: formatDate(invite.createdAt) })}</span>
                 </div>
                 <button
                   className="btn btn-primary btn-sm"
@@ -499,7 +513,7 @@ export function DashboardOverview() {
                   disabled={acceptInviteMutation.isPending}
                   onClick={() => acceptInviteMutation.mutate(invite.id)}
                 >
-                  {acceptInviteMutation.isPending ? t("common.submitting") : "Accept"}
+                  {acceptInviteMutation.isPending ? t("common.submitting") : t("dashboard.pendingInvites.accept")}
                 </button>
               </div>
             ))}
