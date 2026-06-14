@@ -50,7 +50,7 @@ import { TimelineEditor } from "./project-workspace/timeline-editor";
 import { NovelImportWorkbench } from "./project-workspace/novel-import-workbench";
 import { ProductionOverview } from "./project-workspace/production-overview";
 import type { ProductionNavigationTarget } from "../lib/hooks/use-production-overview";
-import { useRealtime } from "./realtime-provider";
+import { useToast } from "./toast-provider";
 
 // Workspace modes: document (with sub-tabs: view/edit/generate/versions), info, tasks, timeline
 type WorkspaceMode = "overview" | "document" | "info" | "tasks" | "timeline";
@@ -181,7 +181,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { connected } = useRealtime();
+  const toast = useToast();
 
   useWorkspaceRealtime(projectId);
 
@@ -377,11 +377,17 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       { documentId: targetDocId, title, content, metadata: { source: "unified-workspace" } },
       {
         onSuccess: (version) => {
-          setFeedback({ message: t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber }), error: null });
+          const successMsg = t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber });
+          setFeedback({ message: successMsg, error: null });
+          toast.success(successMsg);
           setIsEditing(false);
           setSelectedVersionId(version.id);
         },
-        onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
+        onError: (error) => {
+          const errMsg = formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed");
+          setFeedback({ message: null, error: errMsg });
+          toast.error(errMsg);
+        },
       },
     );
   }
@@ -397,11 +403,17 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       { documentId: targetDocId, title, content, metadata: { source: "unified-workspace" } },
       {
         onSuccess: (version) => {
-          setFeedback({ message: t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber }), error: null });
+          const successMsg = t("projectWorkspace.feedback.createVersionSuccess", { versionNumber: version.versionNumber });
+          setFeedback({ message: successMsg, error: null });
+          toast.success(successMsg);
           setIsEditing(false);
           setSelectedVersionId(version.id);
         },
-        onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
+        onError: (error) => {
+          const errMsg = formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed");
+          setFeedback({ message: null, error: errMsg });
+          toast.error(errMsg);
+        },
       },
     );
   }
@@ -413,8 +425,16 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       versionMutations.update.mutate(
         { versionId: selectedVersion.id, content },
         {
-          onSuccess: () => setFeedback({ message: t("projectWorkspace.feedback.updateDraftSuccess"), error: null }),
-          onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.updateDraftFailed") }),
+          onSuccess: () => {
+            const msg = t("projectWorkspace.feedback.updateDraftSuccess");
+            setFeedback({ message: msg, error: null });
+            toast.success(msg);
+          },
+          onError: (error) => {
+            const errMsg = formatApiError(error, t, "projectWorkspace.feedback.updateDraftFailed");
+            setFeedback({ message: null, error: errMsg });
+            toast.error(errMsg);
+          },
         },
       );
       return;
@@ -425,8 +445,16 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       versionMutations.create.mutate(
         { documentId: targetDocId, title: "Inline edit", content, metadata: { source: "unified-workspace" } },
         {
-          onSuccess: () => setFeedback({ message: t("projectWorkspace.feedback.updateDraftSuccess"), error: null }),
-          onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed") }),
+          onSuccess: () => {
+            const msg = t("projectWorkspace.feedback.updateDraftSuccess");
+            setFeedback({ message: msg, error: null });
+            toast.success(msg);
+          },
+          onError: (error) => {
+            const errMsg = formatApiError(error, t, "projectWorkspace.feedback.createVersionFailed");
+            setFeedback({ message: null, error: errMsg });
+            toast.error(errMsg);
+          },
         },
       );
     }
@@ -788,7 +816,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 }}
               />
             </div>
-            {leftPanelOpen && <JobStatusBar jobs={jobs} />}
+            {leftPanelOpen && <JobStatusBar jobs={jobs} projectId={projectId} canManageJobs={canManageJobs} />}
           </div>
 
           {/* Center: Content area */}
@@ -1062,7 +1090,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 }}
               />
             </div>
-            <JobStatusBar jobs={jobs} />
+            <JobStatusBar jobs={jobs} projectId={projectId} canManageJobs={canManageJobs} />
           </div>
         </div>
       )}
