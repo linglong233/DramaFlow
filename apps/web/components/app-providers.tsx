@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { type Locale, I18nProvider } from "../lib/i18n";
 import { QueryProvider } from "./query-provider";
 import { RealtimeProvider } from "./realtime-provider";
+import { ToastProvider } from "./toast-provider";
 
 export function AppProviders({
   children,
@@ -22,7 +23,11 @@ export function AppProviders({
 }) {
   return (
     <I18nProvider initialLocale={initialLocale}>
-      <QueryProvider><RealtimeProvider>{children}</RealtimeProvider></QueryProvider>
+      <QueryProvider>
+        <ToastProvider>
+          <RealtimeProvider>{children}</RealtimeProvider>
+        </ToastProvider>
+      </QueryProvider>
     </I18nProvider>
   );
 }

@@ -31,9 +31,21 @@ export const zhCNMessages = {
     reviewPrefix: "审核：{value}",
     storagePrefix: "存储：{value}",
     cancel: "取消",
+    close: "关闭",
     save: "保存",
     edit: "编辑",
-    comingSoon: "即将推出"
+    comingSoon: "即将推出",
+    realtimeConnected: "实时已连接",
+    realtimeReconnecting: "正在重连…",
+    realtimeOffline: "离线",
+    realtimeReconnectingHint: "实时连接已断开，正在尝试恢复，期间状态可能延迟更新。",
+    errorBoundaryTitle: "页面出了点问题",
+    errorBoundaryDescription: "渲染时发生了异常。可以重试，或返回工作台继续。",
+    errorBoundaryReload: "重新加载",
+    errorBoundaryHome: "回到工作台",
+    notFoundTitle: "没有找到这个页面",
+    notFoundDescription: "链接可能已失效，或对应的内容已被移除。",
+    notFoundHome: "返回首页"
   },
   nav: {
     dashboard: "工作台",
@@ -180,7 +192,17 @@ export const zhCNMessages = {
     filterArchived: "已归档",
     genreLabel: "题材",
     statusLabel: "状态",
-    noGenre: "未设置题材"
+    noGenre: "未设置题材",
+    inviteAcceptedToast: "已接受项目邀请。",
+    inviteAcceptFailed: "接受项目邀请失败。",
+    pendingInvites: {
+      title: "待处理的项目邀请",
+      description: "接受邀请后，对应项目会出现在你的工作台。",
+      count: "{count} 项待处理",
+      role: "角色：{role}",
+      invitedDate: "邀请于 {date}",
+      accept: "接受"
+    }
   },
   platformAdmin: {
     kicker: "平台后台",
@@ -375,6 +397,15 @@ export const zhCNMessages = {
       reviewActions: "审核操作",
       activeJobs: "活跃任务",
       noActiveJobs: "暂无活跃任务",
+      jobCancel: "取消",
+      jobRetry: "重试",
+      jobCancelFailed: "取消任务失败。",
+      jobRetryFailed: "重试任务失败。",
+      jobCancelledToast: "已取消任务。",
+      jobRetriedToast: "已重新加入队列。",
+      jobElapsedWaiting: "已等待 {duration}",
+      jobElapsedRunning: "运行 {duration}",
+      jobNoProgress: "处理中",
       generateScript: "生成剧本",
       generateStoryboard: "生成分镜",
       breadcrumbProjects: "项目",
@@ -794,7 +825,17 @@ export const zhCNMessages = {
         ready: "已就绪",
         missing: "缺失",
         notRequired: "不需要",
-        timeline: "时间线"
+        timeline: "时间线",
+        columns: {
+          shot: "镜头",
+          scene: "场景",
+          image: "图片",
+          video: "视频",
+          audio: "语音",
+          subtitle: "字幕",
+          composition: "合成",
+          timeline: "时间线"
+        }
       },
       filters: {
         all: "全部",
@@ -1889,9 +1930,21 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     reviewPrefix: "Review: {value}",
     storagePrefix: "Storage: {value}",
     cancel: "Cancel",
+    close: "Close",
     save: "Save",
     edit: "Edit",
-    comingSoon: "Coming soon"
+    comingSoon: "Coming soon",
+    realtimeConnected: "Realtime connected",
+    realtimeReconnecting: "Reconnecting…",
+    realtimeOffline: "Offline",
+    realtimeReconnectingHint: "Realtime connection dropped. Reconnecting — updates may be delayed.",
+    errorBoundaryTitle: "Something went wrong",
+    errorBoundaryDescription: "An error occurred while rendering this page. Try again or return to the workspace.",
+    errorBoundaryReload: "Reload",
+    errorBoundaryHome: "Back to workspace",
+    notFoundTitle: "Page not found",
+    notFoundDescription: "This link may be broken or the content has been removed.",
+    notFoundHome: "Back to home"
   },
   nav: {
     dashboard: "Workspace",
@@ -2038,7 +2091,17 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     filterArchived: "Archived",
     genreLabel: "Genre",
     statusLabel: "Status",
-    noGenre: "No genre set"
+    noGenre: "No genre set",
+    inviteAcceptedToast: "Project invitation accepted.",
+    inviteAcceptFailed: "Failed to accept the project invitation.",
+    pendingInvites: {
+      title: "Pending project invites",
+      description: "Accept an invite to add the project to your workspace.",
+      count: "{count} pending",
+      role: "Role: {role}",
+      invitedDate: "Invited {date}",
+      accept: "Accept"
+    }
   },
   platformAdmin: {
     kicker: "Platform admin",
@@ -2233,6 +2296,15 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       reviewActions: "Review Actions",
       activeJobs: "Active Jobs",
       noActiveJobs: "No Active Jobs",
+      jobCancel: "Cancel",
+      jobRetry: "Retry",
+      jobCancelFailed: "Failed to cancel the job.",
+      jobRetryFailed: "Failed to retry the job.",
+      jobCancelledToast: "Job cancelled.",
+      jobRetriedToast: "Job re-queued.",
+      jobElapsedWaiting: "Waiting {duration}",
+      jobElapsedRunning: "Running {duration}",
+      jobNoProgress: "Processing",
       generateScript: "Generate Script",
       generateStoryboard: "Generate Storyboard",
       breadcrumbProjects: "Projects",
@@ -2652,7 +2724,17 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
         ready: "Ready",
         missing: "Missing",
         notRequired: "Not required",
-        timeline: "Timeline"
+        timeline: "Timeline",
+        columns: {
+          shot: "Shot",
+          scene: "Scene",
+          image: "Image",
+          video: "Video",
+          audio: "Audio",
+          subtitle: "Subtitle",
+          composition: "Comp",
+          timeline: "Timeline"
+        }
       },
       filters: {
         all: "All",

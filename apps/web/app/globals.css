@@ -17287,6 +17287,284 @@ textarea.input {
   background: var(--success-bg);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   错误边界 / 404 / 加载骨架容器
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.app-error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+}
+
+.app-error-boundary .error-state,
+.app-error-boundary .empty-state {
+  max-width: 480px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Toast 全局通知
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.toast-portal {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: var(--z-tooltip);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-3);
+  width: min(360px, calc(100vw - var(--space-6)));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast__icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.toast__icon--success {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+
+.toast__icon--error {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+
+.toast__icon--info {
+  color: var(--info-text);
+  background: var(--info-bg);
+}
+
+.toast__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.toast__description {
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.toast__close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 2px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+}
+
+.toast__close:hover {
+  color: var(--text-primary);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   实时连接状态指示器
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.realtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.realtime-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.realtime-status__dot--connected {
+  background: var(--success-text);
+}
+
+.realtime-status__dot--reconnecting {
+  background: var(--warning-text);
+  animation: realtime-pulse 1.4s ease-in-out infinite;
+}
+
+.realtime-status__dot--offline {
+  background: var(--text-tertiary);
+}
+
+@keyframes realtime-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+  .realtime-status__dot--reconnecting {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   JobStatusBar 增强:进度条 / 耗时 / 取消 / 重试
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* 允许进度条与错误信息换行到下一行 */
+.uw-job-item {
+  flex-wrap: wrap;
+}
+
+.uw-job-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.uw-job-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.uw-job-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.uw-job-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.uw-job-btn--danger:hover {
+  color: var(--danger-text);
+  border-color: var(--danger-text);
+}
+
+.uw-job-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.uw-job-progress {
+  flex-basis: 100%;
+  margin-top: var(--space-1);
+  height: 3px;
+  width: 100%;
+  background: var(--bg-elevated);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.uw-job-progress__bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.uw-job-progress--indeterminate .uw-job-progress__bar {
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: uw-job-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes uw-job-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.uw-job-error {
+  flex-basis: 100%;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--danger-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uw-job-progress--indeterminate .uw-job-progress__bar {
+    animation: none;
+  }
+}
+
 .impact-badge--ignored,
 .impact-badge--resolved,
 .vmp-impact-badge--neutral {

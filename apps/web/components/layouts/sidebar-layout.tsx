@@ -21,6 +21,7 @@ import { useSession } from "../../lib/use-session";
 import { ConfirmAction } from "../confirm-action";
 import { LanguageSwitcher } from "../language-switcher";
 import { NotificationBell } from "../notification-bell";
+import { RealtimeStatus } from "../realtime-status";
 
 type NavItemType = "link" | "section";
 
@@ -343,6 +344,7 @@ export function SidebarLayout({ children, variant, projectId, flush }: SidebarLa
             <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-secondary)", marginLeft: "8px" }}>DramaFlow</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+            <RealtimeStatus />
             <NotificationBell />
             <LanguageSwitcher style={{ width: "auto" }} />
           </div>
