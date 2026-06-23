@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="endLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="bg-decor">
+    <circle cx="130" cy="130" r="160" fill="#4F46E5" fill-opacity="0.06" />
+    <circle cx="70" cy="210" r="80" fill="#06B6D4" fill-opacity="0.08" />
+    <circle cx="1140" cy="600" r="150" fill="#4F46E5" fill-opacity="0.05" />
+    <circle cx="1190" cy="540" r="70" fill="#06B6D4" fill-opacity="0.07" />
+  </g>
+
+  <g id="end-icon">
+    
+  <g transform="translate(610.0, 218.0) scale(2.5)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M4 13a8 8 0 0 1 7 7a6 6 0 0 0 3 -5a9 9 0 0 0 6 -8a3 3 0 0 0 -3 -3a9 9 0 0 0 -8 6a6 6 0 0 0 -5 3" />
+    <path d="M7 14a6 6 0 0 0 -3 6a6 6 0 0 0 6 -3" />
+    <path d="M14 9a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+  </g>
+  </g>
+
+  <g id="end-lead">
+    <text x="640" y="316" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="500" fill="#94A3B8" letter-spacing="2">感谢观看 · THANK YOU</text>
+  </g>
+
+  <g id="end-tagline">
+    <text x="640" y="388" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="48" font-weight="700" fill="#1E293B">让短剧创作<tspan fill="#4F46E5">如行云流水</tspan></text>
+  </g>
+
+  <g id="end-subtitle">
+    <text x="640" y="430" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="500" fill="#64748B">DramaFlow · AI 驱动的短剧全流程生产平台</text>
+  </g>
+
+  <g id="end-divider">
+    <path fill="url(#endLine)" d="M582,460 H698 A2,2 0 0 1 700,462 V462 A2,2 0 0 1 698,464 H582 A2,2 0 0 1 580,462 V462 A2,2 0 0 1 582,460 Z" />
+  </g>
+
+  <g id="end-info">
+    <text x="640" y="508" text-anchor="middle" font-family="Consolas, 'Courier New', monospace" font-size="16" font-weight="500" fill="#94A3B8" letter-spacing="0.5">Node.js &gt;= 24  ·  npm install  ·  npm run build</text>
+  </g>
+
+  <g id="end-cta">
+    <path fill="#4F46E5" d="M564,552 H716 A24,24 0 0 1 740,576 V576 A24,24 0 0 1 716,600 H564 A24,24 0 0 1 540,576 V576 A24,24 0 0 1 564,552 Z" />
+    <text x="640" y="582" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#FFFFFF">开始使用 DramaFlow</text>
+  </g>
+
+  <g id="end-footer">
+    <text x="640" y="660" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">Web :3000  ·  API :4000  ·  Swagger /docs  ·  2026</text>
+  </g>
+</svg>

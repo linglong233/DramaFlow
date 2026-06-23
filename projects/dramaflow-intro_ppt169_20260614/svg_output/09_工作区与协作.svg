@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="64" y="60" width="6" height="40" rx="3" fill="#4F46E5"/>
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">工作区与协作</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">WORKSPACE MODES</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">统一工作区通过 URL <tspan font-family="Consolas, 'Courier New', monospace" fill="#4F46E5" font-weight="700">?mode=</tspan> 切换四种模式</text>
+  </g>
+
+  <g id="card-info">
+    <rect x="64" y="160" width="564" height="240" rx="20" fill="#EEF2FF"/>
+    <path d="M 250,160 A 24,24 0 0 0 226,184 L 226,208 L 466,208 L 466,184 A 24,24 0 0 0 442,160 Z" fill="#4F46E5"/>
+    <text x="346" y="192" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">信息 · info</text>
+    <rect x="88" y="232" width="516" height="148" rx="12" fill="#FFFFFF"/>
+    <rect x="112" y="256" width="56" height="56" rx="14" fill="#EEF2FF"/>
+    <use data-icon="tabler-outline/info-circle" x="120" y="264" width="40" height="40" fill="#4F46E5" stroke-width="2"/>
+    <text x="184" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">项目信息面板</text>
+    <text x="184" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">INFO MODE</text>
+    <text x="112" y="346" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">项目概览 · 配置 · 成员管理</text>
+    <text x="112" y="370" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">查看元信息与审阅策略</text>
+  </g>
+
+  <g id="card-document">
+    <rect x="652" y="160" width="564" height="240" rx="20" fill="#ECFEFF"/>
+    <path d="M 838,160 A 24,24 0 0 0 814,184 L 814,208 L 1054,208 L 1054,184 A 24,24 0 0 0 1030,160 Z" fill="#06B6D4"/>
+    <text x="934" y="192" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">文档 · document</text>
+    <rect x="676" y="232" width="516" height="148" rx="12" fill="#FFFFFF"/>
+    <rect x="700" y="256" width="56" height="56" rx="14" fill="#ECFEFF"/>
+    <use data-icon="tabler-outline/file-text" x="708" y="264" width="40" height="40" fill="#06B6D4" stroke-width="2"/>
+    <text x="772" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">文档主模式</text>
+    <text x="772" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">DOCUMENT MODE</text>
+    <text x="700" y="346" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">查看 · 编辑 · 生成 · 版本</text>
+    <text x="700" y="370" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">世界观与媒体映射于此</text>
+  </g>
+
+  <g id="card-tasks">
+    <rect x="64" y="416" width="564" height="240" rx="20" fill="#ECFDF5"/>
+    <path d="M 250,416 A 24,24 0 0 0 226,440 L 226,464 L 466,464 L 466,440 A 24,24 0 0 0 442,416 Z" fill="#10B981"/>
+    <text x="346" y="448" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">任务 · tasks</text>
+    <rect x="88" y="488" width="516" height="148" rx="12" fill="#FFFFFF"/>
+    <rect x="112" y="512" width="56" height="56" rx="14" fill="#ECFDF5"/>
+    <use data-icon="tabler-outline/list-check" x="120" y="520" width="40" height="40" fill="#10B981" stroke-width="2"/>
+    <text x="184" y="538" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">任务面板</text>
+    <text x="184" y="562" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">TASKS MODE</text>
+    <text x="112" y="602" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">生成任务跟踪与状态</text>
+    <text x="112" y="626" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">批量作业与重试管理</text>
+  </g>
+
+  <g id="card-timeline">
+    <rect x="652" y="416" width="564" height="240" rx="20" fill="#EEF2FF"/>
+    <path d="M 838,416 A 24,24 0 0 0 814,440 L 814,464 L 1054,464 L 1054,440 A 24,24 0 0 0 1030,416 Z" fill="#4F46E5"/>
+    <text x="934" y="448" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">时间线 · timeline</text>
+    <rect x="676" y="488" width="516" height="148" rx="12" fill="#FFFFFF"/>
+    <rect x="700" y="512" width="56" height="56" rx="14" fill="#EEF2FF"/>
+    <use data-icon="tabler-outline/timeline" x="708" y="520" width="40" height="40" fill="#4F46E5" stroke-width="2"/>
+    <text x="772" y="538" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">时间线编辑器</text>
+    <text x="772" y="562" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">TIMELINE MODE</text>
+    <text x="700" y="602" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">自动组装 · 拖拽编辑</text>
+    <text x="700" y="626" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">导出提交与 WebSocket 轮询</text>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">09 / 11</text>
+  </g>
+</svg>

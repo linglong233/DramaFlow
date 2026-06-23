@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="header">
+    <path fill="#4F46E5" d="M67,60 H67 A3,3 0 0 1 70,63 V97 A3,3 0 0 1 67,100 H67 A3,3 0 0 1 64,97 V63 A3,3 0 0 1 67,60 Z" />
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">核心能力</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">CORE CAPABILITIES</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">六大核心能力构成从创作到导出的完整闭环</text>
+  </g>
+
+  <g id="card-1">
+    <path fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" d="M80,160 H416 A16,16 0 0 1 432,176 V374 A16,16 0 0 1 416,390 H80 A16,16 0 0 1 64,374 V176 A16,16 0 0 1 80,160 Z" />
+    <text x="408" y="210" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="56" font-weight="800" fill="#4F46E5" fill-opacity="0.07">01</text>
+    <path fill="#EEF2FF" d="M106,188 H134 A14,14 0 0 1 148,202 V230 A14,14 0 0 1 134,244 H106 A14,14 0 0 1 92,230 V202 A14,14 0 0 1 106,188 Z" />
+    
+  <g transform="translate(100.0, 196.0) scale(1.6666666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M20 17v-12c0 -1.121 -.879 -2 -2 -2s-2 .879 -2 2v12l2 2l2 -2" />
+    <path d="M16 7h4" />
+    <path d="M18 19h-13a2 2 0 1 1 0 -4h4a2 2 0 1 0 0 -4h-3" />
+  </g>
+    <text x="92" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#1E293B">AI 写作</text>
+    <text x="92" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">AI WRITING</text>
+    <text x="92" y="340" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">剧本、梗概、分镜、改写</text>
+    <text x="92" y="364" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">SSE 流式 + 对话式 QA</text>
+  </g>
+
+  <g id="card-2">
+    <path fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" d="M472,160 H808 A16,16 0 0 1 824,176 V374 A16,16 0 0 1 808,390 H472 A16,16 0 0 1 456,374 V176 A16,16 0 0 1 472,160 Z" />
+    <text x="800" y="210" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="56" font-weight="800" fill="#06B6D4" fill-opacity="0.07">02</text>
+    <path fill="#ECFEFF" d="M498,188 H526 A14,14 0 0 1 540,202 V230 A14,14 0 0 1 526,244 H498 A14,14 0 0 1 484,230 V202 A14,14 0 0 1 498,188 Z" />
+    
+  <g transform="translate(492.0, 196.0) scale(1.6666666666666667)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
+    <path d="M14 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
+    <path d="M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
+    <path d="M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
+  </g>
+    <text x="484" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#1E293B">分镜工作台</text>
+    <text x="484" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">STORYBOARD</text>
+    <text x="484" y="340" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">拖拽重排 · 多选操作</text>
+    <text x="484" y="364" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">镜头三栏详情面板</text>
+  </g>
+
+  <g id="card-3">
+    <path fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" d="M864,160 H1200 A16,16 0 0 1 1216,176 V374 A16,16 0 0 1 1200,390 H864 A16,16 0 0 1 848,374 V176 A16,16 0 0 1 864,160 Z" />
+    <text x="1192" y="210" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="56" font-weight="800" fill="#4F46E5" fill-opacity="0.07">03</text>
+    <path fill="#EEF2FF" d="M890,188 H918 A14,14 0 0 1 932,202 V230 A14,14 0 0 1 918,244 H890 A14,14 0 0 1 876,230 V202 A14,14 0 0 1 890,188 Z" />
+    
+  <g transform="translate(884.0, 196.0) scale(1.6666666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M15 8h.01" />
+    <path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12" />
+    <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5" />
+    <path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3" />
+  </g>
+    <text x="876" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#1E293B">图片生成</text>
+    <text x="876" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">IMAGE GEN</text>
+    <text x="876" y="340" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">逐镜头与批量生成</text>
+    <text x="876" y="364" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">候选管理 · 明确采纳</text>
+  </g>
+
+  <g id="card-4">
+    <path fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" d="M80,410 H416 A16,16 0 0 1 432,426 V624 A16,16 0 0 1 416,640 H80 A16,16 0 0 1 64,624 V426 A16,16 0 0 1 80,410 Z" />
+    <text x="408" y="460" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="56" font-weight="800" fill="#06B6D4" fill-opacity="0.07">04</text>
+    <path fill="#ECFEFF" d="M106,438 H134 A14,14 0 0 1 148,452 V480 A14,14 0 0 1 134,494 H106 A14,14 0 0 1 92,480 V452 A14,14 0 0 1 106,438 Z" />
+    
+  <g transform="translate(100.0, 446.0) scale(1.6666666666666667)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M15 10l4.553 -2.276a1 1 0 0 1 1.447 .894v6.764a1 1 0 0 1 -1.447 .894l-4.553 -2.276v-4" />
+    <path d="M3 8a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -8" />
+  </g>
+    <text x="92" y="532" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#1E293B">视频生成</text>
+    <text x="92" y="556" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">VIDEO GEN</text>
+    <text x="92" y="590" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">逐镜头与批量生成</text>
+    <text x="92" y="614" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">多 provider 灵活切换</text>
+  </g>
+
+  <g id="card-5">
+    <path fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" d="M472,410 H808 A16,16 0 0 1 824,426 V624 A16,16 0 0 1 808,640 H472 A16,16 0 0 1 456,624 V426 A16,16 0 0 1 472,410 Z" />
+    <text x="800" y="460" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="56" font-weight="800" fill="#4F46E5" fill-opacity="0.07">05</text>
+    <path fill="#EEF2FF" d="M498,438 H526 A14,14 0 0 1 540,452 V480 A14,14 0 0 1 526,494 H498 A14,14 0 0 1 484,480 V452 A14,14 0 0 1 498,438 Z" />
+    
+  <g transform="translate(492.0, 446.0) scale(1.6666666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M9 5a3 3 0 0 1 3 -3a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3a3 3 0 0 1 -3 -3l0 -5" />
+    <path d="M5 10a7 7 0 0 0 14 0" />
+    <path d="M8 21l8 0" />
+    <path d="M12 17l0 4" />
+  </g>
+    <text x="484" y="532" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#1E293B">TTS 配音</text>
+    <text x="484" y="556" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">VOICEOVER</text>
+    <text x="484" y="590" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">逐镜头 · 按场景批量</text>
+    <text x="484" y="614" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">角色语音统一生成</text>
+  </g>
+
+  <g id="card-6">
+    <path fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" d="M864,410 H1200 A16,16 0 0 1 1216,426 V624 A16,16 0 0 1 1200,640 H864 A16,16 0 0 1 848,624 V426 A16,16 0 0 1 864,410 Z" />
+    <text x="1192" y="460" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="56" font-weight="800" fill="#06B6D4" fill-opacity="0.07">06</text>
+    <path fill="#ECFEFF" d="M890,438 H918 A14,14 0 0 1 932,452 V480 A14,14 0 0 1 918,494 H890 A14,14 0 0 1 876,480 V452 A14,14 0 0 1 890,438 Z" />
+    
+  <g transform="translate(884.0, 446.0) scale(1.6666666666666667)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+    <path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+  </g>
+    <text x="876" y="532" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#1E293B">协作审阅</text>
+    <text x="876" y="556" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">COLLAB &amp; REVIEW</text>
+    <text x="876" y="590" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">版本生命周期管理</text>
+    <text x="876" y="614" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">线程评论 · 审计 · 权限</text>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">04 / 11</text>
+  </g>
+</svg>

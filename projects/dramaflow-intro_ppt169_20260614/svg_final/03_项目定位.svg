@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="bg-decor">
+    <circle cx="160" cy="180" r="110" fill="#06B6D4" fill-opacity="0.05" />
+    <circle cx="1120" cy="560" r="130" fill="#4F46E5" fill-opacity="0.05" />
+  </g>
+
+  <g id="header">
+    <path fill="#4F46E5" d="M67,60 H67 A3,3 0 0 1 70,63 V97 A3,3 0 0 1 67,100 H67 A3,3 0 0 1 64,97 V63 A3,3 0 0 1 67,60 Z" />
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">项目定位</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">POSITIONING</text>
+  </g>
+
+  <g id="hero-statement">
+    <text font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" fill="#1E293B" text-anchor="middle" font-size="40" x="640" y="280"><tspan>面向<tspan fill="#4F46E5" font-weight="700">导演与制作团队</tspan>的</tspan>
+    </text><text font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" fill="#1E293B" text-anchor="middle" font-size="40" x="640" y="338"><tspan>短剧 <tspan fill="#4F46E5" font-weight="700">AI 全流程</tspan> 生产平台</tspan>
+    </text></g>
+
+  <g id="hero-flow">
+    <text x="640" y="410" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="500" fill="#64748B">从一句话梗概到成片导出 —— 全程在同一平台完成</text>
+  </g>
+
+  <g id="capability-divider">
+    <line x1="300" y1="480" x2="980" y2="480" stroke="#E2E8F0" stroke-width="1" />
+  </g>
+
+  <g id="pillars">
+    <g id="pillar-1">
+      
+  <g transform="translate(320.0, 540.0) scale(1.4166666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M20 17v-12c0 -1.121 -.879 -2 -2 -2s-2 .879 -2 2v12l2 2l2 -2" />
+    <path d="M16 7h4" />
+    <path d="M18 19h-13a2 2 0 1 1 0 -4h4a2 2 0 1 0 0 -4h-3" />
+  </g>
+      <text x="370" y="556" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#1E293B">创作</text>
+      <text x="370" y="582" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#64748B">剧本 · 梗概 · 分镜</text>
+    </g>
+    <line x1="566" y1="530" x2="566" y2="596" stroke="#E2E8F0" stroke-width="1" />
+    <g id="pillar-2">
+      
+  <g transform="translate(602.0, 540.0) scale(1.4166666666666667)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M15 8h.01" />
+    <path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12" />
+    <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5" />
+    <path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3" />
+  </g>
+      <text x="652" y="556" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#1E293B">媒体生产</text>
+      <text x="652" y="582" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#64748B">图片 · 视频 · 配音</text>
+    </g>
+    <line x1="850" y1="530" x2="850" y2="596" stroke="#E2E8F0" stroke-width="1" />
+    <g id="pillar-3">
+      
+  <g transform="translate(884.0, 540.0) scale(1.4166666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+    <path d="M11.5 21h-4.5a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v5m-5 6h7m-3 -3l3 3l-3 3" />
+  </g>
+      <text x="934" y="556" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#1E293B">协作与导出</text>
+      <text x="934" y="582" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#64748B">审阅 · 时间线 · 成片</text>
+    </g>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">03 / 11</text>
+  </g>
+</svg>

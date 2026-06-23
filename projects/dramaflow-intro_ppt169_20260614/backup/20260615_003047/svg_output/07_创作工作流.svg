@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <marker id="arrGray" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748B"/>
+    </marker>
+    <marker id="arrGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#10B981"/>
+    </marker>
+    <marker id="arrRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#EF4444"/>
+    </marker>
+  </defs>
+
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="64" y="60" width="6" height="40" rx="3" fill="#4F46E5"/>
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">创作工作流</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">VERSION LIFECYCLE</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">文档遵循 draft → submitted → pending_review → approved / rejected 的审阅生命周期</text>
+  </g>
+
+  <g id="node-draft">
+    <rect x="80" y="262" width="180" height="96" rx="48" fill="#1E293B"/>
+    <use data-icon="tabler-outline/writing" x="104" y="290" width="34" height="34" fill="#FFFFFF" stroke-width="2"/>
+    <text x="148" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">草稿</text>
+    <text x="148" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#94A3B8" letter-spacing="1">DRAFT</text>
+  </g>
+
+  <g id="node-submitted">
+    <rect x="320" y="262" width="180" height="96" rx="14" fill="#4F46E5"/>
+    <use data-icon="tabler-outline/check" x="344" y="290" width="34" height="34" fill="#FFFFFF" stroke-width="2"/>
+    <text x="388" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">已提交</text>
+    <text x="388" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#EEF2FF" letter-spacing="1">SUBMITTED</text>
+  </g>
+
+  <g id="node-review">
+    <rect x="560" y="262" width="180" height="96" rx="14" fill="#06B6D4"/>
+    <use data-icon="tabler-outline/users" x="584" y="290" width="34" height="34" fill="#FFFFFF" stroke-width="2"/>
+    <text x="628" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">待审</text>
+    <text x="628" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#ECFEFF" letter-spacing="1">PENDING REVIEW</text>
+  </g>
+
+  <g id="node-approved">
+    <rect x="960" y="262" width="180" height="96" rx="48" fill="#10B981"/>
+    <use data-icon="tabler-outline/circle-check" x="984" y="290" width="34" height="34" fill="#FFFFFF" stroke-width="2"/>
+    <text x="1028" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">通过</text>
+    <text x="1028" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#ECFDF5" letter-spacing="1">APPROVED</text>
+  </g>
+
+  <g id="node-rejected">
+    <rect x="560" y="440" width="180" height="96" rx="14" fill="#FFFFFF" stroke="#EF4444" stroke-width="2"/>
+    <use data-icon="tabler-outline/refresh" x="584" y="468" width="34" height="34" fill="#EF4444" stroke-width="2"/>
+    <text x="628" y="482" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#EF4444">驳回</text>
+    <text x="628" y="506" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#EF4444" letter-spacing="1">REJECTED</text>
+  </g>
+
+  <g id="flow-arrows">
+    <line x1="262" y1="310" x2="312" y2="310" stroke="#64748B" stroke-width="2.5" marker-end="url(#arrGray)"/>
+    <line x1="502" y1="310" x2="552" y2="310" stroke="#64748B" stroke-width="2.5" marker-end="url(#arrGray)"/>
+    <line x1="742" y1="310" x2="952" y2="310" stroke="#10B981" stroke-width="2.5" marker-end="url(#arrGreen)"/>
+    <rect x="820" y="288" width="54" height="22" rx="11" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1"/>
+    <text x="847" y="304" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#10B981">通过</text>
+    <line x1="650" y1="360" x2="650" y2="432" stroke="#EF4444" stroke-width="2.5" marker-end="url(#arrRed)"/>
+    <rect x="623" y="382" width="54" height="22" rx="11" fill="#FFFFFF" stroke="#FECACA" stroke-width="1"/>
+    <text x="650" y="398" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#EF4444">驳回</text>
+    <path d="M 560,488 L 170,488 L 170,360" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#arrRed)"/>
+    <rect x="318" y="477" width="96" height="22" rx="11" fill="#FFFFFF" stroke="#FECACA" stroke-width="1"/>
+    <text x="366" y="493" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#EF4444">重新修改</text>
+  </g>
+
+  <g id="supporting-bar">
+    <rect x="64" y="568" width="1152" height="88" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <g id="support-1">
+      <use data-icon="tabler-outline/stack" x="92" y="596" width="30" height="30" fill="#4F46E5" stroke-width="2"/>
+      <text x="132" y="606" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#1E293B">规则集中</text>
+      <text x="132" y="630" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="500" fill="#64748B">business-rules.ts</text>
+    </g>
+    <line x1="430" y1="586" x2="430" y2="638" stroke="#E2E8F0" stroke-width="1"/>
+    <g id="support-2">
+      <use data-icon="tabler-outline/refresh" x="460" y="596" width="30" height="30" fill="#06B6D4" stroke-width="2"/>
+      <text x="500" y="606" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#1E293B">版本管理</text>
+      <text x="500" y="630" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#64748B">采纳 · 还原 · 差异对比</text>
+    </g>
+    <line x1="820" y1="586" x2="820" y2="638" stroke="#E2E8F0" stroke-width="1"/>
+    <g id="support-3">
+      <use data-icon="tabler-outline/bolt" x="850" y="596" width="30" height="30" fill="#4F46E5" stroke-width="2"/>
+      <text x="890" y="606" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#1E293B">实时同步</text>
+      <text x="890" y="630" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#64748B">剧本 ↔ 世界观角色 WebSocket 双向</text>
+    </g>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">07 / 10</text>
+  </g>
+</svg>

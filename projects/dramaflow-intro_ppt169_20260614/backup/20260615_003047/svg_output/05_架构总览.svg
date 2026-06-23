@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="64" y="60" width="6" height="40" rx="3" fill="#4F46E5"/>
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">架构总览</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">ARCHITECTURE</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">Monorepo 四件套 —— 职责清晰、单向依赖、共享契约</text>
+  </g>
+
+  <g id="layer-1">
+    <rect x="64" y="156" width="1152" height="92" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="88" y="174" width="56" height="56" rx="12" fill="#4F46E5"/>
+    <text x="116" y="212" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#FFFFFF">01</text>
+    <text x="168" y="196" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">前端层</text>
+    <text x="168" y="226" font-family="Consolas, 'Courier New', monospace" font-size="14" font-weight="600" fill="#4F46E5">apps/web</text>
+    <text x="420" y="200" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#1E293B">Next.js 15 · 统一工作区 shell</text>
+    <text x="420" y="226" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">URL ?mode= 切换 info / document / tasks / timeline</text>
+    <use data-icon="tabler-outline/code" x="1152" y="180" width="40" height="40" fill="#4F46E5" stroke-width="2"/>
+  </g>
+
+  <g id="layer-2">
+    <rect x="64" y="262" width="1152" height="92" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="88" y="280" width="56" height="56" rx="12" fill="#06B6D4"/>
+    <text x="116" y="318" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#FFFFFF">02</text>
+    <text x="168" y="302" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">服务层</text>
+    <text x="168" y="332" font-family="Consolas, 'Courier New', monospace" font-size="14" font-weight="600" fill="#06B6D4">apps/api</text>
+    <text x="420" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#1E293B">NestJS 11 · 全部业务逻辑所在</text>
+    <text x="420" y="332" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">文档 / 版本 / 世界观 CRUD + AI 生成 provider 编排</text>
+    <use data-icon="tabler-outline/server" x="1152" y="286" width="40" height="40" fill="#06B6D4" stroke-width="2"/>
+  </g>
+
+  <g id="layer-3">
+    <rect x="64" y="368" width="1152" height="92" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="88" y="386" width="56" height="56" rx="12" fill="#4F46E5"/>
+    <text x="116" y="424" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#FFFFFF">03</text>
+    <text x="168" y="408" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">任务层</text>
+    <text x="168" y="438" font-family="Consolas, 'Courier New', monospace" font-size="14" font-weight="600" fill="#4F46E5">apps/worker</text>
+    <text x="420" y="412" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#1E293B">约 100 行轮询循环 · 无业务逻辑</text>
+    <text x="420" y="438" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">通过 /internal/* 认领、执行、重试任务</text>
+    <use data-icon="tabler-outline/refresh" x="1152" y="392" width="40" height="40" fill="#4F46E5" stroke-width="2"/>
+  </g>
+
+  <g id="layer-4">
+    <rect x="64" y="474" width="1152" height="92" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="88" y="492" width="56" height="56" rx="12" fill="#06B6D4"/>
+    <text x="116" y="530" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#FFFFFF">04</text>
+    <text x="168" y="514" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">契约层</text>
+    <text x="168" y="544" font-family="Consolas, 'Courier New', monospace" font-size="14" font-weight="600" fill="#06B6D4">packages/shared</text>
+    <text x="420" y="518" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#1E293B">跨栈领域类型与业务规则的唯一真相源</text>
+    <text x="420" y="544" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">domain · api-contracts · business-rules · storyboard</text>
+    <use data-icon="tabler-outline/stack" x="1152" y="498" width="40" height="40" fill="#06B6D4" stroke-width="2"/>
+  </g>
+
+  <g id="foundation">
+    <rect x="64" y="582" width="1152" height="80" rx="14" fill="#1E293B"/>
+    <text x="92" y="612" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" letter-spacing="1">横切关注点 · CROSS-CUTTING</text>
+    <g id="found-item-1">
+      <use data-icon="tabler-outline/database" x="92" y="626" width="22" height="22" fill="#06B6D4" stroke-width="2"/>
+      <text x="122" y="642" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">PostgreSQL + Prisma</text>
+    </g>
+    <g id="found-item-2">
+      <use data-icon="tabler-outline/bolt" x="380" y="626" width="22" height="22" fill="#06B6D4" stroke-width="2"/>
+      <text x="410" y="642" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">Socket.IO 实时</text>
+    </g>
+    <g id="found-item-3">
+      <use data-icon="tabler-outline/cloud" x="640" y="626" width="22" height="22" fill="#06B6D4" stroke-width="2"/>
+      <text x="670" y="642" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">本地 + S3 存储</text>
+    </g>
+    <g id="found-item-4">
+      <use data-icon="tabler-outline/file-export" x="900" y="626" width="22" height="22" fill="#06B6D4" stroke-width="2"/>
+      <text x="930" y="642" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">FFmpeg 导出</text>
+    </g>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="710" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="710" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">05 / 10</text>
+  </g>
+</svg>

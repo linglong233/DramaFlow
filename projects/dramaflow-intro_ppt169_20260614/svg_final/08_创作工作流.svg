@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <marker id="arrGray" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748B" />
+    </marker>
+    <marker id="arrGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#10B981" />
+    </marker>
+    <marker id="arrRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#EF4444" />
+    </marker>
+  </defs>
+
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="header">
+    <path fill="#4F46E5" d="M67,60 H67 A3,3 0 0 1 70,63 V97 A3,3 0 0 1 67,100 H67 A3,3 0 0 1 64,97 V63 A3,3 0 0 1 67,60 Z" />
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">创作工作流</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">VERSION LIFECYCLE</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">文档遵循 draft → submitted → pending_review → approved / rejected 的审阅生命周期</text>
+  </g>
+
+  <g id="node-draft">
+    <path fill="#1E293B" d="M128,262 H212 A48,48 0 0 1 260,310 V310 A48,48 0 0 1 212,358 H128 A48,48 0 0 1 80,310 V310 A48,48 0 0 1 128,262 Z" />
+    
+  <g transform="translate(104.0, 290.0) scale(1.4166666666666667)" fill="none" stroke="#FFFFFF" stroke-width="2">
+    <path d="M20 17v-12c0 -1.121 -.879 -2 -2 -2s-2 .879 -2 2v12l2 2l2 -2" />
+    <path d="M16 7h4" />
+    <path d="M18 19h-13a2 2 0 1 1 0 -4h4a2 2 0 1 0 0 -4h-3" />
+  </g>
+    <text x="148" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">草稿</text>
+    <text x="148" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#94A3B8" letter-spacing="1">DRAFT</text>
+  </g>
+
+  <g id="node-submitted">
+    <path fill="#4F46E5" d="M334,262 H486 A14,14 0 0 1 500,276 V344 A14,14 0 0 1 486,358 H334 A14,14 0 0 1 320,344 V276 A14,14 0 0 1 334,262 Z" />
+    
+  <g transform="translate(344.0, 290.0) scale(1.4166666666666667)" fill="none" stroke="#FFFFFF" stroke-width="2">
+    <path d="M5 12l5 5l10 -10" />
+  </g>
+    <text x="388" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">已提交</text>
+    <text x="388" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#EEF2FF" letter-spacing="1">SUBMITTED</text>
+  </g>
+
+  <g id="node-review">
+    <path fill="#06B6D4" d="M574,262 H726 A14,14 0 0 1 740,276 V344 A14,14 0 0 1 726,358 H574 A14,14 0 0 1 560,344 V276 A14,14 0 0 1 574,262 Z" />
+    
+  <g transform="translate(584.0, 290.0) scale(1.4166666666666667)" fill="none" stroke="#FFFFFF" stroke-width="2">
+    <path d="M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+    <path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+  </g>
+    <text x="628" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">待审</text>
+    <text x="628" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#ECFEFF" letter-spacing="1">PENDING REVIEW</text>
+  </g>
+
+  <g id="node-approved">
+    <path fill="#10B981" d="M1008,262 H1092 A48,48 0 0 1 1140,310 V310 A48,48 0 0 1 1092,358 H1008 A48,48 0 0 1 960,310 V310 A48,48 0 0 1 1008,262 Z" />
+    
+  <g transform="translate(984.0, 290.0) scale(1.4166666666666667)" fill="none" stroke="#FFFFFF" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+    <path d="M9 12l2 2l4 -4" />
+  </g>
+    <text x="1028" y="304" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">通过</text>
+    <text x="1028" y="328" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#ECFDF5" letter-spacing="1">APPROVED</text>
+  </g>
+
+  <g id="node-rejected">
+    <path fill="#FFFFFF" stroke="#EF4444" stroke-width="2" d="M574,440 H726 A14,14 0 0 1 740,454 V522 A14,14 0 0 1 726,536 H574 A14,14 0 0 1 560,522 V454 A14,14 0 0 1 574,440 Z" />
+    
+  <g transform="translate(584.0, 468.0) scale(1.4166666666666667)" fill="none" stroke="#EF4444" stroke-width="2">
+    <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+    <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+  </g>
+    <text x="628" y="482" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#EF4444">驳回</text>
+    <text x="628" y="506" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="600" fill="#EF4444" letter-spacing="1">REJECTED</text>
+  </g>
+
+  <g id="flow-arrows">
+    <line x1="262" y1="310" x2="312" y2="310" stroke="#64748B" stroke-width="2.5" marker-end="url(#arrGray)" />
+    <line x1="502" y1="310" x2="552" y2="310" stroke="#64748B" stroke-width="2.5" marker-end="url(#arrGray)" />
+    <line x1="742" y1="310" x2="952" y2="310" stroke="#10B981" stroke-width="2.5" marker-end="url(#arrGreen)" />
+    <path fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1" d="M831,288 H863 A11,11 0 0 1 874,299 V299 A11,11 0 0 1 863,310 H831 A11,11 0 0 1 820,299 V299 A11,11 0 0 1 831,288 Z" />
+    <text x="847" y="304" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#10B981">通过</text>
+    <line x1="650" y1="360" x2="650" y2="432" stroke="#EF4444" stroke-width="2.5" marker-end="url(#arrRed)" />
+    <path fill="#FFFFFF" stroke="#FECACA" stroke-width="1" d="M634,382 H666 A11,11 0 0 1 677,393 V393 A11,11 0 0 1 666,404 H634 A11,11 0 0 1 623,393 V393 A11,11 0 0 1 634,382 Z" />
+    <text x="650" y="398" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#EF4444">驳回</text>
+    <path d="M 560,488 L 170,488 L 170,360" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#arrRed)" />
+    <path fill="#FFFFFF" stroke="#FECACA" stroke-width="1" d="M329,477 H403 A11,11 0 0 1 414,488 V488 A11,11 0 0 1 403,499 H329 A11,11 0 0 1 318,488 V488 A11,11 0 0 1 329,477 Z" />
+    <text x="366" y="493" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#EF4444">重新修改</text>
+  </g>
+
+  <g id="supporting-bar">
+    <path fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1" d="M78,568 H1202 A14,14 0 0 1 1216,582 V642 A14,14 0 0 1 1202,656 H78 A14,14 0 0 1 64,642 V582 A14,14 0 0 1 78,568 Z" />
+    <g id="support-1">
+      
+  <g transform="translate(92.0, 596.0) scale(1.25)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M12 6l-8 4l8 4l8 -4l-8 -4" />
+    <path d="M4 14l8 4l8 -4" />
+  </g>
+      <text x="132" y="606" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#1E293B">规则集中</text>
+      <text x="132" y="630" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="500" fill="#64748B">business-rules.ts</text>
+    </g>
+    <line x1="430" y1="586" x2="430" y2="638" stroke="#E2E8F0" stroke-width="1" />
+    <g id="support-2">
+      
+  <g transform="translate(460.0, 596.0) scale(1.25)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+    <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+  </g>
+      <text x="500" y="606" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#1E293B">版本管理</text>
+      <text x="500" y="630" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#64748B">采纳 · 还原 · 差异对比</text>
+    </g>
+    <line x1="820" y1="586" x2="820" y2="638" stroke="#E2E8F0" stroke-width="1" />
+    <g id="support-3">
+      
+  <g transform="translate(850.0, 596.0) scale(1.25)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11" />
+  </g>
+      <text x="890" y="606" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#1E293B">实时同步</text>
+      <text x="890" y="630" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#64748B">剧本 ↔ 世界观角色 WebSocket 双向</text>
+    </g>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">08 / 11</text>
+  </g>
+</svg>

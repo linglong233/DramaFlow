@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="bg-decor">
+    <circle cx="1100" cy="120" r="100" fill="#10B981" fill-opacity="0.05" />
+    <circle cx="160" cy="600" r="110" fill="#06B6D4" fill-opacity="0.05" />
+  </g>
+
+  <g id="header">
+    <path fill="#4F46E5" d="M67,60 H67 A3,3 0 0 1 70,63 V97 A3,3 0 0 1 67,100 H67 A3,3 0 0 1 64,97 V63 A3,3 0 0 1 67,60 Z" />
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">项目状态</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">CURRENT STATE</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="160" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="500" fill="#64748B">开发就绪 —— 关键能力已落地，部分基础设施面向未来产品化演进</text>
+  </g>
+
+  <g id="col-ready-header">
+    
+  <g transform="translate(130.0, 226.0) scale(1.5833333333333333)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+    <path d="M9 12l2 2l4 -4" />
+  </g>
+    <text x="180" y="252" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="30" font-weight="700" fill="#1E293B">已就绪</text>
+    <text x="180" y="280" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#10B981" letter-spacing="1">READY · 5 项关键能力</text>
+  </g>
+
+  <g id="col-ready-items">
+    <g id="ready-1">
+      
+  <g transform="translate(134.0, 328.0)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M5 12l5 5l10 -10" />
+  </g>
+      <text x="172" y="347" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">PostgreSQL + Prisma 持久化</text>
+    </g>
+    <g id="ready-2">
+      
+  <g transform="translate(134.0, 382.0)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M5 12l5 5l10 -10" />
+  </g>
+      <text x="172" y="401" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">轮询 Worker 任务流</text>
+    </g>
+    <g id="ready-3">
+      
+  <g transform="translate(134.0, 436.0)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M5 12l5 5l10 -10" />
+  </g>
+      <text x="172" y="455" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">Socket.IO 实时更新</text>
+    </g>
+    <g id="ready-4">
+      
+  <g transform="translate(134.0, 490.0)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M5 12l5 5l10 -10" />
+  </g>
+      <text x="172" y="509" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">provider 对接 + mock 回退</text>
+    </g>
+    <g id="ready-5">
+      
+  <g transform="translate(134.0, 544.0)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M5 12l5 5l10 -10" />
+  </g>
+      <text x="172" y="563" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">FFmpeg 视频导出</text>
+    </g>
+  </g>
+
+  <g id="divider">
+    <line x1="640" y1="226" x2="640" y2="586" stroke="#E2E8F0" stroke-width="1" />
+  </g>
+
+  <g id="col-planned-header">
+    
+  <g transform="translate(710.0, 226.0) scale(1.5833333333333333)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+    <path d="M12 7v5l3 3" />
+  </g>
+    <text x="760" y="252" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="30" font-weight="700" fill="#1E293B">规划中</text>
+    <text x="760" y="280" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#06B6D4" letter-spacing="1">PLANNED · 面向未来演进</text>
+  </g>
+
+  <g id="col-planned-items">
+    <g id="planned-1">
+      
+  <g transform="translate(714.0, 338.0)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+    <path d="M12 7v5l3 3" />
+  </g>
+      <text x="752" y="350" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">Redis / BullMQ 任务队列</text>
+      <text x="752" y="376" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">替代当前轮询 worker，提升吞吐与可靠性</text>
+    </g>
+    <g id="planned-2">
+      
+  <g transform="translate(714.0, 420.0)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+    <path d="M12 7v5l3 3" />
+  </g>
+      <text x="752" y="432" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="500" fill="#1E293B">生产化加固</text>
+      <text x="752" y="458" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">可观测性、限流、部署与运维完善</text>
+    </g>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">10 / 11</text>
+  </g>
+</svg>

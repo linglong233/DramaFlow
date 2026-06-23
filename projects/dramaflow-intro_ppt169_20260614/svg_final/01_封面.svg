@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="brandLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="bg-decor">
+    <circle cx="1130" cy="120" r="170" fill="#4F46E5" fill-opacity="0.06" />
+    <circle cx="1190" cy="200" r="90" fill="#06B6D4" fill-opacity="0.08" />
+    <circle cx="120" cy="620" r="150" fill="#4F46E5" fill-opacity="0.05" />
+    <circle cx="70" cy="560" r="70" fill="#06B6D4" fill-opacity="0.07" />
+  </g>
+
+  <g id="cover-tag">
+    <path fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1" d="M542,232 H738 A22,22 0 0 1 760,254 V254 A22,22 0 0 1 738,276 H542 A22,22 0 0 1 520,254 V254 A22,22 0 0 1 542,232 Z" />
+    
+  <g transform="translate(544.0, 242.0)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" />
+    <path d="M8 4l0 16" />
+    <path d="M16 4l0 16" />
+    <path d="M4 8l4 0" />
+    <path d="M4 16l4 0" />
+    <path d="M4 12l16 0" />
+    <path d="M16 8l4 0" />
+    <path d="M16 16l4 0" />
+  </g>
+    <text x="700" y="260" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="600" fill="#4F46E5">AI · 短剧生产平台</text>
+  </g>
+
+  <g id="cover-title">
+    <text x="640" y="380" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="96" font-weight="800" fill="#1E293B" letter-spacing="-1">Drama<tspan fill="#4F46E5">Flow</tspan></text>
+  </g>
+
+  <g id="cover-subtitle">
+    <text x="640" y="436" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="29" font-weight="500" fill="#64748B">AI 驱动的短剧全流程生产平台</text>
+  </g>
+
+  <g id="cover-divider">
+    <path fill="url(#brandLine)" d="M582,470 H698 A2,2 0 0 1 700,472 V472 A2,2 0 0 1 698,474 H582 A2,2 0 0 1 580,472 V472 A2,2 0 0 1 582,470 Z" />
+  </g>
+
+  <g id="cover-info">
+    <text x="640" y="528" text-anchor="middle" font-family="Consolas, 'Courier New', monospace" font-size="16" font-weight="500" fill="#94A3B8" letter-spacing="0.5">TypeScript Monorepo  ·  Web + API + Worker + Shared</text>
+  </g>
+
+  <g id="cover-footer">
+    <path fill="#4F46E5" d="M574,580 H706 A18,18 0 0 1 724,598 V598 A18,18 0 0 1 706,616 H574 A18,18 0 0 1 556,598 V598 A18,18 0 0 1 574,580 Z" />
+    <text x="640" y="604" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="600" fill="#FFFFFF">2026 · 项目介绍</text>
+  </g>
+</svg>

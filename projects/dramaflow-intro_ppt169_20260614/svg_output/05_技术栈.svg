@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="64" y="60" width="6" height="40" rx="3" fill="#4F46E5"/>
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">技术栈</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">TECH STACK</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">全栈 TypeScript · 现代化、统一语言、共享契约</text>
+  </g>
+
+  <g id="card-frontend">
+    <rect x="64" y="160" width="273" height="488" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="88" y="188" width="52" height="52" rx="14" fill="#EEF2FF"/>
+    <use data-icon="tabler-outline/code" x="94" y="194" width="40" height="40" fill="#4F46E5" stroke-width="2"/>
+    <text x="88" y="280" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">前端</text>
+    <text x="88" y="302" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">FRONTEND</text>
+    <line x1="88" y1="322" x2="313" y2="322" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="96" cy="358" r="3" fill="#4F46E5"/>
+    <text x="110" y="363" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">Next.js 15</text>
+    <circle cx="96" cy="396" r="3" fill="#4F46E5"/>
+    <text x="110" y="401" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">React 19</text>
+    <circle cx="96" cy="434" r="3" fill="#4F46E5"/>
+    <text x="110" y="439" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">App Router</text>
+    <circle cx="96" cy="472" r="3" fill="#4F46E5"/>
+    <text x="110" y="477" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">自定义 i18n</text>
+    <circle cx="96" cy="510" r="3" fill="#4F46E5"/>
+    <text x="110" y="515" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">纯 CSS 语义化</text>
+  </g>
+
+  <g id="card-backend">
+    <rect x="357" y="160" width="273" height="488" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="381" y="188" width="52" height="52" rx="14" fill="#ECFEFF"/>
+    <use data-icon="tabler-outline/server" x="387" y="194" width="40" height="40" fill="#06B6D4" stroke-width="2"/>
+    <text x="381" y="280" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">后端</text>
+    <text x="381" y="302" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">BACKEND</text>
+    <line x1="381" y1="322" x2="606" y2="322" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="389" cy="358" r="3" fill="#06B6D4"/>
+    <text x="403" y="363" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">NestJS 11</text>
+    <circle cx="389" cy="396" r="3" fill="#06B6D4"/>
+    <text x="403" y="401" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">JWT + argon2</text>
+    <circle cx="389" cy="434" r="3" fill="#06B6D4"/>
+    <text x="403" y="439" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">Socket.IO 网关</text>
+    <circle cx="389" cy="472" r="3" fill="#06B6D4"/>
+    <text x="403" y="477" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">内部 API Key</text>
+    <circle cx="389" cy="510" r="3" fill="#06B6D4"/>
+    <text x="403" y="515" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">Swagger 文档</text>
+  </g>
+
+  <g id="card-data">
+    <rect x="650" y="160" width="273" height="488" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="674" y="188" width="52" height="52" rx="14" fill="#EEF2FF"/>
+    <use data-icon="tabler-outline/database" x="680" y="194" width="40" height="40" fill="#4F46E5" stroke-width="2"/>
+    <text x="674" y="280" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">数据</text>
+    <text x="674" y="302" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">DATA</text>
+    <line x1="674" y1="322" x2="899" y2="322" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="682" cy="358" r="3" fill="#4F46E5"/>
+    <text x="696" y="363" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">PostgreSQL</text>
+    <circle cx="682" cy="396" r="3" fill="#4F46E5"/>
+    <text x="696" y="401" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">Prisma ORM</text>
+    <circle cx="682" cy="434" r="3" fill="#4F46E5"/>
+    <text x="696" y="439" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="600" fill="#1E293B">26 个数据模型</text>
+    <circle cx="682" cy="472" r="3" fill="#4F46E5"/>
+    <text x="696" y="477" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="600" fill="#1E293B">乐观更新缓存</text>
+    <circle cx="682" cy="510" r="3" fill="#4F46E5"/>
+    <text x="696" y="515" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="600" fill="#1E293B">版本差异对比</text>
+  </g>
+
+  <g id="card-infra">
+    <rect x="943" y="160" width="273" height="488" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="967" y="188" width="52" height="52" rx="14" fill="#ECFEFF"/>
+    <use data-icon="tabler-outline/cloud" x="973" y="194" width="40" height="40" fill="#06B6D4" stroke-width="2"/>
+    <text x="967" y="280" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">基础设施</text>
+    <text x="967" y="302" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">INFRASTRUCTURE</text>
+    <line x1="967" y1="322" x2="1192" y2="322" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="975" cy="358" r="3" fill="#06B6D4"/>
+    <text x="989" y="363" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">npm workspaces</text>
+    <circle cx="975" cy="396" r="3" fill="#06B6D4"/>
+    <text x="989" y="401" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="600" fill="#1E293B">本地 / S3 双存储</text>
+    <circle cx="975" cy="434" r="3" fill="#06B6D4"/>
+    <text x="989" y="439" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">FFmpeg 导出</text>
+    <circle cx="975" cy="472" r="3" fill="#06B6D4"/>
+    <text x="989" y="477" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">Docker Compose</text>
+    <circle cx="975" cy="510" r="3" fill="#06B6D4"/>
+    <text x="989" y="515" font-family="Consolas, 'Courier New', monospace" font-size="15" font-weight="600" fill="#1E293B">Node.js &gt;= 24</text>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">05 / 11</text>
+  </g>
+</svg>

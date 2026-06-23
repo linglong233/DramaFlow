@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="64" y="60" width="6" height="40" rx="3" fill="#4F46E5"/>
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">AI 生成能力</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">AI PIPELINE</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">端到端 AI 生产链 —— 每阶段产出可复用的中间产物</text>
+  </g>
+
+  <g id="stage-1">
+    <rect x="64" y="160" width="200" height="420" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <path d="M 76,160 A 12,12 0 0 0 64,172 L 64,216 L 264,216 L 264,172 A 12,12 0 0 0 252,160 Z" fill="#4F46E5"/>
+    <rect x="78" y="172" width="30" height="30" rx="6" fill="#FFFFFF"/>
+    <text x="93" y="193" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#4F46E5">01</text>
+    <text x="120" y="195" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">文本生成</text>
+    <use data-icon="tabler-outline/writing" x="218" y="178" width="28" height="28" fill="#FFFFFF" stroke-width="2"/>
+    <rect x="64" y="216" width="200" height="32" fill="#EEF2FF"/>
+    <text x="164" y="237" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#4F46E5">SSE 流式 + 对话式 QA</text>
+    <circle cx="82" cy="280" r="3" fill="#4F46E5"/>
+    <text x="94" y="284" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">剧本 / 梗概 / 分镜</text>
+    <circle cx="82" cy="318" r="3" fill="#4F46E5"/>
+    <text x="94" y="322" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">改写与重生成</text>
+    <circle cx="82" cy="356" r="3" fill="#4F46E5"/>
+    <text x="94" y="360" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">维度追踪 brief</text>
+    <line x1="78" y1="392" x2="250" y2="392" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4 4"/>
+    <rect x="78" y="408" width="172" height="68" rx="8" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="164" y="430" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="700" fill="#64748B" letter-spacing="1">STAGE OUTPUT</text>
+    <text x="164" y="460" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#4F46E5">剧本 · 梗概</text>
+  </g>
+
+  <g id="stage-2">
+    <rect x="302" y="160" width="200" height="420" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <path d="M 314,160 A 12,12 0 0 0 302,172 L 302,216 L 502,216 L 502,172 A 12,12 0 0 0 490,160 Z" fill="#06B6D4"/>
+    <rect x="316" y="172" width="30" height="30" rx="6" fill="#FFFFFF"/>
+    <text x="331" y="193" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#06B6D4">02</text>
+    <text x="358" y="195" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">图片生成</text>
+    <use data-icon="tabler-outline/photo" x="456" y="178" width="28" height="28" fill="#FFFFFF" stroke-width="2"/>
+    <rect x="302" y="216" width="200" height="32" fill="#ECFEFF"/>
+    <text x="402" y="237" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#06B6D4">逐镜头 / 批量</text>
+    <circle cx="320" cy="280" r="3" fill="#06B6D4"/>
+    <text x="332" y="284" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="600" fill="#1E293B">Gemini</text>
+    <circle cx="320" cy="318" r="3" fill="#06B6D4"/>
+    <text x="332" y="322" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="600" fill="#1E293B">SD WebUI</text>
+    <circle cx="320" cy="356" r="3" fill="#06B6D4"/>
+    <text x="332" y="360" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="600" fill="#1E293B">ComfyUI</text>
+    <line x1="316" y1="392" x2="488" y2="392" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4 4"/>
+    <rect x="316" y="408" width="172" height="68" rx="8" fill="#ECFEFF" stroke="#A5F3FC" stroke-width="1"/>
+    <text x="402" y="430" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="700" fill="#64748B" letter-spacing="1">STAGE OUTPUT</text>
+    <text x="402" y="460" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#06B6D4">镜头图</text>
+  </g>
+
+  <g id="stage-3">
+    <rect x="540" y="160" width="200" height="420" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <path d="M 552,160 A 12,12 0 0 0 540,172 L 540,216 L 740,216 L 740,172 A 12,12 0 0 0 728,160 Z" fill="#4F46E5"/>
+    <rect x="554" y="172" width="30" height="30" rx="6" fill="#FFFFFF"/>
+    <text x="569" y="193" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#4F46E5">03</text>
+    <text x="596" y="195" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">视频生成</text>
+    <use data-icon="tabler-outline/video" x="694" y="178" width="28" height="28" fill="#FFFFFF" stroke-width="2"/>
+    <rect x="540" y="216" width="200" height="32" fill="#EEF2FF"/>
+    <text x="640" y="237" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#4F46E5">逐镜头 / 批量</text>
+    <circle cx="558" cy="280" r="3" fill="#4F46E5"/>
+    <text x="570" y="284" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">多 provider 支持</text>
+    <circle cx="558" cy="318" r="3" fill="#4F46E5"/>
+    <text x="570" y="322" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">Grok 等模型</text>
+    <circle cx="558" cy="356" r="3" fill="#4F46E5"/>
+    <text x="570" y="360" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">批量状态跟踪</text>
+    <line x1="554" y1="392" x2="726" y2="392" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4 4"/>
+    <rect x="554" y="408" width="172" height="68" rx="8" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="640" y="430" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="700" fill="#64748B" letter-spacing="1">STAGE OUTPUT</text>
+    <text x="640" y="460" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#4F46E5">镜头视频</text>
+  </g>
+
+  <g id="stage-4">
+    <rect x="778" y="160" width="200" height="420" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <path d="M 790,160 A 12,12 0 0 0 778,172 L 778,216 L 978,216 L 978,172 A 12,12 0 0 0 966,160 Z" fill="#06B6D4"/>
+    <rect x="792" y="172" width="30" height="30" rx="6" fill="#FFFFFF"/>
+    <text x="807" y="193" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#06B6D4">04</text>
+    <text x="834" y="195" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">TTS 配音</text>
+    <use data-icon="tabler-outline/microphone" x="932" y="178" width="28" height="28" fill="#FFFFFF" stroke-width="2"/>
+    <rect x="778" y="216" width="200" height="32" fill="#ECFEFF"/>
+    <text x="878" y="237" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#06B6D4">逐镜头 / 按场景</text>
+    <circle cx="796" cy="280" r="3" fill="#06B6D4"/>
+    <text x="808" y="284" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">角色语音生成</text>
+    <circle cx="796" cy="318" r="3" fill="#06B6D4"/>
+    <text x="808" y="322" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">字幕同步预览</text>
+    <circle cx="796" cy="356" r="3" fill="#06B6D4"/>
+    <text x="808" y="360" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">按场景批量合成</text>
+    <line x1="792" y1="392" x2="964" y2="392" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4 4"/>
+    <rect x="792" y="408" width="172" height="68" rx="8" fill="#ECFEFF" stroke="#A5F3FC" stroke-width="1"/>
+    <text x="878" y="430" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="700" fill="#64748B" letter-spacing="1">STAGE OUTPUT</text>
+    <text x="878" y="460" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#06B6D4">角色配音</text>
+  </g>
+
+  <g id="stage-5">
+    <rect x="1016" y="160" width="200" height="420" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <path d="M 1028,160 A 12,12 0 0 0 1016,172 L 1016,216 L 1216,216 L 1216,172 A 12,12 0 0 0 1204,160 Z" fill="#10B981"/>
+    <rect x="1030" y="172" width="30" height="30" rx="6" fill="#FFFFFF"/>
+    <text x="1045" y="193" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#10B981">05</text>
+    <text x="1072" y="195" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">合成导出</text>
+    <use data-icon="tabler-outline/file-export" x="1170" y="178" width="28" height="28" fill="#FFFFFF" stroke-width="2"/>
+    <rect x="1016" y="216" width="200" height="32" fill="#ECFDF5"/>
+    <text x="1116" y="237" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="700" fill="#10B981">时间线组装</text>
+    <circle cx="1034" cy="280" r="3" fill="#10B981"/>
+    <text x="1046" y="284" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">自动组装时间线</text>
+    <circle cx="1034" cy="318" r="3" fill="#10B981"/>
+    <text x="1046" y="322" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">FFmpeg 合成</text>
+    <circle cx="1034" cy="356" r="3" fill="#10B981"/>
+    <text x="1046" y="360" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="600" fill="#1E293B">mock 导出回退</text>
+    <line x1="1030" y1="392" x2="1202" y2="392" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4 4"/>
+    <rect x="1030" y="408" width="172" height="68" rx="8" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1"/>
+    <text x="1116" y="430" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="11" font-weight="700" fill="#64748B" letter-spacing="1">STAGE OUTPUT</text>
+    <text x="1116" y="460" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#10B981">成片</text>
+  </g>
+
+  <g id="flow-arrows" fill="#94A3B8">
+    <polygon points="283,358 299,370 283,382"/>
+    <polygon points="521,358 537,370 521,382"/>
+    <polygon points="759,358 775,370 759,382"/>
+    <polygon points="997,358 1013,370 997,382"/>
+  </g>
+
+  <g id="flow-caption">
+    <text x="640" y="636" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8">文本 → 图片 → 视频 → 配音 → 成片  ·  每阶段产出物可被下游复用</text>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">06 / 10</text>
+  </g>
+</svg>

@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="header">
+    <path fill="#4F46E5" d="M67,60 H67 A3,3 0 0 1 70,63 V97 A3,3 0 0 1 67,100 H67 A3,3 0 0 1 64,97 V63 A3,3 0 0 1 67,60 Z" />
+    <text x="84" y="92" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="36" font-weight="700" fill="#1E293B">工作区与协作</text>
+    <text x="1216" y="92" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="500" fill="#94A3B8" letter-spacing="1">WORKSPACE MODES</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="84" y="128" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="500" fill="#64748B">统一工作区通过 URL <tspan font-family="Consolas, 'Courier New', monospace" fill="#4F46E5" font-weight="700">?mode=</tspan> 切换四种模式</text>
+  </g>
+
+  <g id="card-info">
+    <path fill="#EEF2FF" d="M84,160 H608 A20,20 0 0 1 628,180 V380 A20,20 0 0 1 608,400 H84 A20,20 0 0 1 64,380 V180 A20,20 0 0 1 84,160 Z" />
+    <path d="M 250,160 A 24,24 0 0 0 226,184 L 226,208 L 466,208 L 466,184 A 24,24 0 0 0 442,160 Z" fill="#4F46E5" />
+    <text x="346" y="192" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">信息 · info</text>
+    <path fill="#FFFFFF" d="M100,232 H592 A12,12 0 0 1 604,244 V368 A12,12 0 0 1 592,380 H100 A12,12 0 0 1 88,368 V244 A12,12 0 0 1 100,232 Z" />
+    <path fill="#EEF2FF" d="M126,256 H154 A14,14 0 0 1 168,270 V298 A14,14 0 0 1 154,312 H126 A14,14 0 0 1 112,298 V270 A14,14 0 0 1 126,256 Z" />
+    
+  <g transform="translate(120.0, 264.0) scale(1.6666666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+    <path d="M12 9h.01" />
+    <path d="M11 12h1v4h1" />
+  </g>
+    <text x="184" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">项目信息面板</text>
+    <text x="184" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">INFO MODE</text>
+    <text x="112" y="346" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">项目概览 · 配置 · 成员管理</text>
+    <text x="112" y="370" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">查看元信息与审阅策略</text>
+  </g>
+
+  <g id="card-document">
+    <path fill="#ECFEFF" d="M672,160 H1196 A20,20 0 0 1 1216,180 V380 A20,20 0 0 1 1196,400 H672 A20,20 0 0 1 652,380 V180 A20,20 0 0 1 672,160 Z" />
+    <path d="M 838,160 A 24,24 0 0 0 814,184 L 814,208 L 1054,208 L 1054,184 A 24,24 0 0 0 1030,160 Z" fill="#06B6D4" />
+    <text x="934" y="192" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">文档 · document</text>
+    <path fill="#FFFFFF" d="M688,232 H1180 A12,12 0 0 1 1192,244 V368 A12,12 0 0 1 1180,380 H688 A12,12 0 0 1 676,368 V244 A12,12 0 0 1 688,232 Z" />
+    <path fill="#ECFEFF" d="M714,256 H742 A14,14 0 0 1 756,270 V298 A14,14 0 0 1 742,312 H714 A14,14 0 0 1 700,298 V270 A14,14 0 0 1 714,256 Z" />
+    
+  <g transform="translate(708.0, 264.0) scale(1.6666666666666667)" fill="none" stroke="#06B6D4" stroke-width="2">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+    <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
+    <path d="M9 9l1 0" />
+    <path d="M9 13l6 0" />
+    <path d="M9 17l6 0" />
+  </g>
+    <text x="772" y="282" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">文档主模式</text>
+    <text x="772" y="306" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#4F46E5" letter-spacing="1.5">DOCUMENT MODE</text>
+    <text x="700" y="346" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">查看 · 编辑 · 生成 · 版本</text>
+    <text x="700" y="370" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">世界观与媒体映射于此</text>
+  </g>
+
+  <g id="card-tasks">
+    <path fill="#ECFDF5" d="M84,416 H608 A20,20 0 0 1 628,436 V636 A20,20 0 0 1 608,656 H84 A20,20 0 0 1 64,636 V436 A20,20 0 0 1 84,416 Z" />
+    <path d="M 250,416 A 24,24 0 0 0 226,440 L 226,464 L 466,464 L 466,440 A 24,24 0 0 0 442,416 Z" fill="#10B981" />
+    <text x="346" y="448" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">任务 · tasks</text>
+    <path fill="#FFFFFF" d="M100,488 H592 A12,12 0 0 1 604,500 V624 A12,12 0 0 1 592,636 H100 A12,12 0 0 1 88,624 V500 A12,12 0 0 1 100,488 Z" />
+    <path fill="#ECFDF5" d="M126,512 H154 A14,14 0 0 1 168,526 V554 A14,14 0 0 1 154,568 H126 A14,14 0 0 1 112,554 V526 A14,14 0 0 1 126,512 Z" />
+    
+  <g transform="translate(120.0, 520.0) scale(1.6666666666666667)" fill="none" stroke="#10B981" stroke-width="2">
+    <path d="M3.5 5.5l1.5 1.5l2.5 -2.5" />
+    <path d="M3.5 11.5l1.5 1.5l2.5 -2.5" />
+    <path d="M3.5 17.5l1.5 1.5l2.5 -2.5" />
+    <path d="M11 6l9 0" />
+    <path d="M11 12l9 0" />
+    <path d="M11 18l9 0" />
+  </g>
+    <text x="184" y="538" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">任务面板</text>
+    <text x="184" y="562" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">TASKS MODE</text>
+    <text x="112" y="602" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">生成任务跟踪与状态</text>
+    <text x="112" y="626" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">批量作业与重试管理</text>
+  </g>
+
+  <g id="card-timeline">
+    <path fill="#EEF2FF" d="M672,416 H1196 A20,20 0 0 1 1216,436 V636 A20,20 0 0 1 1196,656 H672 A20,20 0 0 1 652,636 V436 A20,20 0 0 1 672,416 Z" />
+    <path d="M 838,416 A 24,24 0 0 0 814,440 L 814,464 L 1054,464 L 1054,440 A 24,24 0 0 0 1030,416 Z" fill="#4F46E5" />
+    <text x="934" y="448" text-anchor="middle" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">时间线 · timeline</text>
+    <path fill="#FFFFFF" d="M688,488 H1180 A12,12 0 0 1 1192,500 V624 A12,12 0 0 1 1180,636 H688 A12,12 0 0 1 676,624 V500 A12,12 0 0 1 688,488 Z" />
+    <path fill="#EEF2FF" d="M714,512 H742 A14,14 0 0 1 756,526 V554 A14,14 0 0 1 742,568 H714 A14,14 0 0 1 700,554 V526 A14,14 0 0 1 714,512 Z" />
+    
+  <g transform="translate(708.0, 520.0) scale(1.6666666666666667)" fill="none" stroke="#4F46E5" stroke-width="2">
+    <path d="M4 16l6 -7l5 5l5 -6" />
+    <path d="M14 14a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+    <path d="M9 9a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+    <path d="M3 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+    <path d="M19 8a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+  </g>
+    <text x="772" y="538" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1E293B">时间线编辑器</text>
+    <text x="772" y="562" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12" font-weight="600" fill="#06B6D4" letter-spacing="1.5">TIMELINE MODE</text>
+    <text x="700" y="602" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">自动组装 · 拖拽编辑</text>
+    <text x="700" y="626" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#64748B">导出提交与 WebSocket 轮询</text>
+  </g>
+
+  <g id="footer">
+    <text x="64" y="688" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">DramaFlow</text>
+    <text x="1216" y="688" text-anchor="end" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="500" fill="#94A3B8">09 / 11</text>
+  </g>
+</svg>
