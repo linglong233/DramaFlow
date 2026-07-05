@@ -471,7 +471,7 @@ assertFileContains("storyboard-workbench.tsx", storyboardWorkbenchTsx, "useMedia
 assertFileContains("storyboard-workbench.tsx", storyboardWorkbenchTsx, "setForShotSuccess");
 
 // Video provider discovery tests
-for (const provider of ["minimax", "volcengine", "vidu", "ali"]) {
+for (const provider of ["minimax", "volcengine", "vidu", "ali", "runway"]) {
   assertFileContains("image-config.ts", imageConfigTs, `"${provider}"`);
 }
 
@@ -480,6 +480,7 @@ assertFileContains("image-config.ts", imageConfigTs, `case "minimax": return "vi
 assertFileContains("image-config.ts", imageConfigTs, `case "volcengine": return "doubao-seedance-1-5-pro-251215";`);
 assertFileContains("image-config.ts", imageConfigTs, `case "vidu": return "viduq3-turbo";`);
 assertFileContains("image-config.ts", imageConfigTs, `case "ali": return "wan2.6-i2v-flash";`);
+assertFileContains("image-config.ts", imageConfigTs, `case "runway": return "gen3a_turbo";`);
 
 // Provider form model reset tests
 assertFileContains("provider-entry-form.tsx", providerEntryFormTsx, "getDefaultImageProviderModel");

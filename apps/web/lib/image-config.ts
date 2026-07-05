@@ -59,6 +59,7 @@ export function getDefaultVideoProviderModel(provider: VideoGenerationProvider):
     case "volcengine": return "doubao-seedance-1-5-pro-251215";
     case "vidu": return "viduq3-turbo";
     case "ali": return "wan2.6-i2v-flash";
+    case "runway": return "gen3a_turbo";
     default: return "";
   }
 }
@@ -270,6 +271,7 @@ export const VIDEO_PROVIDER_LABELS: Record<VideoGenerationProvider, string> = {
   "volcengine": "VolcEngine / Seedance",
   "vidu": "Vidu",
   "ali": "Ali DashScope",
+  "runway": "Runway",
 };
 
 // =============================================

@@ -763,6 +763,7 @@ import { MiniMaxVideoProviderAdapter } from "./video-providers/minimax-video.pro
 import { VolcEngineVideoProviderAdapter } from "./video-providers/volcengine-video.provider";
 import { ViduVideoProviderAdapter } from "./video-providers/vidu-video.provider";
 import { AliVideoProviderAdapter } from "./video-providers/ali-video.provider";
+import { RunwayVideoProviderAdapter } from "./video-providers/runway-video.provider";
 
 function videoAdapterInput(overrides: Partial<import("./video-providers/types").VideoProviderCreateInput> = {}) {
   return {
@@ -1621,6 +1622,142 @@ test("Vidu pollJob: state=processing 返回 running", async () => {
     assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
     assert.equal(result.providerStatus, "running");
     assert.ok(result.progress > 0 && result.progress < 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// === 批2 B-2: Runway pollJob 三态测试 ===
+test("Runway pollJob: status=SUCCEEDED + output 返回 completed + assetUrl", async () => {
+  const runwayResponse = {
+    id: "task-abc",
+    status: "SUCCEEDED",
+    output: ["https://cdn.runwayml.com/v1.mp4"],
+    model: "gen3a_turbo",
+  };
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(runwayResponse), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const adapter = new RunwayVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "runway", apiKey: "rw-key", baseUrl: "https://api.dev.runwayml.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-abc", input);
+    assert.ok(capturedUrl.includes("/v1/tasks/task-abc"), `Expected fetch URL to hit /v1/tasks/{id}, got: ${capturedUrl}`);
+    assert.equal(result.providerStatus, "completed");
+    assert.equal(result.assetUrl, "https://cdn.runwayml.com/v1.mp4");
+    assert.equal(result.progress, 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Runway pollJob: status=FAILED 返回 failed", async () => {
+  const runwayResponse = { id: "task-abc", status: "FAILED", failure: "content policy violation" };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(runwayResponse), { status: 200 })) as typeof fetch;
+  try {
+    const adapter = new RunwayVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "runway", apiKey: "rw-key", baseUrl: "https://api.dev.runwayml.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-abc", input);
+    assert.equal(result.providerStatus, "failed");
+    assert.equal(result.progress, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Runway pollJob: status=RUNNING 返回 running", async () => {
+  const runwayResponse = { id: "task-abc", status: "RUNNING" };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(runwayResponse), { status: 200 })) as typeof fetch;
+  try {
+    const adapter = new RunwayVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "runway", apiKey: "rw-key", baseUrl: "https://api.dev.runwayml.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-abc", input);
+    assert.equal(result.providerStatus, "running");
+    assert.ok(result.progress > 0 && result.progress < 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Runway pollJob: status=PENDING 返回 queued", async () => {
+  const runwayResponse = { id: "task-abc", status: "PENDING" };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(runwayResponse), { status: 200 })) as typeof fetch;
+  try {
+    const adapter = new RunwayVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "runway", apiKey: "rw-key", baseUrl: "https://api.dev.runwayml.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-abc", input);
+    assert.equal(result.providerStatus, "queued");
+    assert.equal(result.progress, 10);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Runway createJob: 无参考图时调用 /v1/text_to_video", async () => {
+  const runwayResponse = { id: "task-abc", status: "PENDING", model: "gen3a_turbo" };
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  let capturedBody = "";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    capturedUrl = String(input);
+    capturedBody = String(init?.body ?? "");
+    return new Response(JSON.stringify(runwayResponse), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const adapter = new RunwayVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "runway", apiKey: "rw-key", baseUrl: "https://api.dev.runwayml.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.createJob(input);
+    assert.ok(capturedUrl.includes("/v1/text_to_video"), `text mode should hit /v1/text_to_video, got: ${capturedUrl}`);
+    assert.ok(!capturedBody.includes("promptImage"), "text mode should not include promptImage");
+    assert.equal(result.providerStatus, "queued");
+    assert.equal(result.providerVideoId, "task-abc");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Runway createJob: 有参考图时调用 /v1/image_to_video 并传 promptImage", async () => {
+  const runwayResponse = { id: "task-xyz", status: "PENDING", model: "gen3a_turbo" };
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  let capturedBody = "";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    capturedUrl = String(input);
+    capturedBody = String(init?.body ?? "");
+    return new Response(JSON.stringify(runwayResponse), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const adapter = new RunwayVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "runway", apiKey: "rw-key", baseUrl: "https://api.dev.runwayml.com" },
+      references: { mode: "single", imageUrl: "https://cdn.test/img.png", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.createJob(input);
+    assert.ok(capturedUrl.includes("/v1/image_to_video"), `image mode should hit /v1/image_to_video, got: ${capturedUrl}`);
+    assert.ok(capturedBody.includes("promptImage"), "image mode should include promptImage in body");
+    assert.ok(capturedBody.includes("https://cdn.test/img.png"), "promptImage should contain the reference URL");
+    assert.equal(result.providerVideoId, "task-xyz");
   } finally {
     globalThis.fetch = originalFetch;
   }

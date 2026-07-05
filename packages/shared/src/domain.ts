@@ -145,7 +145,8 @@ export type VideoGenerationProvider =
   | "minimax"
   | "volcengine"
   | "vidu"
-  | "ali";
+  | "ali"
+  | "runway";
 
 /** 视频生成参考图模式 */
 export type VideoReferenceMode = "none" | "single" | "first_last" | "multiple";
