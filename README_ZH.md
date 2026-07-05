@@ -530,6 +530,19 @@ docker compose up --build
 - 默认只透传了部分 Provider 配置。如需真实 Provider 执行，需要把相关变量注入 API 容器。
 - API 容器启动时自动执行 `prisma migrate deploy` 应用迁移。
 
+## 配置 AI provider
+
+默认 `OPENAI_COMPAT_MOCK_FALLBACK=false`。未配置真实 provider key 时 API 启动会 fail-fast —— 否则产出的内容（剧本、图片、视频、TTS）将是 mock 数据。
+
+| 路径 | 必填 env | 说明 |
+|---|---|---|
+| 文本 | `OPENAI_COMPAT_API_KEY` | OpenAI 兼容端点，改 `OPENAI_COMPAT_BASE_URL` 可指向其他网关 |
+| 图片 | `OPENAI_COMPAT_API_KEY` 或 `GOOGLE_IMAGE_API_KEY` 或 `SD_WEBUI_BASE_URL` 或 `COMFYUI_BASE_URL` | 任一配置即启用 |
+| 视频 | `OPENAI_COMPAT_API_KEY` | 经 OpenAI 兼容调用 Sora；后续批次补更多 provider |
+| TTS | `OPENAI_COMPAT_API_KEY` | OpenAI 兼容 TTS |
+
+本地开发无 key 时可设 `OPENAI_COMPAT_MOCK_FALLBACK=true` —— 此时每个生成入口会显示 "Mock 模式" 徽章。
+
 ## 从旧版 JSON 迁移
 
 如果你有旧版基于文件的 `dev-db.json`：

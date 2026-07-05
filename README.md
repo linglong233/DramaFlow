@@ -530,6 +530,19 @@ Notes:
 - Only partial provider configuration is passed through by default. For live provider execution, pass the relevant provider variables to the API container.
 - The API container runs `prisma migrate deploy` on startup to apply pending migrations.
 
+## Configuring AI providers
+
+By default `OPENAI_COMPAT_MOCK_FALLBACK=false`. The API will fail-fast on boot if no real provider key is configured — produced content (script, image, video, TTS) would otherwise be mock data.
+
+| Channel | Required env | Notes |
+|---|---|---|
+| Text | `OPENAI_COMPAT_API_KEY` | OpenAI-compatible endpoint, set `OPENAI_COMPAT_BASE_URL` to point to other gateways |
+| Image | `OPENAI_COMPAT_API_KEY` OR `GOOGLE_IMAGE_API_KEY` OR `SD_WEBUI_BASE_URL` OR `COMFYUI_BASE_URL` | Any one configured enables image path |
+| Video | `OPENAI_COMPAT_API_KEY` | Sora via OpenAI-compatible; more providers in later batches |
+| TTS | `OPENAI_COMPAT_API_KEY` | OpenAI-compatible TTS |
+
+For local dev without keys, set `OPENAI_COMPAT_MOCK_FALLBACK=true` — the UI shows a "Mock mode" badge on every generation entry point.
+
 ## Migrating from Legacy JSON
 
 If you have a legacy `dev-db.json` file from the previous file-based database:
