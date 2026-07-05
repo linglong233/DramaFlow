@@ -763,7 +763,6 @@ import { MiniMaxVideoProviderAdapter } from "./video-providers/minimax-video.pro
 import { VolcEngineVideoProviderAdapter } from "./video-providers/volcengine-video.provider";
 import { ViduVideoProviderAdapter } from "./video-providers/vidu-video.provider";
 import { AliVideoProviderAdapter } from "./video-providers/ali-video.provider";
-import type { VideoProviderPollInput } from "./video-providers/types";
 
 function videoAdapterInput(overrides: Partial<import("./video-providers/types").VideoProviderCreateInput> = {}) {
   return {
@@ -875,16 +874,6 @@ test("volcengine video adapter sends first and last frame roles", async () => {
   const body = capturedBody as { content: Array<{ role?: string; image_url?: { url: string } }> };
   assert.equal(body.content[1].role, "first_frame");
   assert.equal(body.content[2].role, "last_frame");
-});
-
-test("vidu video adapter returns running note when poll is unavailable", async () => {
-  const adapter = new ViduVideoProviderAdapter();
-  const state = await adapter.pollJob!("vidu-task-1", videoAdapterInput({
-    config: { provider: "vidu", apiKey: "key", baseUrl: "https://vidu.test", model: "viduq3-turbo" },
-  }));
-
-  assert.equal(state.providerStatus, "running");
-  assert.match(state.note ?? "", /webhook is not enabled/);
 });
 
 test("ali video adapter maps last frame to last_img_url", async () => {
@@ -1570,17 +1559,19 @@ test("Vidu pollJob: state=success 返回 completed + assetUrl", async () => {
     video_url: "https://cdn.vidu.com/test.mp4",
   };
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify(viduResponse), { status: 200 })) as typeof fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(viduResponse), { status: 200 });
+  }) as typeof fetch;
   try {
     const adapter = new ViduVideoProviderAdapter();
-    const input: VideoProviderPollInput = {
-      prompt: "test",
-      shotId: "s1",
-      aspectRatio: "16:9",
+    const input = videoAdapterInput({
       config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
       references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
-    };
+    });
     const result = await adapter.pollJob!("task-123", input);
+    assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
     assert.equal(result.providerStatus, "completed");
     assert.equal(result.assetUrl, "https://cdn.vidu.com/test.mp4");
     assert.equal(result.progress, 100);
@@ -1592,17 +1583,19 @@ test("Vidu pollJob: state=success 返回 completed + assetUrl", async () => {
 test("Vidu pollJob: state=failed 返回 failed", async () => {
   const viduResponse = { state: "failed", err_msg: "content policy violation" };
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify(viduResponse), { status: 200 })) as typeof fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(viduResponse), { status: 200 });
+  }) as typeof fetch;
   try {
     const adapter = new ViduVideoProviderAdapter();
-    const input: VideoProviderPollInput = {
-      prompt: "test",
-      shotId: "s1",
-      aspectRatio: "16:9",
+    const input = videoAdapterInput({
       config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
       references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
-    };
+    });
     const result = await adapter.pollJob!("task-123", input);
+    assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
     assert.equal(result.providerStatus, "failed");
     assert.equal(result.progress, 0);
   } finally {
@@ -1613,17 +1606,19 @@ test("Vidu pollJob: state=failed 返回 failed", async () => {
 test("Vidu pollJob: state=processing 返回 running", async () => {
   const viduResponse = { state: "processing" };
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify(viduResponse), { status: 200 })) as typeof fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(viduResponse), { status: 200 });
+  }) as typeof fetch;
   try {
     const adapter = new ViduVideoProviderAdapter();
-    const input: VideoProviderPollInput = {
-      prompt: "test",
-      shotId: "s1",
-      aspectRatio: "16:9",
+    const input = videoAdapterInput({
       config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
       references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
-    };
+    });
     const result = await adapter.pollJob!("task-123", input);
+    assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
     assert.equal(result.providerStatus, "running");
     assert.ok(result.progress > 0 && result.progress < 100);
   } finally {
