@@ -12,6 +12,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiStreamFetch, formatApiError } from "../../lib/api";
 import { queryKeys } from "../../lib/query-keys";
 import { useI18n } from "../../lib/i18n";
+import { useProviderHealth } from "../../lib/hooks/use-provider-health";
+import { MockModeBadge } from "./mock-mode-badge";
 
 interface Props {
   projectId: string;
@@ -21,6 +23,7 @@ interface Props {
 
 export function RewritePanel({ projectId, documentId, onFeedback }: Props) {
   const { t } = useI18n();
+  const providerHealth = useProviderHealth();
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
   const [originalText, setOriginalText] = useState("");
@@ -136,6 +139,9 @@ export function RewritePanel({ projectId, documentId, onFeedback }: Props) {
           />
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+          <MockModeBadge t={t} mockFallback={providerHealth.data?.mockFallback ?? false} channel={providerHealth.data?.text} />
+        </div>
         <button
           className="btn btn-primary btn-sm"
           type="button"

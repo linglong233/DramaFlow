@@ -21,7 +21,9 @@ import { formatApiError } from "../../../lib/api";
 import { useFeedback } from "../../../lib/hooks";
 import { useI18n } from "../../../lib/i18n";
 import type { TranslationKey } from "../../../lib/i18n/messages";
+import { useProviderHealth } from "../../../lib/hooks/use-provider-health";
 import { ScriptView, StoryboardPreview } from "../version-view";
+import { MockModeBadge } from "../mock-mode-badge";
 import type { GeneratorConfig } from "./generator-registry";
 import { SourcePicker } from "./source-picker";
 import { useGenerationStream } from "./use-generation-stream";
@@ -53,6 +55,7 @@ function StopIcon() {
 
 export function QuickGenerator({ config, projectId, project, llmConfigSource }: Props) {
   const { t } = useI18n();
+  const providerHealth = useProviderHealth();
   const { feedback, setFeedback } = useFeedback();
   const { streamingText, isStreaming, startStream, stopStream } = useGenerationStream(projectId);
   const [formCollapsed, setFormCollapsed] = useState(false);
@@ -343,6 +346,9 @@ export function QuickGenerator({ config, projectId, project, llmConfigSource }: 
                     )}
                   </div>
                 ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+                <MockModeBadge t={t} mockFallback={providerHealth.data?.mockFallback ?? false} channel={providerHealth.data?.text} />
               </div>
               <button
                 className="gen-action-btn"

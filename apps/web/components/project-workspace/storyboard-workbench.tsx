@@ -27,10 +27,12 @@ import { apiFetch, formatApiError } from "../../lib/api";
 import { useFeedback } from "../../lib/hooks";
 import { useI18n } from "../../lib/i18n";
 import { queryKeys } from "../../lib/query-keys";
+import { useProviderHealth } from "../../lib/hooks/use-provider-health";
 import { InlineFeedback } from "../inline-feedback";
 import { ShotCard } from "./shot-card";
 import { StoryboardToolbar } from "./storyboard-toolbar";
 import { ShotDetailModal } from "./shot-detail-modal";
+import { MockModeBadge } from "./mock-mode-badge";
 import { useProviderEntries } from "./provider-selector";
 
 interface Props {
@@ -145,6 +147,7 @@ function SortableShotCard({ shot, state, isSelected, multiSelected, charactersBy
 
 export function StoryboardWorkbench({ content, onChange, projectId, project, allowProjectMutations = true }: Props) {
   const { t } = useI18n();
+  const providerHealth = useProviderHealth();
   const queryClient = useQueryClient();
   const editable = Boolean(onChange);
   const canUseProject = Boolean(projectId && project);
@@ -673,6 +676,11 @@ export function StoryboardWorkbench({ content, onChange, projectId, project, all
     <div className="swb-root-v2">
       {/* Feedback */}
       <InlineFeedback message={feedback.message} error={feedback.error} />
+
+      {/* Provider health badge for image generation entry */}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+        <MockModeBadge t={t} mockFallback={providerHealth.data?.mockFallback ?? false} channel={providerHealth.data?.image} />
+      </div>
 
       {/* Toolbar */}
       <StoryboardToolbar

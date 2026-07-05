@@ -14,8 +14,10 @@ import type { TimelineRecord, TimelineTrackRecord, TimelineClipRecord, ExportRec
 import { useI18n } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
 import { useFeedback } from "../../lib/hooks";
+import { useProviderHealth } from "../../lib/hooks/use-provider-health";
 import { InlineFeedback } from "../inline-feedback";
 import { MediaLibrary } from "./media-library";
+import { MockModeBadge } from "./mock-mode-badge";
 
 /* ── Types ── */
 interface TimelineEditorProps {
@@ -97,6 +99,7 @@ function formatTime(seconds: number): string {
 /* ── Component ── */
 export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = false, canCreateExport = false }: TimelineEditorProps) {
   const { t } = useI18n();
+  const providerHealth = useProviderHealth();
 
   // State
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
@@ -380,6 +383,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
           <button className="timeline-btn timeline-btn-icon" onClick={() => handleZoom(10)} title="放大">
             <ZoomInIcon />
           </button>
+          <MockModeBadge t={t} mockFallback={providerHealth.data?.mockFallback ?? false} channel={providerHealth.data?.video} />
           <button
             className="timeline-btn timeline-btn-primary"
             onClick={handleExportClick}
