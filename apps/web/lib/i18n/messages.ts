@@ -1893,7 +1893,11 @@ export const zhCNMessages = {
       ok: "当前生成输入没有未处理影响。",
       warning: "来源 {version} 有 {count} 条未处理影响，建议生成前先检查。",
     },
-  }
+  },
+  mockBadge: {
+    mockMode: "Mock 模式",
+    notConfigured: "未配置 provider",
+  },
 } as const;
 
 type DeepStringShape<T> = {
@@ -3792,7 +3796,11 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
       ok: "The selected generation input has no active impact issues.",
       warning: "Source {version} has {count} active impact issues. Review them before generating.",
     },
-  }
+  },
+  mockBadge: {
+    mockMode: "Mock mode",
+    notConfigured: "Provider not configured",
+  },
 };
 
 export const messages = {

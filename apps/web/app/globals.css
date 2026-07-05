@@ -17593,3 +17593,20 @@ textarea.input {
   gap: var(--space-3);
   margin: var(--space-3) 0;
 }
+.mock-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+.mock-mode-badge--mock {
+  background-color: var(--warning-bg, #fef3c7);
+  color: var(--warning-text, #92400e);
+}
+.mock-mode-badge--unconfigured {
+  background-color: var(--danger-bg, #fee2e2);
+  color: var(--danger-text, #991b1b);
+}
