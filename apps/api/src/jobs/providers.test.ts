@@ -763,6 +763,7 @@ import { MiniMaxVideoProviderAdapter } from "./video-providers/minimax-video.pro
 import { VolcEngineVideoProviderAdapter } from "./video-providers/volcengine-video.provider";
 import { ViduVideoProviderAdapter } from "./video-providers/vidu-video.provider";
 import { AliVideoProviderAdapter } from "./video-providers/ali-video.provider";
+import type { VideoProviderPollInput } from "./video-providers/types";
 
 function videoAdapterInput(overrides: Partial<import("./video-providers/types").VideoProviderCreateInput> = {}) {
   return {
@@ -1560,4 +1561,72 @@ test("jobs controller passes video reference mode to preview prompt builder", ()
 
   assert.equal(capturedMode, "multiple");
   assert.equal(result.shotId, "shot-1");
+});
+
+// === 批1 B-1: Vidu pollJob 三态测试 ===
+test("Vidu pollJob: state=success 返回 completed + assetUrl", async () => {
+  const viduResponse = {
+    state: "success",
+    video_url: "https://cdn.vidu.com/test.mp4",
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(viduResponse), { status: 200 })) as typeof fetch;
+  try {
+    const adapter = new ViduVideoProviderAdapter();
+    const input: VideoProviderPollInput = {
+      prompt: "test",
+      shotId: "s1",
+      aspectRatio: "16:9",
+      config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    };
+    const result = await adapter.pollJob!("task-123", input);
+    assert.equal(result.providerStatus, "completed");
+    assert.equal(result.assetUrl, "https://cdn.vidu.com/test.mp4");
+    assert.equal(result.progress, 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Vidu pollJob: state=failed 返回 failed", async () => {
+  const viduResponse = { state: "failed", err_msg: "content policy violation" };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(viduResponse), { status: 200 })) as typeof fetch;
+  try {
+    const adapter = new ViduVideoProviderAdapter();
+    const input: VideoProviderPollInput = {
+      prompt: "test",
+      shotId: "s1",
+      aspectRatio: "16:9",
+      config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    };
+    const result = await adapter.pollJob!("task-123", input);
+    assert.equal(result.providerStatus, "failed");
+    assert.equal(result.progress, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Vidu pollJob: state=processing 返回 running", async () => {
+  const viduResponse = { state: "processing" };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(viduResponse), { status: 200 })) as typeof fetch;
+  try {
+    const adapter = new ViduVideoProviderAdapter();
+    const input: VideoProviderPollInput = {
+      prompt: "test",
+      shotId: "s1",
+      aspectRatio: "16:9",
+      config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    };
+    const result = await adapter.pollJob!("task-123", input);
+    assert.equal(result.providerStatus, "running");
+    assert.ok(result.progress > 0 && result.progress < 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
