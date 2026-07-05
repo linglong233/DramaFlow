@@ -1,4 +1,11 @@
 version: "3.9"
+# ============================================================
+# DramaFlow 开发/演示 compose（dev profile）
+# 用 dev:* 命令、本地存储。
+# 生产部署用 docker-compose.prod.yml override：
+#   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+# Redis 服务在批3（BullMQ 迁移）启用，见下方 redis 注释段。
+# ============================================================
 
 services:
   postgres:
@@ -64,6 +71,20 @@ services:
       OPENAI_COMPAT_API_KEY: replace-me
     depends_on:
       - api
+
+  # ============================================================
+  # Redis（批3 BullMQ 迁移启用，当前未使用）
+  # 启用步骤：取消下面注释，api 与 worker 透传 REDIS_URL=redis://redis:6379
+  # ============================================================
+  # redis:
+  #   image: redis:7-bookworm
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
   minio:
     image: minio/minio:latest
