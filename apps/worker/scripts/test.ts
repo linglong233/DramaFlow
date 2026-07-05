@@ -2,12 +2,14 @@
  * @fileoverview Worker 轮询行为单测
  * @module worker/scripts/test
  *
- * 用 mock fetch 模拟 /internal/jobs/next 三态（空响应 / 任务返回 / 5xx），
- * 断言 worker 的领取与处理行为正确，并验证默认环境变量逻辑。
+ * 通过 mock fetch 并真实驱动 worker 的 tick()，验证领取/处理/重试/5xx 退避等行为。
+ * 重点：测试驱动源码导出的 tick()，而非重复 fetch 协议形状。
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
+
+import { tick, resolveWorkerConfig, type WorkerConfig } from "../src/index";
 
 // === mock helpers ===
 
@@ -18,13 +20,18 @@ interface MockResponse {
   body: string;
 }
 
+/** 记录所有 fetch 调用的 URL，用于断言 worker 真实命中的端点。 */
+let capturedUrls: string[] = [];
+
 /**
  * 安装按 URL 子串路由的 mock fetch。
  * 命中第一个匹配 pattern 的 handler，未匹配返回 404 空响应。
  */
 function installMock(responses: Record<string, () => Promise<MockResponse>>): void {
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  capturedUrls = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
+    capturedUrls.push(url);
     for (const [pattern, handler] of Object.entries(responses)) {
       if (url.includes(pattern)) {
         const { status, body } = await handler();
@@ -37,33 +44,23 @@ function installMock(responses: Record<string, () => Promise<MockResponse>>): vo
 
 function restoreFetch(): void {
   globalThis.fetch = originalFetch;
+  capturedUrls = [];
 }
+
+const testConfig: WorkerConfig = {
+  apiUrl: "http://test-api",
+  pollIntervalMs: 4000,
+  headers: { "x-internal-key": "test-key" },
+};
 
 // === tests ===
 
-test("空响应（无任务）→ worker idle", async () => {
-  installMock({
-    "/internal/jobs/next": async () => ({ status: 200, body: "" }),
-  });
-  try {
-    const resp = await fetch("http://x/internal/jobs/next");
-    assert.equal(resp.ok, true);
-    const raw = await resp.text();
-    assert.equal(raw.trim(), "");
-  } finally {
-    restoreFetch();
-  }
-});
-
-test("返回任务 → 应调用 /process", async () => {
+test("tick: 空响应（无任务）→ 只调用 /next，不调用 /process", async () => {
   const calls: string[] = [];
   installMock({
     "/internal/jobs/next": async () => {
       calls.push("next");
-      return {
-        status: 200,
-        body: JSON.stringify({ id: "job-1", type: "script_generation", retryCount: 0, maxRetries: 3 }),
-      };
+      return { status: 200, body: "" };
     },
     "/process": async () => {
       calls.push("process");
@@ -71,40 +68,120 @@ test("返回任务 → 应调用 /process", async () => {
     },
   });
   try {
-    const claimResp = await fetch("http://x/internal/jobs/next");
-    const job = JSON.parse(await claimResp.text()) as { id: string };
-    assert.equal(job.id, "job-1");
-
-    const processResp = await fetch(`http://x/internal/jobs/${job.id}/process`, { method: "POST" });
-    const processed = JSON.parse(await processResp.text()) as { status?: string };
-    assert.equal(processed.status, "succeeded");
-
-    assert.ok(calls.includes("next"), "should have called /internal/jobs/next");
-    assert.ok(calls.includes("process"), "should have called /process");
+    await tick(testConfig);
+    assert.ok(calls.includes("next"), "应调用 /internal/jobs/next");
+    assert.ok(!calls.includes("process"), "空响应时不应调用 /process");
   } finally {
     restoreFetch();
   }
 });
 
-test("5xx → 不崩溃", async () => {
+test("tick: 返回任务 → 应依次调用 /next 和 /process", async () => {
   installMock({
-    "/internal/jobs/next": async () => ({ status: 500, body: "server error" }),
+    "/internal/jobs/next": async () => ({
+      status: 200,
+      body: JSON.stringify({ id: "job-1", type: "script_generation", retryCount: 0, maxRetries: 3 }),
+    }),
+    "/process": async () => ({ status: 200, body: JSON.stringify({ status: "succeeded" }) }),
   });
   try {
-    const resp = await fetch("http://x/internal/jobs/next");
-    assert.equal(resp.ok, false);
-    assert.equal(resp.status, 500);
+    await tick(testConfig);
+    // 验证调用顺序：next 必须在 process 之前
+    const nextIdx = capturedUrls.findIndex((u) => u.includes("/internal/jobs/next"));
+    const processIdx = capturedUrls.findIndex((u) => u.includes("/process"));
+    assert.notEqual(nextIdx, -1, "应调用 /next");
+    assert.notEqual(processIdx, -1, "应调用 /process");
+    assert.ok(nextIdx < processIdx, "/next 必须在 /process 之前");
+    // process URL 应包含正确的 job id
+    assert.ok(capturedUrls[processIdx].includes("/internal/jobs/job-1/process"), "process URL 应含 job id");
   } finally {
     restoreFetch();
   }
 });
 
-test("worker env 读取（API_URL / INTERNAL_API_KEY / 轮询间隔）", () => {
-  // 验证 worker 默认值逻辑（与 src/index.ts 中的默认值保持一致）
-  const defaultApiUrl = "http://localhost:4000";
-  const defaultInterval = 4000;
-  const defaultKey = "dramaflow-internal-key";
-  assert.ok(defaultApiUrl.startsWith("http"), "API_URL 默认应为 http(s) 协议");
-  assert.ok(defaultInterval >= 1000, "轮询间隔默认应 >= 1000ms");
-  assert.ok(defaultKey.length > 0, "INTERNAL_API_KEY 默认应为非空");
+test("tick: /process 返回 5xx 且 retryCount < maxRetries → 应调用 /retry", async () => {
+  installMock({
+    "/internal/jobs/next": async () => ({
+      status: 200,
+      body: JSON.stringify({ id: "job-2", type: "image_generation", retryCount: 1, maxRetries: 3 }),
+    }),
+    "/process": async () => ({ status: 500, body: "server error" }),
+    "/retry": async () => ({ status: 200, body: JSON.stringify({ ok: true }) }),
+  });
+  try {
+    await tick(testConfig);
+    const retryIdx = capturedUrls.findIndex((u) => u.includes("/internal/jobs/job-2/retry"));
+    assert.notEqual(retryIdx, -1, "5xx 且可重试时应调用 /retry");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("tick: /process 返回 5xx 但 retryCount >= maxRetries → 不调用 /retry", async () => {
+  installMock({
+    "/internal/jobs/next": async () => ({
+      status: 200,
+      body: JSON.stringify({ id: "job-3", type: "video_generation", retryCount: 3, maxRetries: 3 }),
+    }),
+    "/process": async () => ({ status: 500, body: "server error" }),
+    "/retry": async () => ({ status: 200, body: JSON.stringify({ ok: true }) }),
+  });
+  try {
+    await tick(testConfig);
+    const retryIdx = capturedUrls.findIndex((u) => u.includes("/internal/jobs/job-3/retry"));
+    assert.equal(retryIdx, -1, "达到 maxRetries 后不应再调用 /retry");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("tick: /process 返回 status=running → 不重试，正常返回", async () => {
+  installMock({
+    "/internal/jobs/next": async () => ({
+      status: 200,
+      body: JSON.stringify({ id: "job-4", type: "video_generation", retryCount: 0, maxRetries: 3 }),
+    }),
+    "/process": async () => ({ status: 200, body: JSON.stringify({ status: "running", result: { progress: 50 } }) }),
+    "/retry": async () => ({ status: 200, body: JSON.stringify({ ok: true }) }),
+  });
+  try {
+    await tick(testConfig);
+    const retryIdx = capturedUrls.findIndex((u) => u.includes("/retry"));
+    assert.equal(retryIdx, -1, "running 状态不应触发 /retry");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("tick: /next 返回 5xx → 不崩溃，不调用 /process", async () => {
+  installMock({
+    "/internal/jobs/next": async () => ({ status: 500, body: "server error" }),
+    "/process": async () => ({ status: 200, body: JSON.stringify({ status: "succeeded" }) }),
+  });
+  try {
+    // 不应抛错
+    await tick(testConfig);
+    const processIdx = capturedUrls.findIndex((u) => u.includes("/process"));
+    assert.equal(processIdx, -1, "/next 失败时不应调用 /process");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("resolveWorkerConfig: 从 env 正确解析", () => {
+  const config = resolveWorkerConfig({
+    API_URL: "https://api.example.com/",
+    WORKER_POLL_INTERVAL_MS: "2000",
+    INTERNAL_API_KEY: "secret-key",
+  });
+  assert.equal(config.apiUrl, "https://api.example.com"); // 末尾 / 被去掉
+  assert.equal(config.pollIntervalMs, 2000);
+  assert.equal(config.headers["x-internal-key"], "secret-key");
+});
+
+test("resolveWorkerConfig: 应用默认值", () => {
+  const config = resolveWorkerConfig({});
+  assert.equal(config.apiUrl, "http://localhost:4000");
+  assert.equal(config.pollIntervalMs, 4000);
+  assert.equal(config.headers["x-internal-key"], "dramaflow-internal-key");
 });
