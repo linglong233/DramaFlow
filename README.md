@@ -543,6 +543,27 @@ By default `OPENAI_COMPAT_MOCK_FALLBACK=false`. The API will fail-fast on boot i
 
 For local dev without keys, set `OPENAI_COMPAT_MOCK_FALLBACK=true` — the UI shows a "Mock mode" badge on every generation entry point.
 
+## Production deployment
+
+```bash
+# 1. Build all packages
+npm run build
+
+# 2. Run migrations
+npm --workspace @dramaflow/api run prisma:migrate:deploy
+
+# 3. Start with prod override
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+**Required env for production:** `DATABASE_URL`, `JWT_ACCESS_SECRET` (secure), `JWT_REFRESH_SECRET` (secure), `INTERNAL_API_KEY` (secure), `OPENAI_COMPAT_API_KEY`, S3 settings (`S3_ENDPOINT` / `S3_REGION` / `S3_BUCKET` / `S3_ACCESS_KEY` / `S3_SECRET_KEY`).
+
+**Health checks:** `GET /health` (service), `GET /health/providers` (AI provider config status).
+
+**Reverse proxy example (nginx):** terminate TLS, proxy `/` to web:3000 and `/api|/uploads|/docs|/socket.io` to api:4000.
+
+**Known architectural limit (before batch3 BullMQ migration):** single API process handles all AI HTTP calls + in-memory polling worker. For production, run single instance with monitoring; horizontal scaling arrives with batch3.
+
 ## Migrating from Legacy JSON
 
 If you have a legacy `dev-db.json` file from the previous file-based database:

@@ -543,6 +543,27 @@ docker compose up --build
 
 本地开发无 key 时可设 `OPENAI_COMPAT_MOCK_FALLBACK=true` —— 此时每个生成入口会显示 "Mock 模式" 徽章。
 
+## 生产部署
+
+```bash
+# 1. 构建全部包
+npm run build
+
+# 2. 跑迁移
+npm --workspace @dramaflow/api run prisma:migrate:deploy
+
+# 3. 用 prod override 启动
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+**生产必填 env：** `DATABASE_URL`、`JWT_ACCESS_SECRET`（安全值）、`JWT_REFRESH_SECRET`（安全值）、`INTERNAL_API_KEY`（安全值）、`OPENAI_COMPAT_API_KEY`、S3 配置（`S3_ENDPOINT` / `S3_REGION` / `S3_BUCKET` / `S3_ACCESS_KEY` / `S3_SECRET_KEY`）。
+
+**健康检查：** `GET /health`（服务）、`GET /health/providers`（AI provider 配置状态）。
+
+**反向代理示例（nginx）：** 终止 TLS，把 `/` 代理到 web:3000，把 `/api|/uploads|/docs|/socket.io` 代理到 api:4000。
+
+**已知架构限制（批3 BullMQ 迁移前）：** 单一 API 进程承担所有 AI HTTP 调用 + 内存轮询 worker。生产部署建议先单实例 + 监控；水平扩展能力在批3 落地后具备。
+
 ## 从旧版 JSON 迁移
 
 如果你有旧版基于文件的 `dev-db.json`：
