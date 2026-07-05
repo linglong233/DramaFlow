@@ -876,16 +876,6 @@ test("volcengine video adapter sends first and last frame roles", async () => {
   assert.equal(body.content[2].role, "last_frame");
 });
 
-test("vidu video adapter returns running note when poll is unavailable", async () => {
-  const adapter = new ViduVideoProviderAdapter();
-  const state = await adapter.pollJob!("vidu-task-1", videoAdapterInput({
-    config: { provider: "vidu", apiKey: "key", baseUrl: "https://vidu.test", model: "viduq3-turbo" },
-  }));
-
-  assert.equal(state.providerStatus, "running");
-  assert.match(state.note ?? "", /webhook is not enabled/);
-});
-
 test("ali video adapter maps last frame to last_img_url", async () => {
   let capturedBody: Record<string, unknown> | undefined;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -1560,4 +1550,78 @@ test("jobs controller passes video reference mode to preview prompt builder", ()
 
   assert.equal(capturedMode, "multiple");
   assert.equal(result.shotId, "shot-1");
+});
+
+// === 批1 B-1: Vidu pollJob 三态测试 ===
+test("Vidu pollJob: state=success 返回 completed + assetUrl", async () => {
+  const viduResponse = {
+    state: "success",
+    video_url: "https://cdn.vidu.com/test.mp4",
+  };
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(viduResponse), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const adapter = new ViduVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-123", input);
+    assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
+    assert.equal(result.providerStatus, "completed");
+    assert.equal(result.assetUrl, "https://cdn.vidu.com/test.mp4");
+    assert.equal(result.progress, 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Vidu pollJob: state=failed 返回 failed", async () => {
+  const viduResponse = { state: "failed", err_msg: "content policy violation" };
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(viduResponse), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const adapter = new ViduVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-123", input);
+    assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
+    assert.equal(result.providerStatus, "failed");
+    assert.equal(result.progress, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Vidu pollJob: state=processing 返回 running", async () => {
+  const viduResponse = { state: "processing" };
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify(viduResponse), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const adapter = new ViduVideoProviderAdapter();
+    const input = videoAdapterInput({
+      config: { provider: "vidu", apiKey: "k", baseUrl: "https://api.vidu.com" },
+      references: { mode: "none", referenceImages: [], referenceImageUrls: [] },
+    });
+    const result = await adapter.pollJob!("task-123", input);
+    assert.ok(capturedUrl.includes("/ent/v2/img2video/task/task-123"), `Expected fetch URL to contain task-status path, got: ${capturedUrl}`);
+    assert.equal(result.providerStatus, "running");
+    assert.ok(result.progress > 0 && result.progress < 100);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
