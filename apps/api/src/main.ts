@@ -12,6 +12,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import express from "express";
 
 import { AppModule } from "./app.module";
+import { validateProviderConfig } from "./common/config-bootstrap";
 
 /**
  * 验证 JWT 密钥配置的安全性
@@ -39,6 +40,7 @@ function validateSecrets() {
 /** 应用启动函数 */
 async function bootstrap() {
   validateSecrets();
+  validateProviderConfig(process.env);
   const app = await NestFactory.create(AppModule);
   const allowedOrigin = process.env.APP_URL ?? "http://localhost:3000";
   app.enableCors({

@@ -4365,6 +4365,37 @@ async function main() {
     console.log("api test passed: prompt contracts deterministic evals");
   }
 
+  // === 批1 Task 3: 验证 config-bootstrap 的非 test 环境行为 ===
+  {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalMock = process.env.OPENAI_COMPAT_MOCK_FALLBACK;
+    const originalKey = process.env.OPENAI_COMPAT_API_KEY;
+    try {
+      // 模拟生产缺 key
+      process.env.NODE_ENV = "production";
+      process.env.OPENAI_COMPAT_MOCK_FALLBACK = "false";
+      process.env.OPENAI_COMPAT_API_KEY = "replace-me";
+      const { validateProviderConfig } = await import("../src/common/config-bootstrap");
+      let threw = false;
+      try {
+        validateProviderConfig(process.env);
+      } catch {
+        threw = true;
+      }
+      assert.equal(threw, true, "validateProviderConfig should throw when MOCK_FALLBACK=false and keys missing in production");
+
+      // 模拟 MOCK_FALLBACK=true 不抛
+      process.env.OPENAI_COMPAT_MOCK_FALLBACK = "true";
+      const result = validateProviderConfig(process.env);
+      assert.equal(result.health.mockFallback, true);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      process.env.OPENAI_COMPAT_MOCK_FALLBACK = originalMock;
+      process.env.OPENAI_COMPAT_API_KEY = originalKey;
+    }
+  }
+  console.log("api test passed: config-bootstrap fail-fast behavior");
+
   console.log("api tests passed");
 }
 
