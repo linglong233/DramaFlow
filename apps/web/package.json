@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx scripts/test.ts",
+    "test": "tsx scripts/test.ts && tsx scripts/behavior-tests.ts",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
