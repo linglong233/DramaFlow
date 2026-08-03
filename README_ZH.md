@@ -506,6 +506,11 @@ npm run dev:worker
 | `FFMPEG_PATH` | FFmpeg 二进制文件路径 |
 | `EXPORT_KEEP_TEMP` | 保留导出临时文件 |
 | `WORKER_POLL_INTERVAL_MS` | Worker 轮询间隔 |
+| `WORKER_FETCH_TIMEOUT_MS` | Worker 单次 fetch（`/next`、`/process`、`/retry`）的超时时间。`/process` 超时会被当作失败触发重试。设为略大于最慢 AI 任务的值，避免误杀慢任务。默认 `30000`。 |
+| `JOB_STALE_TIMEOUT_MINUTES` | Reaper：`running` 任务超过多少分钟无 `updatedAt` 心跳更新即标记为 `failed`（用于回收 worker 崩溃后无人认领的任务）。设为略大于最慢 provider 执行时间的保守上限。默认 `15`。 |
+| `JOB_REAP_INTERVAL_MS` | Reaper 执行间隔。默认 `60000`。 |
+| `VIDEO_POLL_MIN_INTERVAL_SECONDS` | 同一正在轮询的 video job 最小重复领取间隔，避免多 worker 实例轰炸同一任务。默认 `10`。 |
+| `REAP_STALE_JOBS_ENABLED` | 是否启用 reaper 定时器。多实例部署时只在一个实例上设为 `true`，其余设为 `false`，避免重复回收。默认 `true`。 |
 | `DRAMAFLOW_START_INLINE` | 内联启动服务（不后台运行） |
 | `DRAMAFLOW_START_TIMEOUT_MS` | 启动就绪超时时间 |
 
@@ -563,6 +568,13 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 **反向代理示例（nginx）：** 终止 TLS，把 `/` 代理到 web:3000，把 `/api|/uploads|/docs|/socket.io` 代理到 api:4000。
 
 **已知架构限制（批3 BullMQ 迁移前）：** 单一 API 进程承担所有 AI HTTP 调用 + 内存轮询 worker。生产部署建议先单实例 + 监控；水平扩展能力在批3 落地后具备。
+
+**任务可靠性机制：**
+
+- **Worker 优雅退出：** Worker 监听 `SIGTERM`/`SIGINT`，停止调度新 tick，最长等待 5s 让当前 tick 完成后退出。所有 fetch（`/next`、`/process`、`/retry`）都包了 try/catch 和 `AbortSignal.timeout`（`WORKER_FETCH_TIMEOUT_MS`），网络抖动或请求挂死都不会通过 unhandledRejection 击垮 worker 进程。
+- **滞留任务回收（reaper）：** `running` 任务的 `updatedAt` 心跳超过 `JOB_STALE_TIMEOUT_MINUTES` 分钟未更新时，自动标记为 `failed`（并发 `task_failed` 通知），用于回收 worker 崩溃后无人认领的任务。Reaper 由 API 进程内的 `@Interval`（`JOB_REAP_INTERVAL_MS`）驱动。多实例部署时在除一个实例外的所有实例上设 `REAP_STALE_JOBS_ENABLED=false`，避免重复回收。也可通过 `POST /internal/jobs/reap`（受内部 API Key 保护）手动触发。
+- **派发幂等：** `processJob` 对已完成（`completed`/`failed`）的任务直接返回当前态、不重复执行，避免重试或重复调用导致 provider 额度被重复消耗。
+- **视频轮询竞态修复：** `claimNextJob` 的视频轮询分支改用 `FOR UPDATE SKIP LOCKED`（受 `VIDEO_POLL_MIN_INTERVAL_SECONDS` 约束），多个 worker 实例不会再同时领取同一个正在轮询的视频任务。
 
 ## 从旧版 JSON 迁移
 

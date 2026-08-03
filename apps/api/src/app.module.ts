@@ -8,6 +8,7 @@
 
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ServeStaticModule } from "@nestjs/serve-static";
 import { join } from "node:path";
 
@@ -27,6 +28,7 @@ const uploadsDir = process.env.UPLOADS_DIR ?? "apps/api/uploads";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     CommonModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), uploadsDir),

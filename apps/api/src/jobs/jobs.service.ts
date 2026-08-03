@@ -407,6 +407,52 @@ export class JobsService {
     return record;
   }
 
+  /**
+   * 回收滞留的 running 任务：把"running 且 updatedAt 早于阈值前"的 job 标记为 failed。
+   *
+   * 用于处理 worker 进程崩溃后无人认领的 running 任务——claimNextJob 的第一分支
+   * 只会领取 queued 任务，因此崩溃后这些任务会永久滞留。reaper 通过 updatedAt
+   * 心跳判断是否滞留（worker 领取/轮询时都会刷新 updatedAt）。
+   *
+   * 不重置 retryCount：被 reap 的任务视为失败，由现有 retry 机制或人工 retryJob 决定是否重跑，
+   * 与现有失败语义一致。
+   *
+   * @returns 被 reap 的 job 数量及详情
+   */
+  async reapStaleJobs(): Promise<{ reaped: number; jobs: JobRecord[] }> {
+    const timeoutMinutes = Number(process.env.JOB_STALE_TIMEOUT_MINUTES ?? 15);
+    const reapedRows = await this.prisma.$queryRaw<Array<Prisma.JobGetPayload<{}>>>`
+      UPDATE "Job"
+      SET
+        status = CAST('failed' AS "JobStatus"),
+        error = 'Job stalled (no heartbeat within timeout)',
+        "updatedAt" = NOW()
+      WHERE status = CAST('running' AS "JobStatus")
+        AND "updatedAt" < NOW() - (${timeoutMinutes} * INTERVAL '1 minute')
+      RETURNING *
+    `;
+    if (reapedRows.length === 0) {
+      return { reaped: 0, jobs: [] };
+    }
+
+    const reapedJobs = reapedRows.map((row) => this.toJobRecord(row));
+    for (const job of reapedJobs) {
+      this.emitJobUpdated(job);
+      // 通知任务创建者任务因滞留失败（fire-and-forget，复用 processJob 失败通知模式）
+      this.notificationService.createNotification({
+        userId: job.createdBy,
+        projectId: job.projectId,
+        type: "task_failed",
+        title: "Generation task failed",
+        body: `${job.type} task stalled and was marked as failed`,
+        referenceId: job.id,
+        referenceType: "job",
+      }).catch(() => {});
+    }
+    process.stdout.write(`[jobs] reaper: marked ${reapedJobs.length} stalled job(s) as failed\n`);
+    return { reaped: reapedJobs.length, jobs: reapedJobs };
+  }
+
   async createBatchImageJobs(
     userId: string,
     projectId: string,
@@ -645,20 +691,34 @@ export class JobsService {
       return record;
     }
 
-    // Poll running video jobs
-    const runningVideoJobs = await this.prisma.job.findMany({
-      where: { type: "video_generation", status: "running" },
-      orderBy: { updatedAt: "asc" },
-      take: 20,
-    });
-    const pollable = runningVideoJobs.map((j) => this.toJobRecord(j)).find((j) => this.shouldPollVideoJob(j));
-    if (!pollable) return null;
+    // Poll running video jobs.
+    // 用单条原子 UPDATE ... FOR UPDATE SKIP LOCKED 领取，避免多 worker 实例同时
+    // 领到同一 video job（原 findMany+update 实现有竞态窗口）。
+    // 通过 VIDEO_POLL_MIN_INTERVAL_SECONDS 限制对同一 job 的 poll 频率，
+    // 避免多 worker 轰炸同一个正在轮询的视频任务。
+    const pollMinIntervalSeconds = Number(process.env.VIDEO_POLL_MIN_INTERVAL_SECONDS ?? 10);
+    const pollableRows = await this.prisma.$queryRaw<Array<Prisma.JobGetPayload<{}>>>`
+      UPDATE "Job"
+      SET "updatedAt" = NOW()
+      WHERE id = (
+        SELECT id
+        FROM "Job"
+        WHERE type = CAST('video_generation' AS "JobType")
+          AND status = CAST('running' AS "JobStatus")
+          AND "updatedAt" < NOW() - (${pollMinIntervalSeconds} * INTERVAL '1 second')
+        ORDER BY "updatedAt" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING *
+    `;
+    const pollableRow = pollableRows[0];
+    if (!pollableRow) return null;
 
-    const touched = await this.prisma.job.update({
-      where: { id: pollable.id },
-      data: { updatedAt: new Date() },
-    });
-    return this.toJobRecord(touched);
+    const pollable = this.toJobRecord(pollableRow);
+    // 二次确认：领到的 job 仍需 provider 侧未完成才返回，否则跳过本轮
+    if (!this.shouldPollVideoJob(pollable)) return null;
+    return pollable;
   }
 
   async processJob(jobId: string) {
@@ -667,6 +727,15 @@ export class JobsService {
       throw new NotFoundException("Job not found");
     }
     const job = this.toJobRecord(rawJob);
+
+    // 幂等守卫：终态（completed/failed）任务直接返回当前态，不重复执行。
+    // 不限制 queued/running，以兼容两种调用路径：
+    //   - 生产 worker：先 /next（claim 成 running）再 /process
+    //   - 单进程场景：直接 /process 一个 queued 任务（claim 与执行合一）
+    // 视频"继续轮询"路径 status 仍为 running，不受影响。
+    if (job.status === "completed" || job.status === "failed") {
+      return job;
+    }
 
     try {
       switch (job.type) {

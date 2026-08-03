@@ -28,11 +28,12 @@ import { ComfyuiImageProvider } from "./comfyui-image.provider";
 import { GrokMediaProvider } from "./grok-media.provider";
 import { ConversationService } from "./conversation.service";
 import { NovelImportService } from "./novel-import.service";
+import { JobsMaintenanceService } from "./jobs-maintenance.service";
 
 @Module({
   imports: [CommonModule, AuthModule, WorkspaceModule, StorageModule, NotificationModule, RealtimeModule],
   controllers: [JobsController, InternalJobsController],
-  providers: [JobsService, OpenAiCompatTextProvider, OpenAiMediaProvider, GoogleGeminiImageProvider, SdWebuiImageProvider, ComfyuiImageProvider, GrokMediaProvider, PromptBuilderService, TTSProviderService, ExportService, ConversationService, NovelImportService],
+  providers: [JobsService, OpenAiCompatTextProvider, OpenAiMediaProvider, GoogleGeminiImageProvider, SdWebuiImageProvider, ComfyuiImageProvider, GrokMediaProvider, PromptBuilderService, TTSProviderService, ExportService, ConversationService, NovelImportService, JobsMaintenanceService],
   exports: [JobsService, PromptBuilderService, ConversationService],
 })
 export class JobsModule {}

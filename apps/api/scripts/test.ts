@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { NestFactory } from "@nestjs/core";
 import express from "express";
+import { PrismaClient } from "@prisma/client";
 
 import { PROJECT_PERMISSIONS } from "@dramaflow/shared";
 
@@ -4395,6 +4396,167 @@ async function main() {
     }
   }
   console.log("api test passed: config-bootstrap fail-fast behavior");
+
+  // === 阶段3 可靠性测试：reaper 回收滞留 running 任务 ===
+  await runCase("reaper marks stalled running jobs as failed", async () => {
+    process.env.OPENAI_COMPAT_MOCK_FALLBACK = "true";
+    process.env.JOB_STALE_TIMEOUT_MINUTES = "15";
+
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "reaper-test@example.com",
+        displayName: "Reaper Tester",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Reaper Project" }),
+      });
+      assert.equal(projectResponse.status, 201);
+      const project = await projectResponse.json() as { id: string };
+
+      // 用 raw SQL 插入 job，updatedAt 由 DB NOW()/NOW()-INTERVAL 决定，
+      // 避免应用进程时间（new Date()）与 DB NOW() 时区不一致导致判断错误。
+      const prisma = new PrismaClient();
+      try {
+        const staleJobId = `job_reaper_stale_${Date.now()}`;
+        const freshJobId = `job_reaper_fresh_${Date.now()}`;
+        await prisma.$executeRaw`
+          INSERT INTO "Job" (id, type, status, "projectId", input, "retryCount", "maxRetries", priority, "createdBy", "createdAt", "updatedAt")
+          VALUES
+            (${staleJobId}, 'script_generation', 'running', ${project.id}, '{}', 0, 3, 'normal', ${user.user.id}, NOW() - INTERVAL '20 minutes', NOW() - INTERVAL '20 minutes'),
+            (${freshJobId}, 'script_generation', 'running', ${project.id}, '{}', 0, 3, 'normal', ${user.user.id}, NOW(), NOW())
+        `;
+
+        // 调用 reaper
+        const reapResponse = await originalFetch(`${baseUrl}/internal/jobs/reap`, {
+          method: "POST",
+          headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+        });
+        assert.equal(reapResponse.status, 201);
+        const reapResult = await reapResponse.json() as { reaped: number; jobs: Array<{ id: string }> };
+        assert.ok(reapResult.reaped >= 1, "reaper 应至少回收 1 个滞留 job");
+        assert.ok(
+          reapResult.jobs.some((j) => j.id === staleJobId),
+          "reaper 应回收 stale job",
+        );
+        assert.ok(
+          !reapResult.jobs.some((j) => j.id === freshJobId),
+          "reaper 不应回收 fresh job",
+        );
+
+        // 确认 DB 中 stale job 已变 failed，fresh job 仍 running
+        const staleAfter = await prisma.job.findUnique({ where: { id: staleJobId } });
+        const freshAfter = await prisma.job.findUnique({ where: { id: freshJobId } });
+        assert.equal(staleAfter?.status, "failed", "stale job 应被标记为 failed");
+        assert.ok(staleAfter?.error?.includes("stalled"), "stale job 应有 stalled 错误文案");
+        assert.equal(freshAfter?.status, "running", "fresh job 应仍为 running");
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
+
+  await runCase("reaper respects JOB_STALE_TIMEOUT_MINUTES threshold", async () => {
+    process.env.OPENAI_COMPAT_MOCK_FALLBACK = "true";
+    // 设一个非常大的阈值，确保所有 running job 都被视为"未超时"
+    process.env.JOB_STALE_TIMEOUT_MINUTES = "999999";
+
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "reaper-threshold@example.com",
+        displayName: "Threshold Tester",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Threshold Project" }),
+      });
+      const project = await projectResponse.json() as { id: string };
+
+      const prisma = new PrismaClient();
+      try {
+        // 用 DB NOW() - 1 小时作为 updatedAt，确保时间源与 reaper 的 NOW() 一致
+        const thresholdJobId = `job_threshold_${Date.now()}`;
+        await prisma.$executeRaw`
+          INSERT INTO "Job" (id, type, status, "projectId", input, "retryCount", "maxRetries", priority, "createdBy", "createdAt", "updatedAt")
+          VALUES (${thresholdJobId}, 'script_generation', 'running', ${project.id}, '{}', 0, 3, 'normal', ${user.user.id}, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour')
+        `;
+
+        const reapResponse = await originalFetch(`${baseUrl}/internal/jobs/reap`, {
+          method: "POST",
+          headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+        });
+        const reapResult = await reapResponse.json() as { reaped: number };
+        assert.equal(reapResult.reaped, 0, "大阈值下不应回收任何 job");
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
+
+  // === 阶段2 幂等性测试：对终态 job 调 process 不重复执行 ===
+  await runCase("processJob is idempotent for completed jobs", async () => {
+    process.env.OPENAI_COMPAT_MOCK_FALLBACK = "true";
+
+    await withHttpApp(async (baseUrl) => {
+      const user = await registerUser(baseUrl, {
+        email: "idempotent-test@example.com",
+        displayName: "Idempotent Tester",
+      });
+      const teams = await listTeams(baseUrl, user.accessToken);
+      const projectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: authHeaders(user.accessToken, true),
+        body: JSON.stringify({ teamId: teams[0]?.id, name: "Idempotent Project" }),
+      });
+      const project = await projectResponse.json() as { id: string };
+
+      const prisma = new PrismaClient();
+      try {
+        const originalResult = { marker: "original-completed-result", scenes: [] };
+        const completedJob = await prisma.job.create({
+          data: {
+            id: `job_idempotent_${Date.now()}`,
+            type: "script_generation",
+            status: "completed",
+            projectId: project.id,
+            input: {},
+            result: originalResult,
+            progress: 100,
+            retryCount: 0,
+            maxRetries: 3,
+            priority: "normal",
+            createdBy: user.user.id,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        // 对已完成 job 调 /process，应直接返回当前态，不重复执行
+        const processResponse = await originalFetch(
+          `${baseUrl}/internal/jobs/${completedJob.id}/process`,
+          {
+            method: "POST",
+            headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "dramaflow-internal-key" },
+          },
+        );
+        assert.ok(processResponse.status >= 200 && processResponse.status < 300, "process 应成功返回");
+        const processed = await processResponse.json() as { status: string; result?: { marker?: string } };
+
+        assert.equal(processed.status, "completed", "已完成 job 应直接返回 completed");
+        assert.equal(
+          processed.result?.marker,
+          "original-completed-result",
+          "result 不应被重复执行覆盖",
+        );
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
 
   console.log("api tests passed");
 }

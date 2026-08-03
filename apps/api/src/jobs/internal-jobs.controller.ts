@@ -36,4 +36,14 @@ export class InternalJobsController {
     // Internal retry uses a system user ID; the retryJob method only checks job status
     return this.jobsService.retryJob("system", jobId);
   }
+
+  /**
+   * 手动触发滞留任务回收（运维用）。
+   * 定期执行由 JobsMaintenanceService 的 @Interval 自动驱动，此端点供部署后验证
+   * 或外部 cron 调用。
+   */
+  @Post("reap")
+  async reapStaleJobs() {
+    return this.jobsService.reapStaleJobs();
+  }
 }

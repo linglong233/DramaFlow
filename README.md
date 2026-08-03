@@ -506,6 +506,11 @@ npm run dev:worker
 | `FFMPEG_PATH` | Path to FFmpeg binary |
 | `EXPORT_KEEP_TEMP` | Keep temporary export files |
 | `WORKER_POLL_INTERVAL_MS` | Worker polling interval |
+| `WORKER_FETCH_TIMEOUT_MS` | Per-request timeout for worker fetches (`/next`, `/process`, `/retry`). A `/process` timeout is treated as failure and triggers retry. Set higher than your slowest AI task to avoid false kills. Default `30000`. |
+| `JOB_STALE_TIMEOUT_MINUTES` | Reaper: a `running` job with no `updatedAt` heartbeat for this many minutes is marked `failed` (recovers jobs orphaned by a crashed worker). Set to a conservative upper bound larger than your slowest provider run. Default `15`. |
+| `JOB_REAP_INTERVAL_MS` | Reaper execution interval. Default `60000`. |
+| `VIDEO_POLL_MIN_INTERVAL_SECONDS` | Minimum interval before the same polling video job can be re-claimed, to prevent multiple worker instances from hammering one job. Default `10`. |
+| `REAP_STALE_JOBS_ENABLED` | Enable the reaper timer. In multi-instance deployments, set to `false` on all but one instance to avoid duplicate reaping. Default `true`. |
 | `DRAMAFLOW_START_INLINE` | Start services inline (no background) |
 | `DRAMAFLOW_START_TIMEOUT_MS` | Startup readiness timeout |
 
@@ -563,6 +568,13 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 **Reverse proxy example (nginx):** terminate TLS, proxy `/` to web:3000 and `/api|/uploads|/docs|/socket.io` to api:4000.
 
 **Known architectural limit (before batch3 BullMQ migration):** single API process handles all AI HTTP calls + in-memory polling worker. For production, run single instance with monitoring; horizontal scaling arrives with batch3.
+
+**Job reliability mechanisms:**
+
+- **Worker graceful shutdown:** the worker traps `SIGTERM`/`SIGINT`, stops scheduling new ticks, and waits up to 5s for the in-flight tick to finish before exiting. All fetches (`/next`, `/process`, `/retry`) are wrapped with try/catch and `AbortSignal.timeout` (`WORKER_FETCH_TIMEOUT_MS`) so a network blip or hung request can't crash the worker via an unhandled rejection.
+- **Stuck-job reaper:** a `running` job whose `updatedAt` heartbeat is older than `JOB_STALE_TIMEOUT_MINUTES` is automatically marked `failed` (with a `task_failed` notification), recovering jobs orphaned by a worker crash. The reaper runs on an `@Interval` (`JOB_REAP_INTERVAL_MS`) inside the API process. In multi-instance deployments set `REAP_STALE_JOBS_ENABLED=false` on all but one instance to avoid duplicate reaping. You can also trigger it manually via `POST /internal/jobs/reap` (protected by the internal API key).
+- **Dispatch idempotency:** `processJob` returns the current state without re-executing when a job is already `completed` or `failed`, so a retry/duplicate call cannot double-spend provider quota.
+- **Video poll race fix:** `claimNextJob`'s video-poll branch now uses `FOR UPDATE SKIP LOCKED` (gated by `VIDEO_POLL_MIN_INTERVAL_SECONDS`) so multiple worker instances cannot simultaneously re-claim the same polling video job.
 
 ## Migrating from Legacy JSON
 

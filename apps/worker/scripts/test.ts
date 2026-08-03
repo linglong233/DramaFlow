@@ -50,8 +50,20 @@ function restoreFetch(): void {
 const testConfig: WorkerConfig = {
   apiUrl: "http://test-api",
   pollIntervalMs: 4000,
+  fetchTimeoutMs: 30000,
   headers: { "x-internal-key": "test-key" },
 };
+
+/** 让 mock fetch 的某个 pattern 抛出指定错误，用于验证 fetchSoft 把网络错误降级 */
+function installRejectingMock(pattern: string, error: unknown): void {
+  capturedUrls = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    capturedUrls.push(url);
+    if (url.includes(pattern)) throw error;
+    return new Response("", { status: 404 });
+  }) as typeof fetch;
+}
 
 // === tests ===
 
@@ -184,4 +196,84 @@ test("resolveWorkerConfig: 应用默认值", () => {
   assert.equal(config.apiUrl, "http://localhost:4000");
   assert.equal(config.pollIntervalMs, 4000);
   assert.equal(config.headers["x-internal-key"], "dramaflow-internal-key");
+});
+
+// === 可靠性测试：fetch 错误降级（不应冒泡成 unhandledRejection） ===
+
+test("可靠性: /next fetch reject（网络错误）→ tick 不抛错，不调用 /process", async () => {
+  installRejectingMock("/internal/jobs/next", new Error("ECONNRESET"));
+  try {
+    await tick(testConfig); // 不应抛错
+    const processIdx = capturedUrls.findIndex((u) => u.includes("/process"));
+    assert.equal(processIdx, -1, "/next 网络错误时不应调用 /process");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("可靠性: /process fetch reject（超时）→ tick 不抛错，并在重试限制内调用 /retry", async () => {
+  let nextCalled = false;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    capturedUrls.push(url);
+    if (url.includes("/internal/jobs/next")) {
+      nextCalled = true;
+      return new Response(JSON.stringify({ id: "job-net", type: "script_generation", retryCount: 0, maxRetries: 3 }), { status: 200 });
+    }
+    if (url.includes("/process")) {
+      throw new DOMException("signal timed out", "TimeoutError");
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await tick(testConfig); // 不应抛错
+    assert.ok(nextCalled, "应调用 /next");
+    const retryIdx = capturedUrls.findIndex((u) => u.includes("/internal/jobs/job-net/retry"));
+    assert.notEqual(retryIdx, -1, "/process 超时应触发 /retry");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("可靠性: /process 超时但已达 maxRetries → 不调用 /retry", async () => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    capturedUrls.push(url);
+    if (url.includes("/internal/jobs/next")) {
+      return new Response(JSON.stringify({ id: "job-max", type: "script_generation", retryCount: 3, maxRetries: 3 }), { status: 200 });
+    }
+    if (url.includes("/process")) {
+      throw new Error("timeout");
+    }
+    return new Response("", { status: 200 });
+  }) as typeof fetch;
+  try {
+    await tick(testConfig); // 不应抛错
+    const retryIdx = capturedUrls.findIndex((u) => u.includes("/retry"));
+    assert.equal(retryIdx, -1, "达到 maxRetries 后即使超时也不应调用 /retry");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("可靠性: /process 返回非 JSON body → 视为完成，不抛错", async () => {
+  installMock({
+    "/internal/jobs/next": async () => ({
+      status: 200,
+      body: JSON.stringify({ id: "job-bad", type: "script_generation", retryCount: 0, maxRetries: 3 }),
+    }),
+    "/process": async () => ({ status: 200, body: "not-json{{{" }),
+  });
+  try {
+    await tick(testConfig); // 不应抛错
+    const retryIdx = capturedUrls.findIndex((u) => u.includes("/retry"));
+    assert.equal(retryIdx, -1, "非 JSON body 不应触发重试");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("resolveWorkerConfig: 解析 WORKER_FETCH_TIMEOUT_MS", () => {
+  const config = resolveWorkerConfig({ WORKER_FETCH_TIMEOUT_MS: "12000" });
+  assert.equal(config.fetchTimeoutMs, 12000);
 });
