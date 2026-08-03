@@ -2,19 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import type { ProviderHealth } from "@dramaflow/shared";
+
 import { apiFetch } from "../api";
-
-export interface ProviderChannelHealth {
-  configured: boolean;
-}
-
-export interface ProviderHealth {
-  text: ProviderChannelHealth;
-  image: ProviderChannelHealth;
-  video: ProviderChannelHealth;
-  tts: ProviderChannelHealth;
-  mockFallback: boolean;
-}
 
 /** 拉 /health/providers，缓存 60s */
 export function useProviderHealth() {

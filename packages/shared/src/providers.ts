@@ -37,3 +37,24 @@ export interface MediaGenerationProvider {
   /** 生成视频 */
   generateVideo(input: GenerateMediaInput & { prompt: string }, config?: LlmProviderConfig): Promise<MediaContent>;
 }
+
+/**
+ * AI provider 配置健康度。
+ *
+ * `configured` 仅反映对应路径的 key 是否存在（非空、非占位），
+ * 不保证 key 有效；运行时调用失败仍可能发生。
+ *
+ * 此类型是后端 `/health/providers` 端点与前端 `useProviderHealth` hook
+ * 的共享契约，避免前后端各自声明导致 desync。
+ */
+export interface ProviderChannelHealth {
+  configured: boolean;
+}
+
+export interface ProviderHealth {
+  text: ProviderChannelHealth;
+  image: ProviderChannelHealth;
+  video: ProviderChannelHealth;
+  tts: ProviderChannelHealth;
+  mockFallback: boolean;
+}

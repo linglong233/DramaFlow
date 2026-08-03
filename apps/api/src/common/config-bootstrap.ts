@@ -6,17 +6,9 @@
  * NODE_ENV=test 跳过 fail-fast；MOCK_FALLBACK=true 仅警告。
  */
 
-export interface ProviderChannelHealth {
-  configured: boolean;
-}
+import type { ProviderHealth } from "@dramaflow/shared";
 
-export interface ProviderHealth {
-  text: ProviderChannelHealth;
-  image: ProviderChannelHealth;
-  video: ProviderChannelHealth;
-  tts: ProviderChannelHealth;
-  mockFallback: boolean;
-}
+export type { ProviderChannelHealth, ProviderHealth } from "@dramaflow/shared";
 
 export interface ValidationResult {
   health: ProviderHealth;

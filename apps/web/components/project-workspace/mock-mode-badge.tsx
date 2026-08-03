@@ -1,7 +1,8 @@
 "use client";
 
+import type { ProviderChannelHealth } from "@dramaflow/shared";
+
 import type { TranslateFn } from "../../lib/i18n";
-import type { ProviderChannelHealth } from "../../lib/hooks/use-provider-health";
 
 interface MockModeBadgeProps {
   t: TranslateFn;
