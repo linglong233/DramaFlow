@@ -4,6 +4,9 @@ dist
 coverage
 .env
 .env.local
+# tsx 运行时缓存：tsx 在缓存根目录变量被解析成 undefined 时，
+# 会在各包 cwd 下生成 undefined/temp/tsx-<user>/ 目录。纯缓存，可安全删除。
+undefined/
 .turbo
 apps/api/data
 apps/api/uploads
