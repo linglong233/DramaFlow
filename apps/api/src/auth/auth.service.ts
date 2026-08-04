@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import argon2 from "argon2";
+import { createHash } from "node:crypto";
 
 import type { ImageGenerationConfig, LlmModelListResponse, LlmProviderConfig, UserRecord } from "@dramaflow/shared";
 
@@ -45,6 +46,17 @@ interface RefreshInput {
 interface ResetPasswordInput {
   token: string;
   nextPassword: string;
+}
+
+/**
+ * 计算 refresh token 的 SHA-256 哈希（十六进制），作为数据库可检索标识。
+ *
+ * refresh token 是 createId 生成的高熵随机串（128 bit），用 SHA-256 即可安全标识，
+ * 不需要 argon2 慢哈希（慢哈希是为低熵人类密码设计的，对高熵 token 只带来延迟和
+ * DoS 放大风险）。配合 tokenHash 上的唯一索引，refresh/logout 可用 findUnique 直接命中。
+ */
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
 /** 认证服务，封装所有身份认证与会话管理业务逻辑 */
@@ -115,14 +127,9 @@ export class AuthService {
       throw new BadRequestException("refreshToken is required");
     }
 
-    const allTokens = await this.prisma.refreshToken.findMany();
-    let refreshRecord: typeof allTokens[0] | undefined;
-    for (const record of allTokens) {
-      if (await argon2.verify(record.tokenHash, token)) {
-        refreshRecord = record;
-        break;
-      }
-    }
+    const refreshRecord = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: sha256Hex(token) },
+    });
 
     if (!refreshRecord || new Date(refreshRecord.expiresAt).getTime() < Date.now()) {
       throw new UnauthorizedException("Refresh token is invalid or expired");
@@ -144,19 +151,9 @@ export class AuthService {
       return { ok: true };
     }
 
-    const allTokens = await this.prisma.refreshToken.findMany();
-    const idsToDelete: string[] = [];
-    for (const record of allTokens) {
-      if (await argon2.verify(record.tokenHash, token)) {
-        idsToDelete.push(record.id);
-      }
-    }
-
-    if (idsToDelete.length > 0) {
-      await this.prisma.refreshToken.deleteMany({
-        where: { id: { in: idsToDelete } },
-      });
-    }
+    await this.prisma.refreshToken.deleteMany({
+      where: { tokenHash: sha256Hex(token) },
+    });
 
     return { ok: true };
   }
@@ -335,7 +332,7 @@ export class AuthService {
         data: {
           id: createId("rt"),
           userId: user.id,
-          tokenHash: await argon2.hash(refreshToken),
+          tokenHash: sha256Hex(refreshToken),
           expiresAt: new Date(expiresAt),
           createdAt: now,
         },

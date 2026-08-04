@@ -4575,6 +4575,70 @@ async function main() {
     });
   });
 
+  // === 改动四 #7: refresh/logout 使用 SHA-256 可检索哈希（非全表扫描） ===
+  await runCase("refresh rotates token and logout invalidates it", async () => {
+    process.env.OPENAI_COMPAT_MOCK_FALLBACK = "true";
+
+    await withHttpApp(async (baseUrl) => {
+      // 注册并拿 refreshToken
+      const registerResponse = await originalFetch(`${baseUrl}/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "refresh-logout@example.com",
+          password: "securepass123",
+          displayName: "Refresh Logout Tester",
+        }),
+      });
+      assert.equal(registerResponse.status, 201);
+      const session = await registerResponse.json() as { accessToken: string; refreshToken: string };
+
+      // refresh 应成功并轮换：返回新 accessToken + 新 refreshToken
+      const refreshResponse = await originalFetch(`${baseUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken: session.refreshToken }),
+      });
+      assert.equal(refreshResponse.status, 201);
+      const newSession = await refreshResponse.json() as { accessToken: string; refreshToken: string };
+      assert.ok(newSession.accessToken, "refresh 应返回新 accessToken");
+      assert.ok(newSession.refreshToken, "refresh 应返回新 refreshToken");
+      assert.notEqual(newSession.refreshToken, session.refreshToken, "refreshToken 应已轮换");
+
+      // 旧 refreshToken 应已失效（轮换时被删除）
+      const oldTokenRefreshResponse = await originalFetch(`${baseUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken: session.refreshToken }),
+      });
+      assert.equal(oldTokenRefreshResponse.status, 401, "旧 refreshToken 应已失效");
+
+      // logout 新 token
+      const logoutResponse = await originalFetch(`${baseUrl}/auth/logout`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken: newSession.refreshToken }),
+      });
+      assert.equal(logoutResponse.status, 201);
+
+      // logout 后该 token 应无法再 refresh
+      const afterLogoutResponse = await originalFetch(`${baseUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken: newSession.refreshToken }),
+      });
+      assert.equal(afterLogoutResponse.status, 401, "logout 后 refreshToken 应无法再使用");
+
+      // 无效 token 也应返回 401（验证不靠全表扫描）
+      const invalidResponse = await originalFetch(`${baseUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken: "totally-invalid-token" }),
+      });
+      assert.equal(invalidResponse.status, 401, "无效 token 应返回 401");
+    });
+  });
+
   console.log("api tests passed");
 }
 
