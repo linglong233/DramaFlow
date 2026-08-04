@@ -3928,6 +3928,23 @@ async function main() {
       });
       assert.equal(viewerExportResponse.status, 403);
 
+      // 单发生成任务也必须用 job.manage 门禁（viewer 无此权限，应被拒绝），
+      // 与 batch-image-jobs / export-jobs 的授权级别一致。
+      const viewerScriptJobResponse = await originalFetch(`${baseUrl}/projects/${project.id}/script-jobs`, {
+        method: "POST",
+        headers: viewerJsonHeaders,
+        body: JSON.stringify({ genre: "test", premise: "test", tone: "test", audience: "test" }),
+      });
+      assert.equal(viewerScriptJobResponse.status, 403, "viewer 不应能创建单发生成任务");
+
+      // writer 同样没有 job.manage（只有 project.edit），也应被拒绝创建单发任务
+      const writerScriptJobResponse = await originalFetch(`${baseUrl}/projects/${project.id}/script-jobs`, {
+        method: "POST",
+        headers: writerJsonHeaders,
+        body: JSON.stringify({ genre: "test", premise: "test", tone: "test", audience: "test" }),
+      });
+      assert.equal(writerScriptJobResponse.status, 403, "writer 无 job.manage 时不应能创建单发生成任务");
+
       const ownerWorkspaceResponse = await originalFetch(`${baseUrl}/projects/${project.id}`, {
         headers: authHeaders(owner.accessToken),
       });

@@ -69,6 +69,13 @@ import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provide
 import { TTSProviderService } from "./tts.provider";
 import { ExportService } from "./export.service";
 import { NovelImportService } from "./novel-import.service";
+import type { ImageProviderAdapter } from "./image-providers/types";
+import { toOpenAiImageLlmConfig as toOpenAiImageLlmConfigShared, toGrokLlmConfig as toGrokLlmConfigShared } from "./image-providers/types";
+import { GeminiImageProviderAdapter } from "./image-providers/gemini-image.provider";
+import { OpenAiCompatibleImageProviderAdapter } from "./image-providers/openai-compatible-image.provider";
+import { SdWebuiImageProviderAdapter } from "./image-providers/sd-webui-image.adapter";
+import { ComfyuiImageProviderAdapter } from "./image-providers/comfyui-image.adapter";
+import { GrokImageProviderAdapter } from "./image-providers/grok-image.provider";
 import {
   applyResolvedVideoReferencesToInput,
   buildBatchVideoReferenceInput,
@@ -168,7 +175,28 @@ export class JobsService {
     @Inject(ExportService) private readonly exportService: ExportService,
     @Inject(NovelImportService) private readonly novelImportService: NovelImportService,
     @Inject(ImpactService) private readonly impactService: ImpactService,
-  ) {}
+  ) {
+    // 图片 provider 注册表：把 5 个底层 provider 包装成统一 adapter，
+    // 消除 processImageJob / generateImageFromPrompt 里的 if/else 硬编码分发。
+    this.imageAdapters = {
+      "google-gemini": new GeminiImageProviderAdapter(this.googleGeminiImageProvider),
+      "openai-compatible": new OpenAiCompatibleImageProviderAdapter(this.mediaProvider),
+      "stable-diffusion": new SdWebuiImageProviderAdapter(this.sdWebuiProvider),
+      "comfyui": new ComfyuiImageProviderAdapter(this.comfyuiProvider),
+      "grok": new GrokImageProviderAdapter(this.grokMediaProvider),
+    };
+  }
+
+  private readonly imageAdapters: Record<ImageGenerationProvider, ImageProviderAdapter>;
+
+  /** 按 provider 查找图片 adapter，未注册时抛错 */
+  private getImageAdapter(provider: ImageGenerationProvider): ImageProviderAdapter {
+    const adapter = this.imageAdapters[provider];
+    if (!adapter) {
+      throw new Error(`Unsupported image provider: ${provider}`);
+    }
+    return adapter;
+  }
 
   private toJobRecord<TInput = Record<string, unknown>, TResult = Record<string, unknown>>(job: any): JobRecord<TInput, TResult> {
     return {
@@ -202,7 +230,7 @@ export class JobsService {
   }
 
   async createScriptJob(userId: string, projectId: string, input: ScriptJobInput) {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     return this.enqueueJob(userId, {
       type: "script_generation",
       projectId,
@@ -215,7 +243,7 @@ export class JobsService {
     projectId: string,
     input: StoryboardJobInput,
   ) {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     return this.enqueueJob(userId, {
       type: "storyboard_generation",
       projectId,
@@ -226,7 +254,7 @@ export class JobsService {
 
   async createImageJob(userId: string, shotId: string, input: CreateImageJobPayload) {
     const payload: MediaJobInput = { ...input, shotId };
-    await this.assertProjectReadable(userId, payload.projectId);
+    await this.assertCanCreateJob(userId, payload.projectId);
     return this.enqueueJob(userId, {
       type: "image_generation",
       projectId: payload.projectId,
@@ -237,7 +265,7 @@ export class JobsService {
 
   async createVideoJob(userId: string, shotId: string, input: MediaJobRequest) {
     const payload: MediaJobInput = { ...input, shotId };
-    await this.assertProjectReadable(userId, payload.projectId);
+    await this.assertCanCreateJob(userId, payload.projectId);
     return this.enqueueJob(userId, {
       type: "video_generation",
       projectId: payload.projectId,
@@ -251,7 +279,7 @@ export class JobsService {
     projectId: string,
     input: SynopsisJobInput,
   ) {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     return this.enqueueJob(userId, {
       type: "synopsis_generation",
       projectId,
@@ -264,7 +292,7 @@ export class JobsService {
     projectId: string,
     input: RewriteJobInput,
   ) {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     return this.enqueueJob(userId, {
       type: "rewrite_segment",
       projectId,
@@ -278,7 +306,7 @@ export class JobsService {
     shotId: string,
     input: { projectId: string; fields: string[]; llmConfigSource?: LlmConfigSource },
   ) {
-    await this.assertProjectReadable(userId, input.projectId);
+    await this.assertCanCreateJob(userId, input.projectId);
     return this.enqueueJob(userId, {
       type: "shot_regenerate",
       projectId: input.projectId,
@@ -292,7 +320,7 @@ export class JobsService {
     projectId: string,
     input: NovelImportJobInput,
   ) {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     return this.enqueueJob(userId, {
       type: "novel_import",
       projectId,
@@ -1134,38 +1162,9 @@ export class JobsService {
     const execution = await this.resolveImageExecution(job);
 
     let generated: GeneratedMediaResult;
-    if (execution.providerKind === "google-gemini") {
-      generated = await this.googleGeminiImageProvider.generateImage({
-        ...job.input,
-        prompt,
-        referenceImage: execution.referenceImage
-          ? {
-              body: execution.referenceImage.body,
-              mimeType: execution.referenceImage.mimeType,
-            }
-          : undefined,
-      }, execution.config) as GeneratedMediaResult;
-    } else if (execution.providerKind === "openai-compatible") {
-      generated = await this.mediaProvider.generateImage(
-        { ...job.input, prompt },
-        this.toOpenAiImageLlmConfig(execution.config!),
-      ) as GeneratedMediaResult;
-    } else if (execution.providerKind === "stable-diffusion") {
-      generated = await this.sdWebuiProvider.generateImage(
-        { ...job.input, prompt },
-        execution.config,
-      ) as GeneratedMediaResult;
-    } else if (execution.providerKind === "comfyui") {
-      generated = await this.comfyuiProvider.generateImage(
-        { ...job.input, prompt },
-        execution.config,
-      ) as GeneratedMediaResult;
-    } else if (execution.providerKind === "grok") {
-      generated = await this.grokMediaProvider.generateImage(
-        { ...job.input, prompt },
-        this.toGrokLlmConfig(execution.config!),
-      ) as GeneratedMediaResult;
-    } else {
+    if (execution.providerKind === "legacy-openai" || !execution.config) {
+      // legacy-openai：无显式 image provider 配置，回退到默认 LLM config + mock SVG。
+      // 不进 registry（"legacy-openai" 不是 ImageGenerationProvider 成员）。
       const config = await this.resolveLlmConfig(job.createdBy, job.projectId);
       try {
         generated = await this.mediaProvider.generateImage({ ...job.input, prompt }, config) as GeneratedMediaResult;
@@ -1186,6 +1185,21 @@ export class JobsService {
         }
       }
       execution.model = config?.model?.trim() || process.env.MEDIA_IMAGE_MODEL || "gpt-image-1";
+    } else {
+      const adapter = this.getImageAdapter(execution.providerKind);
+      generated = await adapter.generateImage(
+        {
+          prompt,
+          shotId: job.input.shotId ?? "",
+          style: job.input.style ?? "",
+          aspectRatio: job.input.aspectRatio ?? "",
+          referenceImage: execution.referenceImage
+            ? { body: execution.referenceImage.body, mimeType: execution.referenceImage.mimeType }
+            : undefined,
+          jobInput: job.input as Record<string, unknown>,
+        },
+        execution.config,
+      ) as GeneratedMediaResult;
     }
 
     generated = {
@@ -1273,7 +1287,7 @@ export class JobsService {
     referenceImageAssetId?: string,
     negativePrompt?: string,
   ): Promise<{ buffer: Buffer; mimeType: string; provider: string; model?: string }> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     const sourceLabel = configSource === "team" ? "team" : "personal";
 
     // Resolve reference image buffer if assetId provided
@@ -1326,22 +1340,13 @@ export class JobsService {
       referenceImageBuffer = undefined; // Don't pass to unsupported providers
     }
 
-    const input = { prompt: effectivePrompt, shotId: "char-ref", style: "portrait", aspectRatio: "1:1", referenceImageBuffer, negativePrompt };
-    let generated: GeneratedMediaResult;
-
-    if (config.provider === "google-gemini") {
-      generated = await this.googleGeminiImageProvider.generateImage(input, config) as GeneratedMediaResult;
-    } else if (config.provider === "openai-compatible") {
-      generated = await this.mediaProvider.generateImage(input, this.toOpenAiImageLlmConfig(config)) as GeneratedMediaResult;
-    } else if (config.provider === "stable-diffusion") {
-      generated = await this.sdWebuiProvider.generateImage(input, config) as GeneratedMediaResult;
-    } else if (config.provider === "comfyui") {
-      generated = await this.comfyuiProvider.generateImage(input, config) as GeneratedMediaResult;
-    } else if (config.provider === "grok") {
-      generated = await this.grokMediaProvider.generateImage(input, this.toGrokLlmConfig(config)) as GeneratedMediaResult;
-    } else {
-      throw new BadRequestException(`Unsupported image provider: ${config.provider}`);
-    }
+    const adapter = this.getImageAdapter(config.provider);
+    // 注意：此路径原本传 referenceImageBuffer（裸 Buffer），但各 provider 期望的字段名/形状不一，
+    // 实际未生效。为保持现有行为，registry 化后不传 referenceImage（避免引入行为变化）。
+    const generated = await adapter.generateImage(
+      { prompt: effectivePrompt, shotId: "char-ref", style: "portrait", aspectRatio: "1:1", negativePrompt },
+      config,
+    ) as GeneratedMediaResult;
 
     const inlineBody = generated.inlineBody
       ? (Buffer.isBuffer(generated.inlineBody)
@@ -2067,6 +2072,22 @@ export class JobsService {
     );
   }
 
+  /**
+   * 校验用户有创建/管理任务的写权限（job.manage）。
+   *
+   * 生成类任务会消耗 provider 配额（图片/视频/TTS/导出/LLM 调用），
+   * 必须用 job.manage 而非 project.view 读权限门禁，与 cancelJob/retryJob/
+   * createBatchImageJobs/createBatchVideoJobs 的授权级别保持一致。
+   */
+  private async assertCanCreateJob(userId: string, projectId: string) {
+    await this.workspaceService.assertProjectPermission(
+      userId,
+      projectId,
+      "job.manage",
+      "You do not have permission to create generation jobs",
+    );
+  }
+
   private normalizeLlmConfig(
     config?: import("@dramaflow/shared").LlmProviderConfig,
   ): import("@dramaflow/shared").LlmProviderConfig | undefined {
@@ -2360,21 +2381,11 @@ export class JobsService {
   }
 
   private toOpenAiImageLlmConfig(config: ImageGenerationConfig): LlmProviderConfig {
-    return {
-      provider: "openai-completions",
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl,
-      model: config.model,
-    };
+    return toOpenAiImageLlmConfigShared(config);
   }
 
   private toGrokLlmConfig(config: ImageGenerationConfig): LlmProviderConfig {
-    return {
-      provider: "grok",
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl,
-      model: config.model || config.grokConfig?.model || "grok-imagine-1.0",
-    };
+    return toGrokLlmConfigShared(config);
   }
 
   private async resolveReferenceImageUrl(userId: string, assetId: string): Promise<string | undefined> {
@@ -2478,7 +2489,7 @@ export class JobsService {
     shotId: string,
     input: { projectId: string; characterId: string; text: string; configSource?: ImageConfigSource },
   ) {
-    await this.assertProjectReadable(userId, input.projectId);
+    await this.assertCanCreateJob(userId, input.projectId);
     return this.enqueueJob(userId, {
       type: "tts_generation",
       projectId: input.projectId,
@@ -2498,7 +2509,7 @@ export class JobsService {
     sceneId: string,
     input: { projectId: string; shotIds?: string[] },
   ): Promise<BatchJobGroupRecord> {
-    await this.assertProjectReadable(userId, input.projectId);
+    await this.assertCanCreateJob(userId, input.projectId);
 
     const storyboardDoc = await this.prisma.document.findFirst({ where: { projectId: input.projectId, type: "storyboard" } });
     const storyboardVersionId = storyboardDoc?.currentVersionId ?? storyboardDoc?.draftVersionId;
@@ -2919,7 +2930,7 @@ export class JobsService {
     input: GenerateScriptInput,
     llmConfigSource?: LlmConfigSource,
   ): AsyncGenerator<StreamChunk> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     const job = await this.enqueueJob(userId, {
       type: "script_generation",
       projectId,
@@ -3025,7 +3036,7 @@ export class JobsService {
     input: GenerateSynopsisInput,
     llmConfigSource?: LlmConfigSource,
   ): AsyncGenerator<StreamChunk> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     const job = await this.enqueueJob(userId, {
       type: "synopsis_generation",
       projectId,
@@ -3109,7 +3120,7 @@ export class JobsService {
     input: GenerateStoryboardInput,
     llmConfigSource?: LlmConfigSource,
   ): AsyncGenerator<StreamChunk> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     const job = await this.enqueueJob(userId, {
       type: "storyboard_generation",
       projectId,
@@ -3222,7 +3233,7 @@ export class JobsService {
     input: RewriteSegmentInput,
     llmConfigSource?: LlmConfigSource,
   ): AsyncGenerator<StreamChunk> {
-    await this.assertProjectReadable(userId, projectId);
+    await this.assertCanCreateJob(userId, projectId);
     const job = await this.enqueueJob(userId, {
       type: "rewrite_segment",
       projectId,
