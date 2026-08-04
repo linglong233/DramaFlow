@@ -9,8 +9,6 @@ import { cp, mkdir, readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { NextConfig } from "next";
 
-const isWindows = process.platform === "win32";
-
 async function mirrorServerChunks(projectDir: string, distDir: string) {
   const resolvedDistDir = isAbsolute(distDir) ? distDir : join(projectDir, distDir);
   const serverDir = join(resolvedDistDir, "server");
@@ -34,15 +32,11 @@ async function mirrorServerChunks(projectDir: string, distDir: string) {
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
-  eslint: {
-    ignoreDuringBuilds: isWindows,
-  },
   experimental: {
-    webpackBuildWorker: isWindows ? false : undefined,
+    // Windows 上禁用 webpack build worker / worker threads 以规避长路径与文件监听问题；
+    // 其他平台同样关闭以保持一致行为（构建以单线程串行运行更稳定）。
+    webpackBuildWorker: false,
     workerThreads: false,
-  },
-  typescript: {
-    ignoreBuildErrors: isWindows,
   },
   compiler: {
     runAfterProductionCompile: async ({ distDir, projectDir }) => {
