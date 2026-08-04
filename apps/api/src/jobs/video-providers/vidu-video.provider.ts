@@ -7,6 +7,8 @@
  * pollJob 通过 GET /ent/v2/img2video/task/{task_id} 查询任务状态。
  */
 
+import { DEFAULT_VIDEO_PROVIDER_MODELS } from "@dramaflow/shared";
+
 import type { VideoProviderAdapter, VideoProviderCreateInput, VideoProviderJobState, VideoProviderPollInput } from "./types";
 import { joinProviderUrl, normalizeStatus, progressForStatus, readString, serializeReferenceParameters } from "./types";
 
@@ -24,7 +26,7 @@ export class ViduVideoProviderAdapter implements VideoProviderAdapter {
         authorization: `Token ${input.config.apiKey ?? ""}`,
       },
       body: JSON.stringify({
-        model: input.config.model || "viduq3-turbo",
+        model: input.config.model || DEFAULT_VIDEO_PROVIDER_MODELS.vidu,
         prompt: input.prompt,
         images,
         ...(input.durationSeconds ? { duration: input.durationSeconds } : {}),

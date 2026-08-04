@@ -13,6 +13,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { DEFAULT_IMAGE_PROVIDER_MODELS } from "@dramaflow/shared";
 import type {
   BatchJobGroupRecord,
   ComposeShotInput,
@@ -1184,7 +1185,7 @@ export class JobsService {
           throw error;
         }
       }
-      execution.model = config?.model?.trim() || process.env.MEDIA_IMAGE_MODEL || "gpt-image-1";
+      execution.model = config?.model?.trim() || process.env.MEDIA_IMAGE_MODEL || DEFAULT_IMAGE_PROVIDER_MODELS["openai-compatible"];
     } else {
       const adapter = this.getImageAdapter(execution.providerKind);
       generated = await adapter.generateImage(

@@ -11,11 +11,13 @@ import type {
   GenerateScriptInput,
   GenerateStoryboardInput,
   GenerateSynopsisInput,
+  ImageGenerationProvider,
   LlmProviderConfig,
   MediaContent,
   RewriteSegmentInput,
   ScriptContent,
   StoryboardContent,
+  VideoGenerationProvider,
 } from "./domain";
 
 /** 文本生成 Provider 接口（剧本、大纲、分镜、改写） */
@@ -58,3 +60,30 @@ export interface ProviderHealth {
   tts: ProviderChannelHealth;
   mockFallback: boolean;
 }
+
+/**
+ * 各视频 provider 的默认 model。前端展示与后端 adapter 请求共用此单一来源，
+ * 避免两侧字符串漂移。运行时若用户/团队配置了具体 model，应优先于本默认值。
+ */
+export const DEFAULT_VIDEO_PROVIDER_MODELS: Record<VideoGenerationProvider, string> = {
+  "grok": "grok-imagine-1.0-video",
+  "minimax": "video-01",
+  "volcengine": "doubao-seedance-1-5-pro-251215",
+  "vidu": "viduq3-turbo",
+  "ali": "wan2.6-i2v-flash",
+  "runway": "gen3a_turbo",
+  "openai-compatible": "",
+};
+
+/**
+ * 各图片 provider 的默认 model。注意 openai-compatible 的默认是 "gpt-image-1"
+ * （与后端 media-generation.provider / jobs.service 的 fallback 对齐）。
+ * 运行时 MEDIA_IMAGE_MODEL env 仍可作为更高优先级的覆盖（由调用方处理）。
+ */
+export const DEFAULT_IMAGE_PROVIDER_MODELS: Record<ImageGenerationProvider, string> = {
+  "google-gemini": "gemini-3.1-flash-image-preview",
+  "grok": "grok-imagine-1.0",
+  "openai-compatible": "gpt-image-1",
+  "stable-diffusion": "",
+  "comfyui": "",
+};

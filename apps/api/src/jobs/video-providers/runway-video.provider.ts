@@ -10,6 +10,8 @@
  * 认证：Bearer API key。
  */
 
+import { DEFAULT_VIDEO_PROVIDER_MODELS } from "@dramaflow/shared";
+
 import type { VideoProviderAdapter, VideoProviderCreateInput, VideoProviderJobState, VideoProviderPollInput } from "./types";
 import { joinProviderUrl, progressForStatus, readString, serializeReferenceParameters } from "./types";
 
@@ -35,7 +37,7 @@ export class RunwayVideoProviderAdapter implements VideoProviderAdapter {
 
     // Runway image_to_video 用 promptImage（单图），text_to_video 用 promptText
     const body: Record<string, unknown> = {
-      model: input.config.model || "gen3a_turbo",
+      model: input.config.model || DEFAULT_VIDEO_PROVIDER_MODELS.runway,
       promptText: input.prompt,
       ...(input.durationSeconds ? { duration: input.durationSeconds } : {}),
     };

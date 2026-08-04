@@ -6,6 +6,8 @@
  * 使用 content 数组，duration 限制在 4-12 秒。
  */
 
+import { DEFAULT_VIDEO_PROVIDER_MODELS } from "@dramaflow/shared";
+
 import type { VideoProviderAdapter, VideoProviderCreateInput, VideoProviderJobState, VideoProviderPollInput } from "./types";
 import { joinProviderUrl, normalizeStatus, progressForStatus, readString, serializeReferenceParameters } from "./types";
 
@@ -24,7 +26,7 @@ export class VolcEngineVideoProviderAdapter implements VideoProviderAdapter {
         authorization: `Bearer ${input.config.apiKey ?? ""}`,
       },
       body: JSON.stringify({
-        model: input.config.model || "doubao-seedance-1-5-pro-251215",
+        model: input.config.model || DEFAULT_VIDEO_PROVIDER_MODELS.volcengine,
         content,
         generate_audio: true,
         ratio: input.aspectRatio || "adaptive",

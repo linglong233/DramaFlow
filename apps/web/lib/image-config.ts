@@ -6,6 +6,10 @@
  * 同时提供旧 ImageGenerationConfig → 新 ProviderEntry 的迁移辅助。
  */
 
+import {
+  DEFAULT_IMAGE_PROVIDER_MODELS,
+  DEFAULT_VIDEO_PROVIDER_MODELS,
+} from "@dramaflow/shared";
 import type {
   ComfyuiConfig,
   ImageGenerationConfig,
@@ -42,26 +46,14 @@ export interface ProviderEntryDraft {
   grokConfig: GrokConfig;
 }
 
-/** 图片 provider 的默认 model */
+/** 图片 provider 的默认 model（单一来源：shared 常量） */
 export function getDefaultImageProviderModel(provider: ImageGenerationProvider): string {
-  switch (provider) {
-    case "google-gemini": return "gemini-3.1-flash-image-preview";
-    case "grok": return "grok-imagine-1.0";
-    default: return "";
-  }
+  return DEFAULT_IMAGE_PROVIDER_MODELS[provider] ?? "";
 }
 
-/** 视频 provider 的默认 model */
+/** 视频 provider 的默认 model（单一来源：shared 常量） */
 export function getDefaultVideoProviderModel(provider: VideoGenerationProvider): string {
-  switch (provider) {
-    case "grok": return "grok-imagine-1.0-video";
-    case "minimax": return "video-01";
-    case "volcengine": return "doubao-seedance-1-5-pro-251215";
-    case "vidu": return "viduq3-turbo";
-    case "ali": return "wan2.6-i2v-flash";
-    case "runway": return "gen3a_turbo";
-    default: return "";
-  }
+  return DEFAULT_VIDEO_PROVIDER_MODELS[provider] ?? "";
 }
 
 /** 创建空白的图片 Provider 草稿 */
@@ -207,17 +199,12 @@ export interface ImageGenerationConfigDraft {
 
 /** @deprecated 使用 toProviderEntryDraft 替代 */
 export function toImageGenerationConfigDraft(config?: LegacyConfigSource): ImageGenerationConfigDraft {
-  const defaultModel = config?.provider === "google-gemini"
-    ? "gemini-3.1-flash-image-preview"
-    : config?.provider === "grok"
-    ? "grok-imagine-1.0"
-    : "";
-
+  const provider = config?.provider ?? "google-gemini";
   return {
-    provider: config?.provider ?? "google-gemini",
+    provider,
     apiKey: config?.apiKey ?? "",
     baseUrl: config?.baseUrl ?? "",
-    model: config?.model ?? defaultModel,
+    model: config?.model ?? DEFAULT_IMAGE_PROVIDER_MODELS[provider] ?? "",
   };
 }
 

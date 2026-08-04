@@ -50,6 +50,7 @@ import {
   type LocationProfile,
   type PermissionOverride,
   type ProviderEntry,
+  type ProjectInviteRecord,
   type ProjectInviteSummary,
   type ProjectMemberPermissionsResponse,
   type ProjectMemberRecord,
@@ -94,16 +95,6 @@ import { LlmProviderService } from "../common/llm-provider.service";
 import { jsonOutput, jsonInput, optionalJsonInput, iso, optionalIso } from "../common/prisma-json";
 import { createId } from "../common/id";
 
-/** 项目邀请记录（Prisma 模式下的本地类型） */
-export interface ProjectInviteRecord {
-  id: string;
-  projectId: string;
-  email: string;
-  role: ProjectRole;
-  createdBy: string;
-  status: "pending" | "accepted";
-  createdAt: string;
-}
 import { NotificationService } from "../notifications/notification.service";
 import { RealtimeEventsService } from "../realtime/realtime.events.service";
 import { AuditService } from "./audit.service";

@@ -6,6 +6,7 @@
  */
 
 import { Injectable } from "@nestjs/common";
+import { DEFAULT_IMAGE_PROVIDER_MODELS } from "@dramaflow/shared";
 import type {
   GenerateMediaInput,
   MediaContent,
@@ -47,7 +48,7 @@ export class OpenAiMediaProvider implements MediaGenerationProvider {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: config?.model || process.env.MEDIA_IMAGE_MODEL || "gpt-image-1",
+        model: config?.model || process.env.MEDIA_IMAGE_MODEL || DEFAULT_IMAGE_PROVIDER_MODELS["openai-compatible"],
         prompt: input.prompt,
         size: input.aspectRatio === "16:9" ? "1536x1024" : "1024x1024",
       }),

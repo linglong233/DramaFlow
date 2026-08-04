@@ -6,6 +6,8 @@
  * 使用 img_url / last_img_url 传递参考图，task_status 在嵌套 output 对象中。
  */
 
+import { DEFAULT_VIDEO_PROVIDER_MODELS } from "@dramaflow/shared";
+
 import type { VideoProviderAdapter, VideoProviderCreateInput, VideoProviderJobState, VideoProviderPollInput } from "./types";
 import { joinProviderUrl, progressForStatus, readString, serializeReferenceParameters } from "./types";
 
@@ -15,7 +17,7 @@ export class AliVideoProviderAdapter implements VideoProviderAdapter {
   readonly provider = "ali" as const;
 
   async createJob(input: VideoProviderCreateInput): Promise<VideoProviderJobState> {
-    const model = input.config.model || "wan2.6-i2v-flash";
+    const model = input.config.model || DEFAULT_VIDEO_PROVIDER_MODELS.ali;
     const aliInput: Record<string, unknown> = {
       prompt: input.prompt,
     };

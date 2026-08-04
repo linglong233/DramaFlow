@@ -124,6 +124,17 @@ export interface ReviewQueueVersionSummary extends Pick<VersionRecord, "id" | "t
   projectName: string;
 }
 
+/** 项目邀请记录（数据层，与 DB 行对应；与面向列表展示的 ProjectInviteSummary 区分） */
+export interface ProjectInviteRecord {
+  id: string;
+  projectId: string;
+  email: string;
+  role: ProjectRole;
+  createdBy: string;
+  status: "pending" | "accepted";
+  createdAt: string;
+}
+
 /** 项目邀请摘要 */
 export interface ProjectInviteSummary {
   id: string;

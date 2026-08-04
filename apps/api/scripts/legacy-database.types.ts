@@ -21,6 +21,7 @@ import type {
   NotificationRecord,
   NovelImportSession,
   ProjectMemberRecord,
+  ProjectInviteRecord,
   ProjectRecord,
   RefreshTokenRecord,
   TeamInviteLinkRecord,
@@ -32,17 +33,6 @@ import type {
   VersionDependencyRecord,
   VersionRecord,
 } from "@dramaflow/shared";
-
-/** 项目邀请记录（开发态专用，未纳入 shared 层） */
-export interface ProjectInviteRecord {
-  id: string;
-  projectId: string;
-  email: string;
-  role: ProjectMemberRecord["role"];
-  createdBy: string;
-  status: "pending" | "accepted";
-  createdAt: string;
-}
 
 /** 开发态 JSON 文件数据库的完整结构 */
 export interface DevDatabase {

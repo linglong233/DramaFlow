@@ -6,6 +6,8 @@
  * 使用 content 数组传递 prompt 和参考图，Bearer token 鉴权。
  */
 
+import { DEFAULT_VIDEO_PROVIDER_MODELS } from "@dramaflow/shared";
+
 import type { VideoProviderAdapter, VideoProviderCreateInput, VideoProviderJobState, VideoProviderPollInput } from "./types";
 import { joinProviderUrl, normalizeStatus, progressForStatus, readString, serializeReferenceParameters } from "./types";
 
@@ -24,7 +26,7 @@ export class MiniMaxVideoProviderAdapter implements VideoProviderAdapter {
         authorization: `Bearer ${input.config.apiKey ?? ""}`,
       },
       body: JSON.stringify({
-        model: input.config.model || "video-01",
+        model: input.config.model || DEFAULT_VIDEO_PROVIDER_MODELS.minimax,
         content,
       }),
     });
