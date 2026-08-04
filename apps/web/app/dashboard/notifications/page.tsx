@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../../lib/api";
+import { useI18n } from "../../../lib/i18n";
 import { queryKeys } from "../../../lib/query-keys";
 
 interface Notification {
@@ -36,6 +37,7 @@ function typeBadgeClass(type?: string): string {
 }
 
 export default function NotificationsPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [offset, setOffset] = useState(0);
@@ -90,14 +92,14 @@ export default function NotificationsPage() {
   return (
     <div className="notifications-page">
       <div className="notifications-page-header">
-        <h1 className="notifications-page-title">Notifications</h1>
+        <h1 className="notifications-page-title">{t("notifications.title")}</h1>
         <button
           className="btn btn-secondary btn-sm"
           type="button"
           onClick={() => markAllRead.mutate()}
           disabled={markAllRead.isPending}
         >
-          Mark all read
+          {t("notifications.markAllRead")}
         </button>
       </div>
 
@@ -107,25 +109,25 @@ export default function NotificationsPage() {
           type="button"
           onClick={() => handleFilterChange("all")}
         >
-          All
+          {t("notifications.filterAll")}
         </button>
         <button
           className={`notifications-filter-tab${filter === "unread" ? " notifications-filter-tab--active" : ""}`}
           type="button"
           onClick={() => handleFilterChange("unread")}
         >
-          Unread
+          {t("notifications.filterUnread")}
         </button>
       </div>
 
       <div className="notifications-list">
         {notificationsQuery.isLoading && offset === 0 && (
-          <div className="notifications-empty">Loading notifications...</div>
+          <div className="notifications-empty">{t("notifications.loading")}</div>
         )}
 
         {!notificationsQuery.isLoading && displayItems.length === 0 && (
           <div className="notifications-empty">
-            {filter === "unread" ? "No unread notifications" : "No notifications yet"}
+            {filter === "unread" ? t("notifications.noUnread") : t("notifications.emptyTitle")}
           </div>
         )}
 
@@ -139,7 +141,7 @@ export default function NotificationsPage() {
             }}
           >
             <div className="notification-row-left">
-              {!n.read && <span className="notification-row-dot" aria-label="Unread" />}
+              {!n.read && <span className="notification-row-dot" aria-label={t("notifications.unreadDot")} />}
               <div className="notification-row-content">
                 <div className="notification-row-title-line">
                   <span className="notification-row-title">{n.title}</span>
@@ -151,7 +153,7 @@ export default function NotificationsPage() {
             <div className="notification-row-meta">
               <span className="notification-row-time">{formatTimestamp(n.createdAt)}</span>
               <span className={`notification-row-status${n.read ? " notification-row-status--read" : ""}`}>
-                {n.read ? "Read" : "Unread"}
+                {n.read ? t("notifications.statusRead") : t("notifications.statusUnread")}
               </span>
             </div>
           </button>
@@ -166,7 +168,7 @@ export default function NotificationsPage() {
             onClick={handleLoadMore}
             disabled={notificationsQuery.isFetching}
           >
-            {notificationsQuery.isFetching ? "Loading..." : "Load more"}
+            {notificationsQuery.isFetching ? t("notifications.loadingMore") : t("notifications.loadMore")}
           </button>
         </div>
       )}

@@ -128,7 +128,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
   const autoAssemble = useMutation({
     mutationFn: () => apiFetch<TimelineRecord>(`/projects/${projectId}/timeline/auto-assemble`, { method: "POST" }),
     onSuccess: () => {
-      setFeedback({ message: "时间线已从分镜自动装配完成", error: null });
+      setFeedback({ message: t("timeline.autoAssembleDone"), error: null });
       onRefresh();
     },
     onError: (err) => setFeedback({ message: null, error: formatApiError(err, t) }),
@@ -139,7 +139,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
     mutationFn: (payload: { duration: number; fps: number; resolution: string; tracks: TimelineTrackRecord[] }) =>
       apiFetch<TimelineRecord>(`/projects/${projectId}/timeline`, { method: "PUT", body: payload }),
     onSuccess: () => {
-      setFeedback({ message: "时间线已保存", error: null });
+      setFeedback({ message: t("timeline.saveDone"), error: null });
       onRefresh();
     },
     onError: (err) => setFeedback({ message: null, error: formatApiError(err, t) }),
@@ -150,7 +150,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
     mutationFn: (input: { resolution: string; fps: number; format: "mp4" | "mov" | "webm"; allowMockFallback?: boolean }) =>
       apiFetch<{ id: string }>(`/projects/${projectId}/export-jobs`, { method: "POST", body: input }),
     onSuccess: (result) => {
-      setFeedback({ message: `导出任务已提交：${result.id}`, error: null });
+      setFeedback({ message: t("timeline.exportSubmitted", { id: result.id }), error: null });
       setShowExportPanel(false);
       setShowMockConfirm(false);
       onRefresh();
@@ -324,7 +324,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             onClick={() => autoAssemble.mutate()}
             disabled={autoAssemble.isPending || !canEditTimeline}
           >
-            {autoAssemble.isPending ? "装配中..." : "⚡ 自动装配"}
+            {autoAssemble.isPending ? t("timeline.assembling") : t("timeline.autoAssemble")}
           </button>
           <button
             className="timeline-btn"
@@ -339,7 +339,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             }}
             disabled={saveMutation.isPending || !timeline || !canEditTimeline}
           >
-            {saveMutation.isPending ? "保存中..." : "💾 保存"}
+            {saveMutation.isPending ? t("timeline.saving") : t("timeline.save")}
           </button>
         </div>
 
@@ -347,7 +347,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
           <button
             className="timeline-btn timeline-btn-icon"
             onClick={() => { setPlayheadTime(0); setIsPlaying(false); }}
-            title="回到起点"
+            title={t("timeline.backToStart")}
           >
             ⏮
           </button>
@@ -369,18 +369,18 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             className="btn btn-ghost btn-sm"
             type="button"
             onClick={() => setMediaPanelOpen(!mediaPanelOpen)}
-            title={mediaPanelOpen ? "Hide media library" : "Show media library"}
+            title={mediaPanelOpen ? t("timeline.hideMedia") : t("timeline.showMedia")}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="2" y="3" width="20" height="14" rx="2" />
               <path d="M8 21h8M12 17v4" />
             </svg>
           </button>
-          <button className="timeline-btn timeline-btn-icon" onClick={() => handleZoom(-10)} title="缩小">
+          <button className="timeline-btn timeline-btn-icon" onClick={() => handleZoom(-10)} title={t("timeline.zoomOut")}>
             <ZoomOutIcon />
           </button>
           <span className="timeline-zoom-label">{Math.round(zoom)}px/s</span>
-          <button className="timeline-btn timeline-btn-icon" onClick={() => handleZoom(10)} title="放大">
+          <button className="timeline-btn timeline-btn-icon" onClick={() => handleZoom(10)} title={t("timeline.zoomIn")}>
             <ZoomInIcon />
           </button>
           <MockModeBadge t={t} mockFallback={providerHealth.data?.mockFallback ?? false} channel={providerHealth.data?.video} />
@@ -389,7 +389,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             onClick={handleExportClick}
             disabled={exportMutation.isPending || totalDuration <= 0 || !canCreateExport}
           >
-            {exportMutation.isPending ? "导出中..." : "🎬 导出视频"}
+            {exportMutation.isPending ? t("timeline.exporting") : t("timeline.exportVideo")}
           </button>
         </div>
       </div>
@@ -414,7 +414,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
               <button
                 className={`timeline-track-mute ${track.isMuted ? "muted" : ""}`}
                 onClick={() => handleTrackMute(track.id)}
-                title={track.isMuted ? "取消静音" : "静音"}
+                title={track.isMuted ? t("timeline.unmute") : t("timeline.mute")}
               >
                 {track.isMuted ? "🔇" : "🔊"}
               </button>
@@ -488,25 +488,25 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
       {/* Properties panel */}
       {selectedClip && (
         <div className="timeline-properties">
-          <h4 className="timeline-properties-title">属性面板</h4>
+          <h4 className="timeline-properties-title">{t("timeline.propertiesTitle")}</h4>
           <div className="timeline-properties-grid">
-            <label>标签</label>
+            <label>{t("timeline.labelLabel")}</label>
             <span>{selectedClip.clip.label ?? "—"}</span>
-            <label>轨道</label>
+            <label>{t("timeline.trackLabel")}</label>
             <span>{selectedClip.track.name}</span>
-            <label>开始时间</label>
+            <label>{t("timeline.startTimeLabel")}</label>
             <span>{formatTime(selectedClip.clip.startTime)}</span>
-            <label>时长</label>
+            <label>{t("timeline.durationLabel")}</label>
             <span>{selectedClip.clip.duration.toFixed(1)}s</span>
             {selectedClip.clip.subtitleText && (
               <>
-                <label>字幕</label>
+                <label>{t("timeline.subtitleLabel")}</label>
                 <span>{selectedClip.clip.subtitleText}</span>
               </>
             )}
             {selectedClip.clip.assetUrl && (
               <>
-                <label>资产</label>
+                <label>{t("timeline.assetLabel")}</label>
                 <span className="timeline-asset-url">{selectedClip.clip.assetUrl}</span>
               </>
             )}
@@ -515,7 +515,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             className="timeline-btn timeline-btn-sm"
             onClick={() => setSelectedClipId(null)}
           >
-            关闭
+            {t("timeline.close")}
           </button>
         </div>
       )}
@@ -523,9 +523,9 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
       {/* Export config panel */}
       {showExportPanel && (
         <div className="timeline-export-config">
-          <h4 className="timeline-exports-title">导出设置</h4>
+          <h4 className="timeline-exports-title">{t("timeline.exportSettingsTitle")}</h4>
           <div className="timeline-export-config-grid">
-            <label>格式</label>
+            <label>{t("timeline.formatLabel")}</label>
             <select
               className="timeline-export-select"
               value={exportFormat}
@@ -535,18 +535,18 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
               <option value="mov">MOV (QuickTime)</option>
               <option value="webm">WebM (VP9)</option>
             </select>
-            <label>分辨率</label>
+            <label>{t("timeline.resolutionLabel")}</label>
             <select
               className="timeline-export-select"
               value={exportResolution}
               onChange={(e) => setExportResolution(e.target.value)}
             >
-              <option value="1080x1920">1080×1920 (竖屏)</option>
-              <option value="1920x1080">1920×1080 (横屏)</option>
-              <option value="720x1280">720×1280 (竖屏低清)</option>
-              <option value="1280x720">1280×720 (横屏低清)</option>
+              <option value="1080x1920">{t("timeline.resPortrait", { res: "1080×1920" })}</option>
+              <option value="1920x1080">{t("timeline.resLandscape", { res: "1920×1080" })}</option>
+              <option value="720x1280">{t("timeline.resPortraitLd", { res: "720×1280" })}</option>
+              <option value="1280x720">{t("timeline.resLandscapeLd", { res: "1280×720" })}</option>
             </select>
-            <label>帧率</label>
+            <label>{t("timeline.fpsLabel")}</label>
             <select
               className="timeline-export-select"
               value={exportFps}
@@ -564,13 +564,13 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
               onClick={() => handleExportSubmit()}
               disabled={exportMutation.isPending}
             >
-              {exportMutation.isPending ? "提交中..." : "开始导出"}
+              {exportMutation.isPending ? t("timeline.submitting") : t("timeline.startExport")}
             </button>
             <button
               className="timeline-btn"
               onClick={() => { setShowExportPanel(false); setShowMockConfirm(false); }}
             >
-              取消
+              {t("timeline.cancel")}
             </button>
           </div>
 
@@ -578,7 +578,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
           {showMockConfirm && (
             <div className="timeline-mock-confirm">
               <p className="timeline-mock-confirm-text">
-                ⚠️ 系统未检测到 FFmpeg，无法生成真实视频。是否使用预览模式导出？
+                {t("timeline.ffmpegMissing")}
               </p>
               <div className="timeline-export-config-actions">
                 <button
@@ -586,13 +586,13 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
                   onClick={() => handleExportSubmit(true)}
                   disabled={exportMutation.isPending}
                 >
-                  使用预览模式
+                  {t("timeline.usePreviewMode")}
                 </button>
                 <button
                   className="timeline-btn"
                   onClick={() => { setShowMockConfirm(false); setShowExportPanel(false); }}
                 >
-                  取消导出
+                  {t("timeline.cancelExport")}
                 </button>
               </div>
             </div>
@@ -603,12 +603,12 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
       {/* Export records */}
       {(data.exports as ExportRecord[] | undefined)?.length ? (
         <div className="timeline-exports">
-          <h4 className="timeline-exports-title">导出记录</h4>
+          <h4 className="timeline-exports-title">{t("timeline.recordsTitle")}</h4>
           <div className="timeline-exports-list">
             {(data.exports as ExportRecord[]).slice(0, 5).map((exp) => (
               <div key={exp.id} className="timeline-export-item">
                 <span className={`timeline-export-status status-${exp.status}`}>
-                  {exp.status === "processing" ? "导出中" : exp.status === "completed" ? "已完成" : exp.status === "failed" ? "失败" : exp.status}
+                  {exp.status === "processing" ? t("timeline.statusProcessing") : exp.status === "completed" ? t("timeline.statusCompleted") : exp.status === "failed" ? t("timeline.statusFailed") : exp.status}
                 </span>
                 <span className="timeline-export-format">{exp.format.toUpperCase()}</span>
                 <span className="timeline-export-res">{exp.resolution}</span>
@@ -622,7 +622,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
                 ) : null}
                 {exp.outputUrl && (
                   <a href={exp.outputUrl} className="timeline-export-download" download>
-                    ⬇ 下载
+                    ⬇ {t("timeline.download")}
                   </a>
                 )}
               </div>
