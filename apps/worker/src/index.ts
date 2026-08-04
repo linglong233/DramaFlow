@@ -16,6 +16,8 @@
  * 被 require/import 时不自动启动，便于单元测试驱动 tick()。
  */
 
+import type { JobRecord } from "@dramaflow/shared";
+
 /** Worker 运行所需的配置（从 env 派生，导出便于测试注入） */
 export interface WorkerConfig {
   apiUrl: string;
@@ -81,7 +83,7 @@ export async function tick(config: WorkerConfig): Promise<void> {
     return;
   }
 
-  const job = JSON.parse(payload) as { id?: string; type?: string; retryCount?: number; maxRetries?: number } | null;
+  const job = JSON.parse(payload) as Pick<JobRecord, "id" | "type" | "retryCount" | "maxRetries"> | null;
   if (!job?.id) {
     process.stdout.write("[worker] idle\n");
     return;

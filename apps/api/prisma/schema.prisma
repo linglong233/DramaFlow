@@ -27,17 +27,6 @@ enum ProjectRole {
   viewer
 }
 
-enum ProjectPermission {
-  project_view
-  project_edit
-  version_review
-  job_manage
-  timeline_edit
-  export_create
-  member_manage
-  permission_manage
-}
-
 enum ReviewPolicyMode {
   inherit
   required

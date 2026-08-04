@@ -5,10 +5,14 @@
  * 定义视频生成 Provider 的通用接口、输入输出类型和工具函数。
  */
 
-import type { VideoGenerationProvider, VideoReferenceMode } from "@dramaflow/shared";
+import type { JobStatus, VideoGenerationProvider, VideoReferenceMode } from "@dramaflow/shared";
 import type { ResolvedVideoReferences } from "../video-reference.utils";
 
-export type NormalizedVideoProviderStatus = "queued" | "running" | "completed" | "failed";
+/**
+ * Provider 侧归一化状态。字面量与 shared JobStatus 完全一致，直接复用为别名，
+ * 让 JobStatus 成为唯一真相源（domain.ts 扩展时这里自动跟随）。
+ */
+export type NormalizedVideoProviderStatus = JobStatus;
 
 export interface VideoProviderConfig {
   provider: VideoGenerationProvider;
