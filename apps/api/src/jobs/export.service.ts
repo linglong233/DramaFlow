@@ -9,10 +9,7 @@ import { Inject, Injectable, BadRequestException } from "@nestjs/common";
 import { spawn } from "node:child_process";
 import { mkdir, rm, stat, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, extname } from "node:path";
-import { createWriteStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { join, dirname } from "node:path";
 import type { ExportRecord, ExportTimelineInput, TimelineRecord, TimelineTrackRecord, TimelineClipRecord } from "@dramaflow/shared";
 
 import { PrismaService } from "../common/prisma.service";
@@ -20,9 +17,13 @@ import { jsonOutput, jsonInput, iso, optionalIso } from "../common/prisma-json";
 import { createId } from "../common/id";
 import { StorageService } from "../storage/storage.service";
 
+import { buildTimelineRenderArgs } from "./timeline-renderer";
+import { validateExportInput, validateTimelineInput } from "@dramaflow/shared";
+
 export type ExportProgressCallback = (percent: number) => void;
 
 interface CollectAssetsOptions {
+  userId?: string;
   failOnUnresolved?: boolean;
   requiredTrackTypes?: Array<TimelineTrackRecord["type"]>;
 }
@@ -31,6 +32,8 @@ interface ResolvedClip {
   clip: TimelineClipRecord;
   trackType: TimelineTrackRecord["type"];
   localPath: string;
+  volume?: number;
+  isMuted?: boolean;
 }
 
 export interface ShotCompositionRenderInput {
@@ -83,6 +86,9 @@ export class ExportService {
     taskId: string,
     onProgress?: ExportProgressCallback,
   ): Promise<ExportRecord> {
+    const validationError = validateExportInput(config) ?? validateTimelineInput(timeline);
+    if (validationError) throw new BadRequestException(validationError);
+    if (timeline.duration <= 0) throw new BadRequestException("Timeline is empty");
     const ffmpegAvailable = await this.checkFfmpegAvailable();
 
     if (!ffmpegAvailable && !config.allowMockFallback) {
@@ -122,7 +128,7 @@ export class ExportService {
       onProgress?.(5);
 
       // Step 1: Collect assets
-      const resolvedClips = await this.collectAssets(timeline, workDir);
+      const resolvedClips = await this.collectAssets(timeline, workDir, { userId, failOnUnresolved: true, requiredTrackTypes: ["video"] });
       onProgress?.(20);
 
       // Step 2: Build and run ffmpeg
@@ -194,6 +200,9 @@ export class ExportService {
     input: ShotCompositionRenderInput,
     onProgress?: ExportProgressCallback,
   ): Promise<ShotCompositionRenderResult> {
+    const validationError = validateExportInput(input);
+    if (validationError) throw new BadRequestException(validationError);
+    if (!Number.isFinite(input.duration) || input.duration <= 0 || input.duration > 21_600) throw new BadRequestException("Invalid composition duration");
     const ffmpegAvailable = await this.checkFfmpegAvailable();
     if (!ffmpegAvailable && !input.allowMockFallback) {
       throw new BadRequestException(
@@ -212,6 +221,7 @@ export class ExportService {
 
       // 严格收集资源：缺失 video 资源直接报错，即使 mock fallback 开启也不例外
       const resolvedClips = await this.collectAssets(timeline, workDir, {
+        userId,
         failOnUnresolved: true,
         requiredTrackTypes: ["video"],
       });
@@ -426,51 +436,36 @@ export class ExportService {
     let index = 0;
 
     for (const track of timeline.tracks) {
+      if (track.isMuted && track.type !== "video") continue;
       for (const clip of track.clips) {
-        if (!clip.assetUrl) {
+        if (track.type === "subtitle") {
+          if (clip.subtitleText?.trim()) resolved.push({ clip, trackType: track.type, localPath: "", volume: track.volume, isMuted: track.isMuted });
+          continue;
+        }
+        if (!clip.assetUrl && !clip.assetId) {
+          if (options.failOnUnresolved) throw new BadRequestException(`Timeline ${track.type} clip has no asset: ${clip.id}`);
           continue;
         }
 
-        const ext = this.inferExtension(clip.assetUrl, track.type);
-        const localName = `asset_${index++}${ext}`;
-        const localPath = join(workDir, "assets", localName);
-
         try {
-          if (clip.assetUrl.startsWith("http://") || clip.assetUrl.startsWith("https://")) {
-            try {
-              await this.downloadFile(clip.assetUrl, localPath);
-            } catch (downloadError) {
-              // HTTP 下载失败时，尝试从本地文件系统直接解析（适配测试和本地存储场景）
-              const uploadsMatch = clip.assetUrl.match(/\/uploads\/(.+)$/);
-              if (uploadsMatch) {
-                const uploadsDir = process.env.UPLOADS_DIR ?? "apps/api/uploads";
-                const relativePath = uploadsMatch[1];
-                const isAbsolute = uploadsDir.includes(":") || uploadsDir.startsWith("/");
-                const localUploadsDir = isAbsolute ? uploadsDir : join(process.cwd(), uploadsDir);
-                const fullPath = join(localUploadsDir, relativePath);
-                await stat(fullPath);
-                resolved.push({ clip, trackType: track.type, localPath: fullPath });
-                continue;
-              }
-              throw downloadError;
-            }
-          } else {
-            // Local file reference — resolve relative to uploads dir
-            const uploadsDir = process.env.UPLOADS_DIR ?? "apps/api/uploads";
-            const relativePath = clip.assetUrl.replace(/^\/uploads\//, "");
-            const fullPath = join(process.cwd(), uploadsDir, relativePath);
-            // Verify the file exists
-            await stat(fullPath);
-            resolved.push({ clip, trackType: track.type, localPath: fullPath });
-            continue;
+          if (!options.userId) throw new Error("Export actor is required");
+          const asset = await this.storageService.readProjectAsset(options.userId, timeline.projectId, clip);
+          const extensions: Record<string, string> = {
+            "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg",
+            "image/gif": ".gif", "image/bmp": ".bmp", "video/mp4": ".mp4", "video/webm": ".webm",
+            "video/quicktime": ".mov", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav",
+            "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/webm": ".webm", "audio/flac": ".flac",
+          };
+          const extension = extensions[asset.mimeType];
+          const isVisual = asset.mimeType.startsWith("image/") || asset.mimeType.startsWith("video/");
+          if (!extension || (track.type === "video" ? !isVisual : !asset.mimeType.startsWith("audio/"))) {
+            throw new Error("Asset media type is incompatible with the timeline track");
           }
-
-          resolved.push({ clip, trackType: track.type, localPath });
+          const localPath = join(workDir, "assets", `asset_${index++}${extension}`);
+          await writeFile(localPath, asset.body);
+          resolved.push({ clip, trackType: track.type, localPath, volume: track.volume, isMuted: track.isMuted });
         } catch {
-          if (options.failOnUnresolved) {
-            throw new BadRequestException(`Shot composition ${track.type} asset could not be resolved: ${clip.assetUrl}`);
-          }
-          process.stdout.write(`[export] skipping unresolvable asset: ${clip.assetUrl}\n`);
+          throw new BadRequestException(`Shot composition ${track.type} asset could not be resolved: ${clip.id}`);
         }
       }
     }
@@ -492,153 +487,8 @@ export class ExportService {
     outputPath: string,
     onProgress?: (percent: number) => void,
   ): Promise<void> {
-    const [width, height] = config.resolution.split("x").map(Number);
-    const w = width || 1080;
-    const h = height || 1920;
-    const totalDuration = timeline.duration || 1;
-
-    const videoClips = clips.filter((c) => c.trackType === "video");
-    const audioClips = clips.filter((c) =>
-      c.trackType === "dialogue" || c.trackType === "music" || c.trackType === "sfx",
-    );
-
-    const args: string[] = [];
-    const filterParts: string[] = [];
-
-    // No clips at all → generate a solid color video
-    if (videoClips.length === 0 && audioClips.length === 0) {
-      args.push(
-        "-f", "lavfi",
-        "-i", `color=c=0x0f172a:s=${w}x${h}:d=${totalDuration}:r=${config.fps}`,
-        "-c:v", this.getVideoCodec(config.format),
-        "-pix_fmt", "yuv420p",
-        "-t", String(totalDuration),
-        "-y", outputPath,
-      );
-      return this.spawnFfmpeg(args, totalDuration, onProgress);
-    }
-
-    // --- Build input list and filter graph ---
-    let inputIndex = 0;
-
-    // Add video inputs
-    const videoInputIndices: Array<{ idx: number; clip: ResolvedClip }> = [];
-    for (const vc of videoClips) {
-      const isImage = this.isImageFile(vc.localPath);
-      if (isImage) {
-        args.push("-loop", "1", "-t", String(vc.clip.duration));
-      }
-      args.push("-i", vc.localPath);
-      videoInputIndices.push({ idx: inputIndex++, clip: vc });
-    }
-
-    // Add audio inputs
-    const audioInputIndices: Array<{ idx: number; clip: ResolvedClip }> = [];
-    for (const ac of audioClips) {
-      args.push("-i", ac.localPath);
-      audioInputIndices.push({ idx: inputIndex++, clip: ac });
-    }
-
-    // --- Video filter chain ---
-    if (videoInputIndices.length > 0) {
-      // Scale and pad each video input, then concat
-      const scaledLabels: string[] = [];
-      for (const { idx } of videoInputIndices) {
-        const label = `v${idx}`;
-        filterParts.push(
-          `[${idx}:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x0f172a,setsar=1,fps=${config.fps}[${label}]`,
-        );
-        scaledLabels.push(`[${label}]`);
-      }
-
-      if (scaledLabels.length === 1) {
-        filterParts.push(`${scaledLabels[0]}copy[outv]`);
-      } else {
-        filterParts.push(
-          `${scaledLabels.join("")}concat=n=${scaledLabels.length}:v=1:a=0[outv]`,
-        );
-      }
-    } else {
-      // No video clips, generate blank
-      args.unshift("-f", "lavfi", "-i", `color=c=0x0f172a:s=${w}x${h}:d=${totalDuration}:r=${config.fps}`);
-      filterParts.push(`[0:v]copy[outv]`);
-      // Shift audio indices
-      for (const ai of audioInputIndices) {
-        ai.idx += 1;
-      }
-      inputIndex += 1;
-    }
-
-    // --- Audio filter chain ---
-    if (audioInputIndices.length > 0) {
-      const delayedLabels: string[] = [];
-      for (const { idx, clip } of audioInputIndices) {
-        const delayMs = Math.round(clip.clip.startTime * 1000);
-        const label = `a${idx}`;
-        filterParts.push(
-          `[${idx}:a]adelay=${delayMs}|${delayMs},apad=pad_dur=0[${label}]`,
-        );
-        delayedLabels.push(`[${label}]`);
-      }
-
-      if (delayedLabels.length === 1) {
-        filterParts.push(`${delayedLabels[0]}acopy[outa]`);
-      } else {
-        filterParts.push(
-          `${delayedLabels.join("")}amix=inputs=${delayedLabels.length}:duration=longest:normalize=0[outa]`,
-        );
-      }
-    }
-
-    // --- Subtitle overlays via drawtext ---
-    const subtitleClips = clips.filter((c) => c.trackType === "subtitle" && c.clip.subtitleText);
-    let videoOutput = "[outv]";
-    for (let i = 0; i < subtitleClips.length; i++) {
-      const sc = subtitleClips[i];
-      const text = this.escapeDrawtextText(sc.clip.subtitleText!);
-      const enable = `between(t,${sc.clip.startTime},${sc.clip.startTime + sc.clip.duration})`;
-      const nextLabel = i === subtitleClips.length - 1 ? "[outvfinal]" : `[subv${i}]`;
-      filterParts.push(
-        `${videoOutput}drawtext=text='${text}':fontsize=36:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-80:enable='${enable}'${nextLabel}`,
-      );
-      videoOutput = nextLabel;
-    }
-
-    if (subtitleClips.length === 0) {
-      // Rename outv to final
-      filterParts.push(`[outv]copy[outvfinal]`);
-    }
-
-    // --- Assemble final command ---
-    if (filterParts.length > 0) {
-      args.push("-filter_complex", filterParts.join(";"));
-    }
-
-    args.push("-map", "[outvfinal]");
-    if (audioInputIndices.length > 0) {
-      args.push("-map", "[outa]");
-    }
-
-    args.push(
-      "-c:v", this.getVideoCodec(config.format),
-      "-pix_fmt", "yuv420p",
-    );
-
-    if (audioInputIndices.length > 0) {
-      args.push("-c:a", this.getAudioCodec(config.format));
-    }
-
-    if (config.bitrate) {
-      args.push("-b:v", config.bitrate);
-    }
-
-    args.push(
-      "-t", String(totalDuration),
-      "-shortest",
-      "-y", outputPath,
-    );
-
-    return this.spawnFfmpeg(args, totalDuration, onProgress);
+    const args = await buildTimelineRenderArgs(clips, timeline, config, outputPath);
+    return this.spawnFfmpeg(args, timeline.duration, onProgress, dirname(outputPath));
   }
 
   /** Spawn ffmpeg child process with progress parsing. */
@@ -646,16 +496,17 @@ export class ExportService {
     args: string[],
     totalDuration: number,
     onProgress?: (percent: number) => void,
+    cwd?: string,
   ): Promise<void> {
     const bin = process.env.FFMPEG_PATH ?? "ffmpeg";
 
     return new Promise<void>((resolve, reject) => {
-      const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], cwd, windowsHide: true });
       let stderr = "";
 
       child.stderr?.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
-        stderr += text;
+        stderr = (stderr + text).slice(-32_768);
 
         // Parse progress: "time=00:01:23.45"
         const timeMatch = text.match(/time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
@@ -684,59 +535,6 @@ export class ExportService {
         }
       });
     });
-  }
-
-  /** Download a remote file to a local path. */
-  private async downloadFile(url: string, destPath: string): Promise<void> {
-    const response = await fetch(url);
-    if (!response.ok || !response.body) {
-      throw new Error(`Failed to download asset: ${url} (HTTP ${response.status})`);
-    }
-    const fileStream = createWriteStream(destPath);
-    await pipeline(Readable.fromWeb(response.body as any), fileStream);
-  }
-
-  /** Infer file extension from URL or track type. */
-  private inferExtension(url: string, trackType: string): string {
-    const urlExt = extname(new URL(url, "http://localhost").pathname).toLowerCase();
-    if (urlExt && urlExt !== ".") {
-      return urlExt;
-    }
-
-    switch (trackType) {
-      case "video": return ".mp4";
-      case "dialogue":
-      case "music":
-      case "sfx": return ".mp3";
-      default: return ".bin";
-    }
-  }
-
-  /** Check if a file path looks like an image. */
-  private isImageFile(filePath: string): boolean {
-    const ext = extname(filePath).toLowerCase();
-    return [".png", ".jpg", ".jpeg", ".svg", ".webp", ".bmp", ".gif"].includes(ext);
-  }
-
-  /** 转义 FFmpeg drawtext 滤镜中的特殊字符 */
-  private escapeDrawtextText(value: string): string {
-    return value
-      .replace(/\\/g, "\\\\")
-      .replace(/'/g, "\\'")
-      .replace(/:/g, "\\:")
-      .replace(/\r?\n/g, "\\n");
-  }
-
-  /** Get the appropriate video codec for the output format. */
-  private getVideoCodec(format: string): string {
-    if (format === "webm") return "libvpx-vp9";
-    return "libx264";
-  }
-
-  /** Get the appropriate audio codec for the output format. */
-  private getAudioCodec(format: string): string {
-    if (format === "webm") return "libopus";
-    return "aac";
   }
 
   private toExportRecord(exp: any): ExportRecord {

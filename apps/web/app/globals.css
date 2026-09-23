@@ -17610,3 +17610,22 @@ textarea.input {
   background-color: var(--danger-bg, #fee2e2);
   color: var(--danger-text, #991b1b);
 }
+/* Production delivery summary */
+.timeline-delivery {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 20px;
+  margin: 12px 0;
+  border: 1px solid var(--color-border, #334155);
+  border-radius: 12px;
+  background: var(--color-surface, #101827);
+}
+.timeline-delivery h3 { margin: 0 0 8px; font-size: 15px; }
+.timeline-delivery p { margin: 6px 0; line-height: 1.6; font-size: 13px; color: var(--color-text-secondary, #a9b5c8); }
+.timeline-delivery .timeline-delivery-error { color: #fbbf24; }
+.timeline-delivery-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+@media (max-width: 900px) {
+  .timeline-delivery { align-items: flex-start; flex-direction: column; }
+}

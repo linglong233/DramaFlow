@@ -73,6 +73,7 @@ export const DEFAULT_VIDEO_PROVIDER_MODELS: Record<VideoGenerationProvider, stri
   "ali": "wan2.6-i2v-flash",
   "runway": "gen3a_turbo",
   "openai-compatible": "",
+  "comfyui": "minimax-h3",
 };
 
 /**

@@ -60,6 +60,23 @@ const baseScriptInput = {
   audience: "Young urban viewers",
 };
 
+test("grok image generation preserves a configured v1 base URL and portrait aspect ratio", async () => {
+  const png = await sharp({ create: { width: 9, height: 16, channels: 3, background: "red" } }).png().toBuffer();
+  let requestUrl = "";
+  let requestBody: Record<string, unknown> = {};
+  globalThis.fetch = (async (url, init) => {
+    requestUrl = String(url);
+    requestBody = JSON.parse(String(init?.body));
+    return Response.json({ data: [{ b64_json: png.toString("base64") }] });
+  }) as typeof fetch;
+  await new GrokMediaProvider().generateImage(
+    { prompt: "Portrait storyboard", shotId: "shot-1", style: "comic", aspectRatio: "9:16" },
+    { provider: "grok", baseUrl: "https://grok.test/v1", apiKey: "test-key", model: "grok-imagine-image-lite" },
+  );
+  assert.equal(requestUrl, "https://grok.test/v1/images/generations");
+  assert.equal(requestBody.aspect_ratio, "9:16");
+});
+
 test.afterEach(() => {
   process.env = { ...originalEnv };
   globalThis.fetch = originalFetch;
@@ -669,6 +686,7 @@ test("video reference transport defaults are provider aware", () => {
   assert.equal(getVideoReferenceTransport("volcengine"), "url");
   assert.equal(getVideoReferenceTransport("vidu"), "url");
   assert.equal(getVideoReferenceTransport("ali"), "url");
+  assert.equal(getVideoReferenceTransport("comfyui"), "data-url");
 });
 
 test("video reference parameter redaction removes data URL payloads", () => {
@@ -746,6 +764,7 @@ test("video provider registry resolves new provider adapters", () => {
   assert.equal(getVideoProviderAdapter("volcengine").provider, "volcengine");
   assert.equal(getVideoProviderAdapter("vidu").provider, "vidu");
   assert.equal(getVideoProviderAdapter("ali").provider, "ali");
+  assert.equal(getVideoProviderAdapter("comfyui").provider, "comfyui");
 });
 
 test("video provider registry rejects unsupported provider ids", () => {
@@ -764,6 +783,7 @@ import { VolcEngineVideoProviderAdapter } from "./video-providers/volcengine-vid
 import { ViduVideoProviderAdapter } from "./video-providers/vidu-video.provider";
 import { AliVideoProviderAdapter } from "./video-providers/ali-video.provider";
 import { RunwayVideoProviderAdapter } from "./video-providers/runway-video.provider";
+import { ComfyuiVideoProviderAdapter } from "./video-providers/comfyui-video.provider";
 
 function videoAdapterInput(overrides: Partial<import("./video-providers/types").VideoProviderCreateInput> = {}) {
   return {
@@ -791,6 +811,157 @@ function videoAdapterInput(overrides: Partial<import("./video-providers/types").
     ...overrides,
   };
 }
+
+test("comfyui H3 adapter submits a direct I2V API workflow", async () => {
+  let promptBody: { prompt: Record<string, { inputs: Record<string, unknown>; class_type: string }> } | undefined;
+  const requestUrls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    requestUrls.push(url);
+    if (url.endsWith("/upload/image")) {
+      return Response.json({ name: "dramaflow_h3_1.png" });
+    }
+    if (url.endsWith("/prompt")) {
+      promptBody = JSON.parse(String(init?.body)) as typeof promptBody;
+      return Response.json({ prompt_id: "comfy-prompt-1" });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  const adapter = new ComfyuiVideoProviderAdapter();
+  const state = await adapter.createJob(videoAdapterInput({
+    config: {
+      provider: "comfyui",
+      apiKey: "comfy-key",
+      baseUrl: "https://comfy.test",
+      model: "minimax-h3",
+    },
+    references: {
+      mode: "single",
+      image: {
+        assetId: "asset-frame",
+        url: "https://cdn.test/frame.png",
+        dataUrl: "data:image/png;base64,AA==",
+        mimeType: "image/png",
+        dataUrlMimeType: "image/png",
+      },
+      imageUrl: "data:image/png;base64,AA==",
+      referenceImages: [],
+      referenceImageUrls: [],
+    },
+  }));
+
+  assert.equal(state.providerVideoId, "comfy-prompt-1");
+  assert.equal(state.providerStatus, "queued");
+  assert.deepEqual(requestUrls, [
+    "https://comfy.test/upload/image",
+    "https://comfy.test/prompt",
+  ]);
+  const workflow = promptBody?.prompt ?? {};
+  assert.equal(workflow.df_h3.class_type, "MiniMaxH3ImageToVideo");
+  assert.equal(workflow.df_h3.inputs.width, 768);
+  assert.equal(workflow.df_h3.inputs.height, 432);
+  assert.equal(workflow.df_h3.inputs.length, 124);
+  assert.deepEqual(workflow.df_h3.inputs.first_frame, ["dramaflow_ref_first", 0]);
+  assert.equal(workflow.df_save_video.inputs.format && typeof workflow.df_save_video.inputs.format, "object");
+});
+
+test("comfyui H3 adapter downloads SaveVideo output when polling completes", async () => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/history/comfy-prompt-2")) {
+      return Response.json({
+        "comfy-prompt-2": {
+          status: { status_str: "success", completed: true },
+          outputs: {
+            df_save_video: {
+              images: [{ filename: "DramaFlow_00001_.mp4", subfolder: "video", type: "output" }],
+            },
+          },
+        },
+      });
+    }
+    if (url.includes("/view?")) {
+      return new Response(new Uint8Array([0, 1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  const adapter = new ComfyuiVideoProviderAdapter();
+  const state = await adapter.pollJob("comfy-prompt-2", videoAdapterInput({
+    config: {
+      provider: "comfyui",
+      baseUrl: "https://comfy.test",
+      model: "minimax-h3",
+    },
+    references: {
+      mode: "none",
+      referenceImages: [],
+      referenceImageUrls: [],
+    },
+  }) as never);
+
+  assert.equal(state.providerStatus, "completed");
+  assert.equal(state.mimeType, "video/mp4");
+  assert.equal(state.fileExtension, "mp4");
+  assert.deepEqual(Array.from(state.inlineBody ?? []), [0, 1, 2, 3]);
+});
+
+test("comfyui H3 adapter maps multiple images to the R2V picture slots", async () => {
+  let promptBody: { prompt: Record<string, { inputs: Record<string, unknown>; class_type: string }> } | undefined;
+  let uploadCount = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/upload/image")) {
+      uploadCount += 1;
+      return Response.json({ name: `dramaflow-${uploadCount}.png` });
+    }
+    if (url.endsWith("/prompt")) {
+      promptBody = JSON.parse(String(init?.body)) as typeof promptBody;
+      return Response.json({ prompt_id: "comfy-prompt-r2v" });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  const adapter = new ComfyuiVideoProviderAdapter();
+  await adapter.createJob(videoAdapterInput({
+    config: {
+      provider: "comfyui",
+      baseUrl: "https://comfy.test",
+      model: "minimax-h3",
+    },
+    references: {
+      mode: "multiple",
+      referenceImages: [
+        {
+          assetId: "asset-one",
+          url: "https://cdn.test/one.png",
+          dataUrl: "data:image/png;base64,AA==",
+          mimeType: "image/png",
+          dataUrlMimeType: "image/png",
+        },
+        {
+          assetId: "asset-two",
+          url: "https://cdn.test/two.png",
+          dataUrl: "data:image/png;base64,Ag==",
+          mimeType: "image/png",
+          dataUrlMimeType: "image/png",
+        },
+      ],
+      referenceImageUrls: ["data:image/png;base64,AA==", "data:image/png;base64,Ag=="],
+    },
+  }));
+
+  assert.equal(uploadCount, 2);
+  const workflow = promptBody?.prompt ?? {};
+  assert.equal(workflow.df_h3.class_type, "MiniMaxH3ReferenceToVideo");
+  assert.deepEqual(workflow.df_h3.inputs["ref_images.ref_image_0"], ["dramaflow_ref_0", 0]);
+  assert.deepEqual(workflow.df_h3.inputs["ref_images.ref_image_1"], ["dramaflow_ref_1", 0]);
+  assert.match(String(workflow.df_h3.inputs.prompt), /<Picture 1>/);
+});
 
 test("minimax video adapter sends content array with reference image", async () => {
   let capturedUrl = "";

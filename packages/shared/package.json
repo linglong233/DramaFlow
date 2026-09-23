@@ -7,6 +7,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx scripts/test.ts && tsx --test src/business-rules.test.ts src/version-diff.test.ts"
+    "test": "tsx scripts/test.ts && tsx --test src/business-rules.test.ts src/version-diff.test.ts src/timeline-validation.test.ts"
   }
 }

@@ -10,6 +10,7 @@
  */
 
 import { Injectable } from "@nestjs/common";
+import sharp from "sharp";
 import type {
   GenerateMediaInput,
   MediaContent,
@@ -58,13 +59,18 @@ export class GrokMediaProvider implements MediaGenerationProvider {
     }
 
     const baseUrl = (config?.baseUrl || "http://localhost:8000").replace(/\/$/, "");
+    const apiUrl = new URL(baseUrl);
+    if (apiUrl.protocol !== "https:" && apiUrl.protocol !== "http:") {
+      throw new Error("Grok base URL must use HTTP or HTTPS");
+    }
+    const endpoint = `${baseUrl}${apiUrl.pathname.endsWith("/v1") ? "" : "/v1"}/images/generations`;
     const model = config?.model || "grok-imagine-1.0";
-    console.log(`[GrokMediaProvider] Generating image: ${baseUrl}/v1/images/generations, model=${model}`);
 
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}/v1/images/generations`, {
+      response = await fetch(endpoint, {
         method: "POST",
+        signal: AbortSignal.timeout(120_000),
         headers: {
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           "content-type": "application/json",
@@ -73,7 +79,8 @@ export class GrokMediaProvider implements MediaGenerationProvider {
           model,
           prompt: input.prompt,
           n: 1,
-          response_format: "url",
+          aspect_ratio: input.aspectRatio,
+          response_format: "b64_json",
         }),
       });
     } catch (err) {
@@ -82,8 +89,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
     }
 
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Grok image generation failed with HTTP ${response.status}: ${body.slice(0, 500)}`);
+      throw new Error(`Grok image generation failed with HTTP ${response.status}`);
     }
 
     const data = (await response.json()) as GrokImageResponse;
@@ -93,11 +99,13 @@ export class GrokMediaProvider implements MediaGenerationProvider {
     }
 
     if (item.url) {
-      const imageUrl = this.ensureProtocol(item.url);
-      console.log(`[GrokMediaProvider] Downloading image from: ${imageUrl}`);
+      const imageUrl = new URL(item.url, baseUrl);
+      if (imageUrl.protocol !== "https:" && imageUrl.protocol !== "http:") {
+        throw new Error("Grok image URL must use HTTP or HTTPS");
+      }
       let imageResponse: Response;
       try {
-        imageResponse = await fetch(imageUrl);
+        imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(60_000) });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         throw new Error(`Grok image download failed: ${message}`);
@@ -105,7 +113,7 @@ export class GrokMediaProvider implements MediaGenerationProvider {
       if (!imageResponse.ok) {
         throw new Error(`Grok image download failed with HTTP ${imageResponse.status}`);
       }
-      const body = new Uint8Array(await imageResponse.arrayBuffer());
+      const body = await this.normalizeImage(new Uint8Array(await imageResponse.arrayBuffer()));
       return {
         prompt: input.prompt,
         provider: "grok-image",
@@ -122,12 +130,23 @@ export class GrokMediaProvider implements MediaGenerationProvider {
         provider: "grok-image",
         mimeType: "image/png",
         parameters: { ...input } as Record<string, unknown>,
-        inlineBody: Buffer.from(item.b64_json, "base64"),
+        inlineBody: await this.normalizeImage(Buffer.from(item.b64_json, "base64")),
         fileExtension: "png",
       };
     }
 
     throw new Error("Grok image generation response had no usable image data");
+  }
+
+  private async normalizeImage(body: Uint8Array): Promise<Buffer> {
+    if (body.byteLength === 0 || body.byteLength > 32 * 1024 * 1024) {
+      throw new Error("Grok image response size is invalid");
+    }
+    try {
+      return await sharp(body, { limitInputPixels: 40_000_000 }).rotate().png().toBuffer();
+    } catch {
+      throw new Error("Grok image response is not a decodable image");
+    }
   }
 
   async generateVideo(

@@ -39,6 +39,7 @@ export class UploadsController {
   @Put("uploads/direct/:key")
   @UseGuards(AuthGuard)
   async directUpload(
+    @CurrentUser() user: { id: string },
     @Param("key") key: string,
     @Headers("content-type") contentType: string,
     @Req() request: Request & { body: Buffer },
@@ -47,7 +48,7 @@ export class UploadsController {
     if (decodedKey.includes("..") || decodedKey.startsWith("/")) {
       throw new (await import("@nestjs/common")).BadRequestException("Invalid upload key");
     }
-    return this.storageService.finalizeDirectUpload(decodedKey, contentType ?? "application/octet-stream", request.body);
+    return this.storageService.finalizeDirectUpload(user.id, decodedKey, contentType ?? "application/octet-stream", request.body);
   }
 
   @Get("assets/:id/url")

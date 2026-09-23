@@ -68,6 +68,7 @@ const VIDEO_REFERENCE_TRANSPORT_BY_PROVIDER: Record<VideoReferenceProviderKey, V
   vidu: "url",
   ali: "url",
   runway: "url",
+  comfyui: "data-url",
 };
 
 /** 获取指定视频 Provider 的参考图传输方式 */

@@ -12,6 +12,7 @@ import { VolcEngineVideoProviderAdapter } from "./volcengine-video.provider";
 import { ViduVideoProviderAdapter } from "./vidu-video.provider";
 import { AliVideoProviderAdapter } from "./ali-video.provider";
 import { RunwayVideoProviderAdapter } from "./runway-video.provider";
+import { ComfyuiVideoProviderAdapter } from "./comfyui-video.provider";
 
 const adapters: Record<string, VideoProviderAdapter> = {
   minimax: new MiniMaxVideoProviderAdapter(),
@@ -19,6 +20,7 @@ const adapters: Record<string, VideoProviderAdapter> = {
   vidu: new ViduVideoProviderAdapter(),
   ali: new AliVideoProviderAdapter(),
   runway: new RunwayVideoProviderAdapter(),
+  comfyui: new ComfyuiVideoProviderAdapter(),
 };
 
 export function getVideoProviderAdapter(provider: VideoGenerationProvider): VideoProviderAdapter {

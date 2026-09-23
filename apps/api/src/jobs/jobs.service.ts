@@ -13,7 +13,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { DEFAULT_IMAGE_PROVIDER_MODELS } from "@dramaflow/shared";
+import { DEFAULT_IMAGE_PROVIDER_MODELS, validateExportInput } from "@dramaflow/shared";
 import type {
   BatchJobGroupRecord,
   ComposeShotInput,
@@ -143,6 +143,8 @@ interface VideoJobState extends Record<string, unknown> {
   note?: string;
   assetUrl?: string;
   mimeType?: string;
+  inlineBody?: Buffer | Uint8Array | string;
+  fileExtension?: string;
 }
 
 interface ResolvedImageExecution {
@@ -1489,8 +1491,8 @@ export class JobsService {
       if (videoEntry) {
         const videoConfig = this.providerEntryToConfig(videoEntry);
 
-        // 适配器路由：minimax / volcengine / vidu / ali
-        if (videoEntry.provider === "minimax" || videoEntry.provider === "volcengine" || videoEntry.provider === "vidu" || videoEntry.provider === "ali") {
+        // 适配器路由：minimax / volcengine / vidu / ali / comfyui
+        if (videoEntry.provider === "minimax" || videoEntry.provider === "volcengine" || videoEntry.provider === "vidu" || videoEntry.provider === "ali" || videoEntry.provider === "comfyui") {
           const adapter = getVideoProviderAdapter(videoEntry.provider as VideoGenerationProvider);
           const config = this.providerEntryToVideoProviderConfig(videoEntry);
           const references = await this.resolveVideoReferences(job, videoEntry.provider as VideoReferenceProviderKey);
@@ -1631,7 +1633,21 @@ export class JobsService {
     }
 
     let generated: GeneratedMediaResult;
-    if (state.assetUrl) {
+    if (state.inlineBody) {
+      generated = {
+        prompt: state.prompt,
+        provider: state.provider,
+        mimeType: state.mimeType ?? "video/mp4",
+        parameters: state.parameters,
+        inlineBody: state.inlineBody,
+        fileExtension: state.fileExtension ?? "mp4",
+        providerVideoId: state.providerVideoId,
+        providerStatus: state.providerStatus,
+        progress: 100,
+        mode: state.mode,
+        note: state.note,
+      };
+    } else if (state.assetUrl) {
       generated = {
         prompt: state.prompt,
         provider: state.provider,
@@ -2061,6 +2077,8 @@ export class JobsService {
       note: state.note,
       assetUrl: state.assetUrl,
       mimeType: state.mimeType,
+      inlineBody: state.inlineBody,
+      fileExtension: state.fileExtension,
     };
   }
 
@@ -2295,6 +2313,7 @@ export class JobsService {
       apiKey: entry.apiKey,
       baseUrl: entry.baseUrl,
       model: entry.model,
+      comfyuiConfig: entry.comfyuiConfig,
     };
   }
 
@@ -2715,6 +2734,8 @@ export class JobsService {
       "export.create",
       "You do not have permission to export this project",
     );
+    const validationError = validateExportInput(input);
+    if (validationError) throw new BadRequestException(validationError);
     return this.enqueueJob(userId, {
       type: "export_video",
       projectId,

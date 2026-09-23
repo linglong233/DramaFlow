@@ -146,7 +146,8 @@ export type VideoGenerationProvider =
   | "volcengine"
   | "vidu"
   | "ali"
-  | "runway";
+  | "runway"
+  | "comfyui";
 
 /** 视频生成参考图模式 */
 export type VideoReferenceMode = "none" | "single" | "first_last" | "multiple";
@@ -1287,6 +1288,15 @@ export interface TimelineRecord {
   tracks: TimelineTrackRecord[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TimelineDeliverySummary {
+  visualClipCount: number;
+  missingAssetCount: number;
+  subtitleCount: number;
+  audibleClipCount: number;
+  uncoveredSeconds: number;
+  canExport: boolean;
 }
 
 // =============================================

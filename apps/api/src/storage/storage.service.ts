@@ -59,13 +59,17 @@ export class StorageService {
     return { asset: { ...asset, createdAt: iso(asset.createdAt) }, target };
   }
 
-  async finalizeDirectUpload(key: string, contentType: string, body: Buffer) {
+  async finalizeDirectUpload(userId: string, key: string, contentType: string, body: Buffer) {
     if (this.getDriver() !== "local") {
       throw new BadRequestException("Direct uploads are only supported in local storage mode");
     }
 
-    const stored = await this.localStorage.putObject({ key, body, contentType });
     const asset = await this.prisma.asset.findFirst({ where: { storageKey: key } });
+    if (!asset || asset.createdBy !== userId) throw new ForbiddenException("Upload target does not belong to this user");
+    await this.assertProjectReadable(userId, asset.projectId);
+    if (!Buffer.isBuffer(body) || body.byteLength === 0) throw new BadRequestException("Upload body must contain file bytes");
+    if (contentType !== asset.mimeType) throw new BadRequestException("Upload content type does not match its target");
+    const stored = await this.localStorage.putObject({ key, body, contentType });
     if (asset) {
       await this.prisma.asset.update({
         where: { id: asset.id },
@@ -126,6 +130,18 @@ export class StorageService {
       asset: mappedAsset,
       url: asset.publicUrl ?? (await this.getProvider(asset.storageDriver as "local" | "s3").getObjectUrl(asset.storageKey)),
     };
+  }
+
+  async readProjectAsset(userId: string, projectId: string, reference: { assetId?: string; assetUrl?: string }) {
+    await this.assertProjectReadable(userId, projectId);
+    const asset = reference.assetId
+      ? await this.prisma.asset.findUnique({ where: { id: reference.assetId } })
+      : reference.assetUrl
+        ? await this.prisma.asset.findFirst({ where: { projectId, publicUrl: reference.assetUrl } })
+        : null;
+    if (!asset || asset.projectId !== projectId) throw new NotFoundException("Timeline asset is not registered in this project");
+    const body = await this.getProvider(asset.storageDriver as "local" | "s3").readObject(asset.storageKey);
+    return { body, mimeType: asset.mimeType };
   }
 
   async getAssetBuffer(userId: string, assetId: string) {

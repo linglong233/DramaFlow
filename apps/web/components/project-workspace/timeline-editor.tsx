@@ -10,6 +10,7 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { TimelineRecord, TimelineTrackRecord, TimelineClipRecord, ExportRecord, ProjectWorkspacePayload } from "@dramaflow/shared";
+import { buildTimelineSubtitles, getTimelineDeliverySummary } from "@dramaflow/shared";
 
 import { useI18n } from "../../lib/i18n";
 import { apiFetch, formatApiError } from "../../lib/api";
@@ -123,6 +124,18 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
   const timeline: TimelineRecord | undefined = data.timeline as TimelineRecord | undefined;
   const tracks: TimelineTrackRecord[] = timeline?.tracks ?? [];
   const totalDuration = timeline?.duration ?? 0;
+  const delivery = useMemo(() => timeline ? getTimelineDeliverySummary(timeline) : null, [timeline]);
+
+  function downloadHandoff(kind: "srt" | "json") {
+    if (!timeline) return;
+    const body = kind === "srt" ? buildTimelineSubtitles(timeline) : JSON.stringify(timeline, null, 2);
+    const url = URL.createObjectURL(new Blob([body], { type: kind === "srt" ? "application/x-subrip;charset=utf-8" : "application/json;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${projectId}-timeline.${kind}`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   // Auto-assemble mutation
   const autoAssemble = useMutation({
@@ -164,6 +177,10 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
   }
 
   async function handleExportSubmit(allowMockFallback?: boolean) {
+    if (!delivery?.canExport) {
+      setFeedback({ message: null, error: t("timeline.deliveryBlocked") });
+      return;
+    }
     try {
       const caps = await apiFetch<{ ffmpegAvailable: boolean }>("/export/capabilities");
       if (!caps.ffmpegAvailable && !allowMockFallback) {
@@ -174,7 +191,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
         resolution: exportResolution,
         fps: exportFps,
         format: exportFormat,
-        allowMockFallback: allowMockFallback ?? caps.ffmpegAvailable,
+        allowMockFallback: allowMockFallback === true,
       });
     } catch {
       // If capabilities check fails, try anyway
@@ -254,7 +271,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
 
   // Track mute toggle
   const handleTrackMute = (trackId: string) => {
-    if (!timeline) return;
+    if (!timeline || !canEditTimeline) return;
     const updatedTracks = tracks.map((t) =>
       t.id === trackId ? { ...t, isMuted: !t.isMuted } : t,
     );
@@ -269,22 +286,30 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
   // Drop handler for media assets onto track lanes
   function handleTrackDrop(e: React.DragEvent, trackType: string) {
     e.preventDefault();
+    if (!canEditTimeline) return;
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
-    let asset: { id?: string; type?: string; title?: string; assetUrl?: string; duration?: number };
+    let asset: { id?: string; assetId?: string; type?: string; title?: string; assetUrl?: string; duration?: number; textContent?: string };
     try {
       asset = JSON.parse(raw);
     } catch {
       return;
     }
     if (!asset || typeof asset !== "object") return;
+    const compatible = trackType === "video" ? asset.type === "video" || asset.type === "image"
+      : trackType === "subtitle" ? asset.type === "subtitle" && Boolean(asset.textContent?.trim())
+        : asset.type === "audio";
+    if (!compatible) {
+      setFeedback({ message: null, error: t("timeline.incompatibleAsset") });
+      return;
+    }
 
     const scrollEl = (e.currentTarget as HTMLElement).closest(".timeline-scroll");
     const rect = scrollEl?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left + (scrollEl?.scrollLeft ?? 0);
     const startTime = Math.max(0, x / zoom);
-    const duration = asset.duration ?? 5;
+    const duration = typeof asset.duration === "number" && Number.isFinite(asset.duration) && asset.duration > 0 ? asset.duration : 5;
 
     const updatedTracks = tracks.map((track) => {
       if (track.type !== trackType) return track;
@@ -299,6 +324,8 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             inPoint: 0,
             outPoint: duration,
             assetUrl: asset.assetUrl,
+            assetId: asset.assetId,
+            subtitleText: trackType === "subtitle" ? asset.textContent : undefined,
             label: asset.title ?? "",
             sortOrder: track.clips.length,
           },
@@ -307,7 +334,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
     });
 
     saveMutation.mutate({
-      duration: totalDuration,
+      duration: Math.max(totalDuration, startTime + duration),
       fps: timeline?.fps ?? 30,
       resolution: timeline?.resolution ?? "1080x1920",
       tracks: updatedTracks,
@@ -396,6 +423,19 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
 
       <InlineFeedback message={feedback.message} error={feedback.error} />
 
+      <section className="timeline-delivery" aria-label={t("timeline.deliveryTitle")}>
+        <div>
+          <h3>{t("timeline.deliveryTitle")}</h3>
+          <p>{t("timeline.comicWorkflow")}</p>
+          {delivery && <p role="status">{t("timeline.deliveryCounts", { visuals: delivery.visualClipCount, subtitles: delivery.subtitleCount, missing: delivery.missingAssetCount, gaps: delivery.uncoveredSeconds.toFixed(1) })}</p>}
+          {delivery && !delivery.canExport && <p className="timeline-delivery-error">{t("timeline.deliveryBlocked")}</p>}
+        </div>
+        <div className="timeline-delivery-actions">
+          <button type="button" className="timeline-btn" disabled={!delivery?.subtitleCount || !canCreateExport} onClick={() => downloadHandoff("srt")}>{t("timeline.downloadSubtitles")}</button>
+          <button type="button" className="timeline-btn" disabled={!timeline || !canCreateExport} onClick={() => downloadHandoff("json")}>{t("timeline.downloadTimeline")}</button>
+        </div>
+      </section>
+
       <div className="timeline-content-row">
         {mediaPanelOpen && <MediaLibrary projectId={projectId} data={data} onRefresh={onRefresh} />}
         <div className="timeline-editor-main" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -414,6 +454,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
               <button
                 className={`timeline-track-mute ${track.isMuted ? "muted" : ""}`}
                 onClick={() => handleTrackMute(track.id)}
+                disabled={!canEditTimeline || saveMutation.isPending}
                 title={track.isMuted ? t("timeline.unmute") : t("timeline.mute")}
               >
                 {track.isMuted ? "🔇" : "🔊"}

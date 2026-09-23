@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import {
   canAutoApprove,
+  validateTimelineInput,
   canChangeTeamMemberRole,
   canManageTenant,
   canRemoveTeamMember,
@@ -3019,6 +3020,9 @@ export class WorkspaceService {
       throw new ForbiddenException("You do not have permission to edit the timeline");
     }
 
+    const timelineError = validateTimelineInput(payload);
+    if (timelineError) throw new BadRequestException(timelineError);
+
     const project = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!project) throw new NotFoundException("Project not found");
 
@@ -3123,7 +3127,7 @@ export class WorkspaceService {
         const shots = Array.isArray(sbContent.shots) ? sbContent.shots : [];
 
         for (const shot of shots) {
-          const shotDuration = shot.durationSeconds || 3;
+          const shotDuration = Number.isFinite(shot.durationSeconds) && shot.durationSeconds > 0 ? shot.durationSeconds : 3;
 
           // 优先使用已验收的单镜头合成版本
           const composition = await this.findApprovedShotCompositionVersionAsync(projectId, shot.id);
@@ -3138,8 +3142,7 @@ export class WorkspaceService {
               sortOrder: clipIndex,
               label: shot.shotLabel || `Shot ${clipIndex + 1}`,
               shotId: shot.id,
-              transitionIn: clipIndex > 0 ? "fade" : "none",
-              transitionDuration: clipIndex > 0 ? 0.5 : undefined,
+              transitionIn: "none",
               source: "shot_composition",
             });
             currentTime += shotDuration;
@@ -3147,28 +3150,32 @@ export class WorkspaceService {
             continue;
           }
 
-          // Find adopted video asset for this shot
-          const videoDoc = await this.prisma.document.findFirst({
-            where: { projectId, type: "video", shotId: shot.id },
-          });
-          if (videoDoc && videoDoc.currentVersionId) {
-            const videoVersion = await this.prisma.version.findUnique({ where: { id: videoDoc.currentVersionId } });
-            const videoContent = videoVersion?.content ? jsonOutput<Record<string, unknown>>(videoVersion.content) : undefined;
-            videoTracks.push({
-              id: createId("clip"),
-              assetUrl: (videoContent?.assetUrl as string) ?? undefined,
-              assetId: (videoContent?.assetId as string) ?? undefined,
-              startTime: currentTime,
-              duration: shotDuration,
-              inPoint: 0,
-              sortOrder: clipIndex,
-              label: shot.shotLabel || `Shot ${clipIndex + 1}`,
-              shotId: shot.id,
-              transitionIn: clipIndex > 0 ? "fade" : "none",
-              transitionDuration: clipIndex > 0 ? 0.5 : undefined,
-              source: "timeline_auto_assemble",
-            });
+          const binding = sbContent.mediaBindings?.[shot.id];
+          let visualContent: MediaContent | undefined;
+          for (const type of ["video", "image"] as const) {
+            const document = await this.prisma.document.findFirst({ where: { projectId, type, shotId: shot.id } });
+            const versionId = (type === "video" ? binding?.videoVersionId : binding?.imageVersionId) ?? document?.currentVersionId;
+            if (!document || !versionId) continue;
+            const version = await this.prisma.version.findUnique({ where: { id: versionId } });
+            if (!version || version.documentId !== document.id || version.status !== "approved") continue;
+            const content = jsonOutput<MediaContent>(version.content);
+            if (!content?.assetUrl) continue;
+            visualContent = content;
+            break;
           }
+          videoTracks.push({
+            id: createId("clip"),
+            assetUrl: visualContent?.assetUrl,
+            assetId: visualContent?.assetId,
+            startTime: currentTime,
+            duration: shotDuration,
+            inPoint: 0,
+            sortOrder: clipIndex,
+            label: shot.shotLabel || `Shot ${clipIndex + 1}`,
+            shotId: shot.id,
+            transitionIn: "none",
+            source: "timeline_auto_assemble",
+          });
 
           // Find audio asset for this shot
           const audioDoc = await this.prisma.document.findFirst({
@@ -3299,6 +3306,9 @@ export class WorkspaceService {
       throw new BadRequestException(`Invalid asset type: ${input.type}`);
     }
 
+    const asset = await this.prisma.asset.findUnique({ where: { id: input.assetId } });
+    if (!asset || asset.projectId !== projectId) throw new BadRequestException("Asset does not belong to this project");
+
     const document = await this.ensureDocumentForProject({
       projectId,
       type: input.type as any,
@@ -3313,8 +3323,8 @@ export class WorkspaceService {
       content: {
         prompt: "",
         assetId: input.assetId,
-        assetUrl: input.assetUrl,
-        mimeType: input.mimeType,
+        assetUrl: asset.publicUrl ?? input.assetUrl,
+        mimeType: asset.mimeType,
         provider: "upload",
         mode: "upload",
         note: "用户上传",

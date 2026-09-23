@@ -7,7 +7,7 @@
 
 import { Injectable } from "@nestjs/common";
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type {
   CreateUploadTargetInput,
@@ -68,7 +68,13 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   private resolvePath(key: string) {
-    const basePath = isAbsolute(this.uploadsDir) ? this.uploadsDir : join(process.cwd(), this.uploadsDir);
-    return join(basePath, key);
+    const basePath = resolve(this.uploadsDir);
+    if (!key || isAbsolute(key) || key.includes(":")) throw new Error("Invalid storage key");
+    const target = resolve(basePath, key);
+    const pathWithinRoot = relative(basePath, target);
+    if (!pathWithinRoot || pathWithinRoot === ".." || pathWithinRoot.startsWith(`..${sep}`) || isAbsolute(pathWithinRoot)) {
+      throw new Error("Storage key must stay inside the uploads directory");
+    }
+    return target;
   }
 }

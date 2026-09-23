@@ -16,6 +16,7 @@ type AssetTab = "video" | "audio" | "subtitle" | "image";
 
 interface AssetItem {
   id: string;
+  assetId?: string;
   type: string;
   title: string;
   assetUrl?: string;
@@ -47,6 +48,7 @@ function extractAssets(data: ProjectWorkspacePayload): AssetItem[] {
     const content = version?.content as Record<string, unknown> | undefined;
     assets.push({
       id: doc.id,
+      assetId: typeof content?.assetId === "string" ? content.assetId : undefined,
       type: doc.type,
       title: doc.title,
       assetUrl: (content?.assetUrl as string) ?? undefined,
@@ -109,11 +111,13 @@ export function MediaLibrary({ projectId, data, onRefresh }: MediaLibraryProps) 
         },
       );
 
-      const uploadUrl = target.driver === "local"
-        ? `/api/uploads/direct/${target.key}`
-        : target.url;
-      if (!uploadUrl) throw new Error("No upload URL returned");
-      await fetch(uploadUrl, { method: "PUT", body: file });
+      if (target.driver === "local") {
+        await apiFetch(`/uploads/direct/${encodeURIComponent(target.key)}`, { method: "PUT", body: file, headers: { "content-type": file.type || "application/octet-stream" } });
+      } else {
+        if (!target.url) throw new Error("No upload URL returned");
+        const response = await fetch(target.url, { method: "PUT", body: file, headers: { "content-type": file.type || "application/octet-stream" } });
+        if (!response.ok) throw new Error(`Upload failed: HTTP ${response.status}`);
+      }
 
       await apiFetch(`/projects/${projectId}/assets`, {
         method: "POST",

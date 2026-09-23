@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_VIDEO_PROVIDER_MODELS, type VideoGenerationProvider } from "@dramaflow/shared";
+import { getDefaultVideoProviderModel } from "../lib/image-config";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const globalsCss = readFileSync(join(scriptDir, "../app/globals.css"), "utf8");
@@ -476,11 +478,9 @@ for (const provider of ["minimax", "volcengine", "vidu", "ali", "runway"]) {
 }
 
 assertFileContains("image-config.ts", imageConfigTs, "getDefaultVideoProviderModel");
-assertFileContains("image-config.ts", imageConfigTs, `case "minimax": return "video-01";`);
-assertFileContains("image-config.ts", imageConfigTs, `case "volcengine": return "doubao-seedance-1-5-pro-251215";`);
-assertFileContains("image-config.ts", imageConfigTs, `case "vidu": return "viduq3-turbo";`);
-assertFileContains("image-config.ts", imageConfigTs, `case "ali": return "wan2.6-i2v-flash";`);
-assertFileContains("image-config.ts", imageConfigTs, `case "runway": return "gen3a_turbo";`);
+for (const provider of Object.keys(DEFAULT_VIDEO_PROVIDER_MODELS) as VideoGenerationProvider[]) {
+  assert.equal(getDefaultVideoProviderModel(provider), DEFAULT_VIDEO_PROVIDER_MODELS[provider]);
+}
 
 // Provider form model reset tests
 assertFileContains("provider-entry-form.tsx", providerEntryFormTsx, "getDefaultImageProviderModel");

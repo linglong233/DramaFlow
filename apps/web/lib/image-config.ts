@@ -259,6 +259,7 @@ export const VIDEO_PROVIDER_LABELS: Record<VideoGenerationProvider, string> = {
   "vidu": "Vidu",
   "ali": "Ali DashScope",
   "runway": "Runway",
+  "comfyui": "ComfyUI (MiniMax H3)",
 };
 
 // =============================================

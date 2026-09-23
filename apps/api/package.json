@@ -7,7 +7,7 @@
     "start": "node dist/apps/api/src/main.js",
     "start:dev": "tsx watch src/main.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/jobs/providers.test.ts && tsx scripts/test.ts",
+    "test": "tsx --test src/jobs/providers.test.ts src/jobs/export-render.test.ts src/common/config-bootstrap.test.ts && tsx scripts/test.ts",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "migrate:legacy-json": "tsx scripts/migrate-legacy-json.ts"
