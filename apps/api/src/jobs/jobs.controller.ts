@@ -35,14 +35,20 @@ import type {
   ComposeShotInput,
   ConversationDimension,
   ConversationGeneratePayload,
+  ConversationMessage,
+  ConversationMessageEditPayload,
   ConversationMessagePayload,
+  ConversationMessageRegeneratePayload,
+  ConversationSession,
   EnhanceReferencePromptRequest,
   ImageConfigSource,
   JobStatus,
   JobType,
   LlmConfigSource,
+  LlmProviderConfig,
   WorldBibleReferenceImageGenerateRequest,
   VideoReferenceMode,
+  WorldBibleContent,
 } from "@dramaflow/shared";
 
 import { AuthGuard } from "../common/auth.guard";
@@ -664,24 +670,37 @@ export class JobsController {
     // First message — send AI greeting
     if (session.messages.length === 0 && !body.content.trim()) {
       const greeting = this.conversationService.buildInitialMessage();
-      await this.conversationService.appendMessage(session.id, greeting);
+      const committed = await this.conversationService.commitConversationBranch(
+        session.id,
+        [greeting],
+        session.brief,
+        session.dimensionStatus,
+      );
       this.initSseResponse(res);
-      this.writeSseEvent(res, {
-        type: "done",
-        result: {
-          sessionId: session.id,
-          message: greeting,
-          brief: session.brief,
-          dimensionStatus: session.dimensionStatus,
-        },
-      });
+      this.writeConversationDone(res, committed, committed.messages[0]);
       this.endSseResponse(res);
       return;
     }
 
-    // Append user message
-    const userMessage = { role: "user" as const, content: body.content };
-    const sessionWithUserMessage = await this.conversationService.appendMessage(session.id, userMessage);
+    if (!body.content.trim()) {
+      throw new BadRequestException("Message content cannot be empty");
+    }
+
+    const initialMessages = session.messages.length === 0
+      ? [this.conversationService.buildInitialMessage()]
+      : [];
+    const userMessage = this.conversationService.buildMessage(
+      "user",
+      body.content.trim(),
+      { brief: session.brief, dimensionStatus: session.dimensionStatus },
+      { focusDimension: body.focusDimension },
+    );
+    const sessionWithUserMessage = this.conversationService.buildSessionSnapshot(
+      session,
+      [...session.messages, ...initialMessages, userMessage],
+      session.brief,
+      session.dimensionStatus,
+    );
 
     // Resolve LLM config
     const config = await this.conversationService.resolveTextLlmConfig(
@@ -691,76 +710,113 @@ export class JobsController {
     // Get world bible
     const worldBible = await this.getWorldBible(user.id, projectId);
 
-    this.initSseResponse(res);
-
-    let accumulated = "";
-    for await (const chunk of this.conversationService.streamQaResponse(
-      sessionWithUserMessage,
+    await this.streamConversationQa({
+      res,
+      session: sessionWithUserMessage,
       config,
       worldBible,
-      body.focusDimension,
-    )) {
-      if (chunk.type === "chunk" && chunk.content) {
-        accumulated += chunk.content;
-        this.writeSseEvent(res, chunk);
-      } else if (chunk.type === "error") {
-        this.writeSseEvent(res, chunk);
-      }
+      focusDimension: body.focusDimension,
+      buildFinalMessages: (aiMessage) => [
+        ...session.messages,
+        ...initialMessages,
+        userMessage,
+        aiMessage,
+      ],
+    });
+  }
+
+  @Post("projects/:id/conversation-jobs/message/edit")
+  async editConversationMessage(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: ConversationMessageEditPayload,
+    @Res() res: Response,
+  ) {
+    if (!body.content.trim()) {
+      throw new BadRequestException("Edited message content cannot be empty");
     }
 
-    // Parse AI response to extract brief updates
-    const parsed = this.parseQaResponse(accumulated);
-    if (parsed) {
-      const newStatus = { ...sessionWithUserMessage.dimensionStatus };
-      const briefUpdates = parsed.briefUpdates as Partial<Record<ConversationDimension, string>>;
+    const session = await this.conversationService.getSessionForProject(
+      user.id,
+      projectId,
+      body.sessionId,
+      "project.edit",
+    );
+    const branch = this.conversationService.getMessageBranch(session, body.messageId, "user");
+    const state = { brief: branch.brief, dimensionStatus: branch.dimensionStatus };
+    const editedMessage = this.conversationService.buildMessage(
+      "user",
+      body.content.trim(),
+      state,
+      {
+        id: branch.target.id,
+        focusDimension: body.focusDimension ?? branch.target.focusDimension,
+      },
+    );
+    const sessionForProvider = this.conversationService.buildSessionSnapshot(
+      session,
+      [...branch.prefixMessages, editedMessage],
+      branch.brief,
+      branch.dimensionStatus,
+    );
+    const config = await this.conversationService.resolveTextLlmConfig(
+      user.id,
+      projectId,
+      body.llmConfigSource as LlmConfigSource | undefined,
+    );
+    const worldBible = await this.getWorldBible(user.id, projectId);
 
-      for (const key of Object.keys(briefUpdates) as ConversationDimension[]) {
-        if (briefUpdates[key]?.trim()) {
-          newStatus[key] = "confirmed";
-        }
-      }
+    await this.streamConversationQa({
+      res,
+      session: sessionForProvider,
+      config,
+      worldBible,
+      focusDimension: body.focusDimension ?? branch.target.focusDimension,
+      buildFinalMessages: (aiMessage) => [...branch.prefixMessages, editedMessage, aiMessage],
+    });
+  }
 
-      const updatedSession = await this.conversationService.updateSessionState(
-        session.id,
-        briefUpdates,
-        newStatus,
-      );
-      const aiMessage = await this.conversationService.appendMessage(session.id, {
-        role: "ai",
-        content: parsed.reply || accumulated,
-      });
+  @Post("projects/:id/conversation-jobs/message/regenerate")
+  async regenerateConversationMessage(
+    @CurrentUser() user: { id: string },
+    @Param("id") projectId: string,
+    @Body() body: ConversationMessageRegeneratePayload,
+    @Res() res: Response,
+  ) {
+    const session = await this.conversationService.getSessionForProject(
+      user.id,
+      projectId,
+      body.sessionId,
+      "project.edit",
+    );
+    const branch = this.conversationService.getMessageBranch(session, body.messageId, "ai");
+    this.conversationService.assertRegenerableMessage(branch);
 
-      this.writeSseEvent(res, {
-        type: "done",
-        result: {
-          sessionId: session.id,
-          message: aiMessage.messages.at(-1),
-          brief: updatedSession.brief,
-          dimensionStatus: updatedSession.dimensionStatus,
-        },
-      });
-    } else if (accumulated.trim()) {
-      const aiMessage = await this.conversationService.appendMessage(session.id, {
-        role: "ai",
-        content: accumulated,
-      });
-      this.writeSseEvent(res, {
-        type: "done",
-        result: {
-          sessionId: session.id,
-          message: aiMessage.messages.at(-1),
-          brief: aiMessage.brief,
-          dimensionStatus: aiMessage.dimensionStatus,
-        },
-      });
-    } else {
-      this.writeSseEvent(res, {
-        type: "error",
-        error: "AI returned an empty response",
-      });
-    }
+    const sessionForProvider = this.conversationService.buildSessionSnapshot(
+      session,
+      branch.prefixMessages,
+      branch.brief,
+      branch.dimensionStatus,
+    );
+    const config = await this.conversationService.resolveTextLlmConfig(
+      user.id,
+      projectId,
+      body.llmConfigSource as LlmConfigSource | undefined,
+    );
+    const worldBible = await this.getWorldBible(user.id, projectId);
 
-    this.endSseResponse(res);
+    await this.streamConversationQa({
+      res,
+      session: sessionForProvider,
+      config,
+      worldBible,
+      focusDimension: branch.target.focusDimension,
+      aiMessageOptions: {
+        id: branch.target.id,
+        focusDimension: branch.target.focusDimension,
+      },
+      buildFinalMessages: (aiMessage) => [...branch.prefixMessages, aiMessage],
+    });
   }
 
   @Post("projects/:id/conversation-jobs/generate")
@@ -874,6 +930,112 @@ export class JobsController {
   ) {
     await this.conversationService.deleteSession(user.id, projectId, sessionId);
     return { ok: true };
+  }
+
+  private async streamConversationQa(input: {
+    res: Response;
+    session: ConversationSession;
+    config: LlmProviderConfig | undefined;
+    worldBible: WorldBibleContent | null;
+    focusDimension?: ConversationDimension;
+    aiMessageOptions?: {
+      id?: string;
+      focusDimension?: ConversationDimension;
+    };
+    buildFinalMessages: (aiMessage: ConversationMessage) => ConversationMessage[];
+  }): Promise<void> {
+    this.initSseResponse(input.res);
+
+    let accumulated = "";
+    let providerErrored = false;
+
+    try {
+      for await (const chunk of this.conversationService.streamQaResponse(
+        input.session,
+        input.config,
+        input.worldBible,
+        input.focusDimension,
+      )) {
+        if (chunk.type === "chunk" && chunk.content) {
+          accumulated += chunk.content;
+          this.writeSseEvent(input.res, chunk);
+        } else if (chunk.type === "error") {
+          providerErrored = true;
+          this.writeSseEvent(input.res, chunk);
+        }
+      }
+    } catch (error) {
+      providerErrored = true;
+      this.writeSseEvent(input.res, {
+        type: "error",
+        error: error instanceof Error ? error.message : "AI request failed",
+      });
+    }
+
+    if (providerErrored) {
+      this.endSseResponse(input.res);
+      return;
+    }
+
+    if (!accumulated.trim()) {
+      this.writeSseEvent(input.res, {
+        type: "error",
+        error: "AI returned an empty response",
+      });
+      this.endSseResponse(input.res);
+      return;
+    }
+
+    const parsed = this.parseQaResponse(accumulated);
+    const nextState = this.conversationService.mergeMessageState(
+      input.session.brief,
+      input.session.dimensionStatus,
+      parsed?.briefUpdates,
+    );
+    const aiMessage = this.conversationService.buildMessage(
+      "ai",
+      parsed?.reply?.trim() || accumulated,
+      nextState,
+      input.aiMessageOptions,
+    );
+
+    try {
+      const committed = await this.conversationService.commitConversationBranch(
+        input.session.id,
+        input.buildFinalMessages(aiMessage),
+        nextState.brief,
+        nextState.dimensionStatus,
+      );
+      this.writeConversationDone(
+        input.res,
+        committed,
+        committed.messages.at(-1) ?? aiMessage,
+      );
+    } catch (error) {
+      this.writeSseEvent(input.res, {
+        type: "error",
+        error: error instanceof Error ? error.message : "Conversation update failed",
+      });
+    }
+
+    this.endSseResponse(input.res);
+  }
+
+  private writeConversationDone(
+    res: Response,
+    session: ConversationSession,
+    message: ConversationMessage,
+  ): void {
+    this.writeSseEvent(res, {
+      type: "done",
+      result: {
+        sessionId: session.id,
+        message,
+        brief: session.brief,
+        dimensionStatus: session.dimensionStatus,
+        session,
+      },
+    });
   }
 
   private parseQaResponse(raw: string): { reply: string; briefUpdates: Record<string, string> } | null {

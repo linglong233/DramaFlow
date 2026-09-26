@@ -5,7 +5,7 @@
  * 管理对话式 AI 生成的会话状态、QA 维度追踪和简报更新。
  */
 
-import { Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type {
   ConversationBrief,
   ConversationDimension,
@@ -19,7 +19,7 @@ import type {
 } from "@dramaflow/shared";
 
 import { PrismaService } from "../common/prisma.service";
-import { jsonOutput, jsonInput, iso } from "../common/prisma-json";
+import { jsonInput, iso } from "../common/prisma-json";
 import { createId } from "../common/id";
 import { OpenAiCompatTextProvider, StreamChunk } from "./text-generation.provider";
 import { WorkspaceService } from "../workspace/workspace.service";
@@ -64,6 +64,13 @@ function emptyDimensionStatus(): Record<ConversationDimension, ConversationDimen
 
 function emptyBrief(): ConversationBrief {
   return {};
+}
+
+export interface ConversationMessageBranch {
+  target: ConversationMessage;
+  prefixMessages: ConversationMessage[];
+  brief: ConversationBrief;
+  dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
 }
 
 @Injectable()
@@ -160,15 +167,16 @@ export class ConversationService {
       orderBy: { updatedAt: "desc" },
     });
     return sessions.map((s) => {
-      const messages = jsonOutput<ConversationMessage[]>(s.messages);
+      const normalized = this.toConversationSession(s);
+      const messages = normalized.messages;
       return {
         id: s.id,
         firstUserMessage: messages.find((m) => m.role === "user")?.content?.slice(0, 20) ?? "新会话",
         messageCount: messages.length,
-        dimensionStatus: jsonOutput<Record<ConversationDimension, ConversationDimensionStatus>>(s.dimensionStatus),
+        dimensionStatus: normalized.dimensionStatus,
         targetDocType: s.targetDocType as "synopsis" | "script",
-        createdAt: iso(s.createdAt),
-        updatedAt: iso(s.updatedAt),
+        createdAt: normalized.createdAt,
+        updatedAt: normalized.updatedAt,
       };
     });
   }
@@ -183,8 +191,11 @@ export class ConversationService {
   async appendMessage(sessionId: string, message: ConversationMessage): Promise<ConversationSession> {
     const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
     if (!existing) throw new NotFoundException("Conversation session not found");
-    const messages = jsonOutput<ConversationMessage[]>(existing.messages);
-    messages.push(message);
+    const current = this.toConversationSession(existing);
+    const messages = [
+      ...current.messages,
+      this.normalizeMessage(message, current.messages.length, current.id, current.createdAt),
+    ];
     const updated = await this.prisma.conversationSession.update({
       where: { id: sessionId },
       data: {
@@ -194,6 +205,131 @@ export class ConversationService {
     return this.toConversationSession(updated);
   }
 
+  /**
+   * Atomically persist a complete conversation branch.
+   * The provider is called before this method, so a failed stream leaves the
+   * previous message array and state untouched.
+   */
+  async commitConversationBranch(
+    sessionId: string,
+    messages: ConversationMessage[],
+    brief: ConversationBrief,
+    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
+  ): Promise<ConversationSession> {
+    const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
+    if (!existing) throw new NotFoundException("Conversation session not found");
+    const current = this.toConversationSession(existing);
+    const normalizedMessages = messages.map((message, index) =>
+      this.normalizeMessage(message, index, current.id, current.createdAt),
+    );
+    const updated = await this.prisma.conversationSession.update({
+      where: { id: sessionId },
+      data: {
+        messages: jsonInput(normalizedMessages),
+        brief: jsonInput(this.normalizeBrief(brief)),
+        dimensionStatus: jsonInput(this.normalizeDimensionStatus(dimensionStatus)),
+      },
+    });
+    return this.toConversationSession(updated);
+  }
+
+  /** Build an in-memory session used to request a new AI response. */
+  buildSessionSnapshot(
+    session: ConversationSession,
+    messages: ConversationMessage[],
+    brief: ConversationBrief,
+    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
+  ): ConversationSession {
+    return {
+      ...session,
+      messages,
+      brief: this.normalizeBrief(brief),
+      dimensionStatus: this.normalizeDimensionStatus(dimensionStatus),
+    };
+  }
+
+  /** Create a message with server-owned identity and timestamp metadata. */
+  buildMessage(
+    role: ConversationMessage["role"],
+    content: string,
+    state: {
+      brief: ConversationBrief;
+      dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+    },
+    options: {
+      id?: string;
+      createdAt?: string;
+      focusDimension?: ConversationDimension;
+    } = {},
+  ): ConversationMessage {
+    return {
+      id: options.id ?? createId("msg"),
+      role,
+      content,
+      createdAt: options.createdAt ?? new Date().toISOString(),
+      stateAfter: {
+        brief: this.normalizeBrief(state.brief),
+        dimensionStatus: this.normalizeDimensionStatus(state.dimensionStatus),
+      },
+      ...(options.focusDimension ? { focusDimension: options.focusDimension } : {}),
+    };
+  }
+
+  /** Resolve the state immediately before a message, with a safe legacy fallback. */
+  getMessageBranch(
+    session: ConversationSession,
+    messageId: string,
+    expectedRole: ConversationMessage["role"],
+  ): ConversationMessageBranch {
+    const targetIndex = session.messages.findIndex((message) => message.id === messageId);
+    if (targetIndex < 0) {
+      throw new BadRequestException("Conversation message not found");
+    }
+
+    const target = session.messages[targetIndex];
+    if (target.role !== expectedRole) {
+      throw new BadRequestException(
+        expectedRole === "user"
+          ? "Only user messages can be edited"
+          : "Only AI messages can be regenerated",
+      );
+    }
+
+    const prefixMessages = session.messages.slice(0, targetIndex);
+    const stateAfter = prefixMessages.at(-1)?.stateAfter;
+    return {
+      target,
+      prefixMessages,
+      brief: stateAfter ? this.normalizeBrief(stateAfter.brief) : emptyBrief(),
+      dimensionStatus: stateAfter
+        ? this.normalizeDimensionStatus(stateAfter.dimensionStatus)
+        : emptyDimensionStatus(),
+    };
+  }
+
+  assertRegenerableMessage(branch: ConversationMessageBranch): void {
+    if (!branch.prefixMessages.some((message) => message.role === "user")) {
+      throw new BadRequestException("The initial AI greeting cannot be regenerated");
+    }
+  }
+
+  mergeMessageState(
+    brief: ConversationBrief,
+    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>,
+    updates: ConversationBrief | undefined,
+  ): {
+    brief: ConversationBrief;
+    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+  } {
+    const filtered = this.filterBrief(updates);
+    const nextBrief = { ...this.normalizeBrief(brief), ...filtered };
+    const nextStatus = this.normalizeDimensionStatus(dimensionStatus);
+    for (const key of Object.keys(filtered) as ConversationDimension[]) {
+      nextStatus[key] = "confirmed";
+    }
+    return { brief: nextBrief, dimensionStatus: nextStatus };
+  }
+
   async mergeBrief(
     sessionId: string,
     brief: ConversationBrief | undefined,
@@ -201,8 +337,9 @@ export class ConversationService {
     const filtered = this.filterBrief(brief);
     const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
     if (!existing) throw new NotFoundException("Conversation session not found");
-    const currentBrief = jsonOutput<ConversationBrief>(existing.brief);
-    const currentDimensionStatus = jsonOutput<Record<ConversationDimension, ConversationDimensionStatus>>(existing.dimensionStatus);
+    const current = this.toConversationSession(existing);
+    const currentBrief = current.brief;
+    const currentDimensionStatus = current.dimensionStatus;
     const mergedBrief = { ...currentBrief, ...filtered };
     const mergedDimensionStatus = this.confirmDimensionsForBrief(currentDimensionStatus, filtered);
     const updated = await this.prisma.conversationSession.update({
@@ -222,27 +359,29 @@ export class ConversationService {
   ): Promise<ConversationSession> {
     const existing = await this.prisma.conversationSession.findUnique({ where: { id: sessionId } });
     if (!existing) throw new NotFoundException("Conversation session not found");
-    const currentBrief = jsonOutput<ConversationBrief>(existing.brief);
+    const current = this.toConversationSession(existing);
+    const currentBrief = current.brief;
     const updated = await this.prisma.conversationSession.update({
       where: { id: sessionId },
       data: {
-        brief: jsonInput({ ...currentBrief, ...briefUpdates }),
-        dimensionStatus: jsonInput({ ...dimensionStatus }),
+        brief: jsonInput({ ...currentBrief, ...this.filterBrief(briefUpdates) }),
+        dimensionStatus: jsonInput(this.normalizeDimensionStatus(dimensionStatus)),
       },
     });
     return this.toConversationSession(updated);
   }
 
   private toConversationSession(session: any): ConversationSession {
+    const createdAt = iso(session.createdAt);
     return {
       id: session.id,
       projectId: session.projectId,
-      messages: jsonOutput<ConversationMessage[]>(session.messages),
-      brief: jsonOutput<ConversationBrief>(session.brief),
-      dimensionStatus: jsonOutput<Record<ConversationDimension, ConversationDimensionStatus>>(session.dimensionStatus),
+      messages: this.normalizeMessages(session.messages, session.id, createdAt),
+      brief: this.normalizeBrief(session.brief),
+      dimensionStatus: this.normalizeDimensionStatus(session.dimensionStatus),
       targetDocType: session.targetDocType as "synopsis" | "script",
       createdBy: session.createdBy,
-      createdAt: iso(session.createdAt),
+      createdAt,
       updatedAt: iso(session.updatedAt),
     };
   }
@@ -251,9 +390,75 @@ export class ConversationService {
     if (!brief) return {};
     return Object.fromEntries(
       Object.entries(brief)
+        .filter(([key, value]) => DIMENSIONS.includes(key as ConversationDimension))
         .filter(([, value]) => typeof value === "string" && value.trim())
         .map(([key, value]) => [key, String(value).trim()]),
     ) as ConversationBrief;
+  }
+
+  private normalizeBrief(value: unknown): ConversationBrief {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return emptyBrief();
+    return this.filterBrief(value as ConversationBrief);
+  }
+
+  private normalizeDimensionStatus(
+    value: unknown,
+  ): Record<ConversationDimension, ConversationDimensionStatus> {
+    const next = emptyDimensionStatus();
+    if (!value || typeof value !== "object" || Array.isArray(value)) return next;
+    for (const dimension of DIMENSIONS) {
+      const status = (value as Record<string, unknown>)[dimension];
+      if (status === "pending" || status === "discussing" || status === "confirmed") {
+        next[dimension] = status;
+      }
+    }
+    return next;
+  }
+
+  private normalizeMessages(
+    value: unknown,
+    sessionId: string,
+    fallbackCreatedAt: string,
+  ): ConversationMessage[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((message, index) =>
+      this.normalizeMessage(message, index, sessionId, fallbackCreatedAt),
+    );
+  }
+
+  private normalizeMessage(
+    value: unknown,
+    index: number,
+    sessionId: string,
+    fallbackCreatedAt: string,
+  ): ConversationMessage {
+    const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const role = raw.role === "user" ? "user" : "ai";
+    const stateAfterValue = raw.stateAfter;
+    const stateAfter = stateAfterValue && typeof stateAfterValue === "object" && !Array.isArray(stateAfterValue)
+      ? {
+          brief: this.normalizeBrief((stateAfterValue as Record<string, unknown>).brief),
+          dimensionStatus: this.normalizeDimensionStatus(
+            (stateAfterValue as Record<string, unknown>).dimensionStatus,
+          ),
+        }
+      : undefined;
+    const focusDimension = DIMENSIONS.includes(raw.focusDimension as ConversationDimension)
+      ? raw.focusDimension as ConversationDimension
+      : undefined;
+
+    return {
+      id: typeof raw.id === "string" && raw.id.length > 0
+        ? raw.id
+        : `legacy-${sessionId}-${index}`,
+      role,
+      content: typeof raw.content === "string" ? raw.content : "",
+      createdAt: typeof raw.createdAt === "string" && raw.createdAt.length > 0
+        ? raw.createdAt
+        : fallbackCreatedAt,
+      ...(stateAfter ? { stateAfter } : {}),
+      ...(focusDimension ? { focusDimension } : {}),
+    };
   }
 
   private confirmDimensionsForBrief(
@@ -286,10 +491,11 @@ export class ConversationService {
 
   /** Build the initial AI greeting with first question */
   buildInitialMessage(): ConversationMessage {
-    return {
-      role: "ai",
-      content: `你好！我是你的短剧创作助手。在开始生成之前，我想先了解你的故事想法。\n\n${INITIAL_QUESTIONS.coreConflict}`,
-    };
+    return this.buildMessage(
+      "ai",
+      `你好！我是你的短剧创作助手。在开始生成之前，我想先了解你的故事想法。\n\n${INITIAL_QUESTIONS.coreConflict}`,
+      { brief: emptyBrief(), dimensionStatus: emptyDimensionStatus() },
+    );
   }
 
   /** Build a follow-up question for a specific dimension */

@@ -544,12 +544,48 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     router.replace(`?${params.toString()}`, { scroll: false });
   }
 
-  function handleProductionNavigate(target: ProductionNavigationTarget) {
+  async function handleProductionNavigate(target: ProductionNavigationTarget) {
     if (target.documentType) {
-      const doc = documents.find((item) => item.type === target.documentType);
+      const [projectResult, versionsResult] = await Promise.all([
+        projectQuery.refetch(),
+        versionsQuery.refetch(),
+      ]);
+      const refreshError = projectResult.error ?? versionsResult.error;
+
+      if (
+        projectResult.isError ||
+        versionsResult.isError ||
+        !projectResult.data ||
+        !versionsResult.data
+      ) {
+        const errorMessage = formatApiError(
+          refreshError,
+          t,
+          "projectWorkspace.loadErrorDescription",
+        );
+        setFeedback({ message: null, error: errorMessage });
+        toast.error(errorMessage);
+        return;
+      }
+
+      setFeedback({ message: null, error: null });
+      const doc = projectResult.data.documents.find(
+        (item) => item.type === target.documentType,
+      );
       if (doc && doc.id !== VIRTUAL_VIDEO_DOC_ID) {
+        const docVersions = versionsResult.data.versions
+          .filter((version) => version.documentId === doc.id)
+          .sort((left, right) => right.versionNumber - left.versionNumber);
         setSelectedDocId(doc.id);
-        setSelectedVersionId(doc.currentVersionId ?? doc.versions[0]?.id ?? "");
+        setSelectedVersionId(doc.currentVersionId ?? docVersions[0]?.id ?? "");
+      } else if (target.documentType === "synopsis") {
+        const virtualSynopsis = documents.find(
+          (item) => item.id === VIRTUAL_SYNOPSIS_DOC_ID,
+        );
+        if (virtualSynopsis) {
+          setSelectedDocId(virtualSynopsis.id);
+          setSelectedVersionId("");
+        }
       }
     }
     if (target.subTab) {

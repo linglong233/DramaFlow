@@ -1348,8 +1348,15 @@ export type ConversationDimensionStatus = "pending" | "discussing" | "confirmed"
 
 /** 对话消息 */
 export interface ConversationMessage {
+  id: string;
   role: "ai" | "user";
   content: string;
+  createdAt: string;
+  stateAfter?: {
+    brief: ConversationBrief;
+    dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+  };
+  focusDimension?: ConversationDimension;
 }
 
 /** 对话简报（AI 从对话中提炼的结构化摘要） */

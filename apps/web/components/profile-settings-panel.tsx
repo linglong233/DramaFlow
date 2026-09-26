@@ -20,7 +20,6 @@ import type {
 } from "@dramaflow/shared";
 
 import { apiFetch, formatApiError } from "../lib/api";
-import { useFeedback } from "../lib/hooks";
 import {
   IMAGE_PROVIDER_LABELS,
   VIDEO_PROVIDER_LABELS,
@@ -36,9 +35,9 @@ import type { ProviderEntryDraft } from "../lib/image-config";
 import { useI18n } from "../lib/i18n";
 import { buildLlmConfigPayload, toLlmConfigDraft } from "../lib/llm-config";
 import { ErrorState } from "./error-state";
-import { InlineFeedback } from "./inline-feedback";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { ProviderEntryForm } from "./provider-entry-form";
+import { useToast } from "./toast-provider";
 
 interface ProfileSettingsResponse {
   displayName: string;
@@ -105,6 +104,7 @@ function StarIcon({ filled }: { filled: boolean }) {
 
 export function ProfileSettingsPanel() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { t } = useI18n();
   const [displayName, setDisplayName] = useState("");
   const [llmProvider, setLlmProvider] = useState<"openai-completions">("openai-completions");
@@ -143,7 +143,6 @@ export function ProfileSettingsPanel() {
   const [availableModels, setAvailableModels] = useState<LlmModelSummary[]>([]);
   const [hasFetchedModels, setHasFetchedModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
-  const { feedback, setFeedback } = useFeedback();
 
   const profileQuery = useQuery({
     queryKey: ["auth_me"],
@@ -281,10 +280,12 @@ export function ProfileSettingsPanel() {
       });
     },
     onSuccess: async () => {
-      setFeedback({ message: t("settingsPages.profileSettings.saveSuccess"), error: null });
+      toast.success(t("settingsPages.profileSettings.saveSuccess"));
       await queryClient.invalidateQueries({ queryKey: ["auth_me"] });
     },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "settingsPages.profileSettings.saveError") }),
+    onError: (error) => {
+      toast.error(formatApiError(error, t, "settingsPages.profileSettings.saveError"));
+    },
   });
 
   const loadModelsMutation = useMutation({
@@ -350,8 +351,6 @@ export function ProfileSettingsPanel() {
         <h1 className="sp-title">{t("nav.settings")}</h1>
         <p className="sp-desc">{t("settingsPages.profileSettings.description")}</p>
       </header>
-
-      <InlineFeedback message={feedback.message} error={feedback.error} />
 
       {profileQuery.isPending || !profileQuery.data ? (
         <LoadingSkeleton rows={6} />

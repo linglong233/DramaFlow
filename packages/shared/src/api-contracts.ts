@@ -954,12 +954,32 @@ export interface ConversationMessagePayload {
   llmConfigSource?: LlmConfigSource;
 }
 
+/** 编辑用户消息并从该消息处分支请求体 */
+export interface ConversationMessageEditPayload {
+  sessionId: string;
+  messageId: string;
+  content: string;
+  targetDocType: "synopsis" | "script";
+  /** 聚焦的维度（用户点击维度标签时传入） */
+  focusDimension?: ConversationDimension;
+  llmConfigSource?: LlmConfigSource;
+}
+
+/** 在原 AI 消息位置重新生成请求体 */
+export interface ConversationMessageRegeneratePayload {
+  sessionId: string;
+  messageId: string;
+  targetDocType: "synopsis" | "script";
+  llmConfigSource?: LlmConfigSource;
+}
+
 /** AI 回复响应（SSE 流式） */
 export interface ConversationAiResponse {
   sessionId: string;
   message: ConversationMessage;
   brief: ConversationBrief;
   dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+  session: ConversationSession;
 }
 
 /** 基于对话生成请求体 */

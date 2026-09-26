@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { NestFactory } from "@nestjs/core";
 import express from "express";
 import { PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 import { PROJECT_PERMISSIONS } from "@dramaflow/shared";
 
@@ -2919,6 +2920,304 @@ async function main() {
       assert.equal(secondResult.dimensionStatus.protagonist, "confirmed");
       assert.equal(providerRequests[1].messages.some((message) => message.content.includes("主角是被停职的女导演")), true);
       assert.equal(providerRequests[1].systemPrompt.includes("主角设定"), true);
+    });
+  });
+
+  await runCase("conversation message actions branch, regenerate, normalize legacy messages, and preserve failures", async () => {
+    await withHttpApp(async (baseUrl) => {
+      const owner = await registerUser(baseUrl, {
+        email: "conversation-actions-owner@example.com",
+        displayName: "Conversation Actions Owner",
+      });
+      const outsider = await registerUser(baseUrl, {
+        email: "conversation-actions-outsider@example.com",
+        displayName: "Conversation Actions Outsider",
+      });
+      const teamId = owner.team.id;
+      const ownerJsonHeaders = authHeaders(owner.accessToken, true);
+      const outsiderJsonHeaders = authHeaders(outsider.accessToken, true);
+
+      const teamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(teamResponse.status, 200);
+      const team = await teamResponse.json() as { name: string; defaultReviewPolicy: "required" | "bypass" };
+      const updateTeamResponse = await originalFetch(`${baseUrl}/teams/${teamId}`, {
+        method: "PATCH",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          name: team.name,
+          defaultReviewPolicy: team.defaultReviewPolicy,
+          llmConfig: {
+            provider: "openai-completions",
+            apiKey: "conversation-actions-key",
+            baseUrl: "https://example.test/v1",
+            model: "conversation-actions-model",
+            stream: false,
+          },
+        }),
+      });
+      assert.equal(updateTeamResponse.status, 200);
+
+      const createProjectResponse = await originalFetch(`${baseUrl}/projects`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          teamId,
+          name: "Conversation Actions Project",
+          genre: "都市悬疑",
+          reviewPolicyMode: "bypass",
+        }),
+      });
+      assert.equal(createProjectResponse.status, 201);
+      const project = await createProjectResponse.json() as { id: string };
+
+      const providerRequests: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) !== "https://example.test/v1/chat/completions") {
+          return originalFetch(input, init ? { ...init, headers: new Headers(init.headers ?? {}) } : init);
+        }
+
+        const body = JSON.parse(String(init?.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        providerRequests.push({ messages: body.messages });
+        const latestUser = body.messages.filter((message) => message.role === "user").at(-1)?.content ?? "";
+        if (latestUser.includes("FAIL")) {
+          return new Response("provider failed", { status: 500 });
+        }
+
+        const content = latestUser.includes("second")
+          ? JSON.stringify({
+              reply: "第二轮回复",
+              briefUpdates: { protagonist: "第二轮主角" },
+            })
+          : latestUser.includes("edited")
+            ? JSON.stringify({
+                reply: "编辑后的回复",
+                briefUpdates: { coreConflict: "编辑后的冲突" },
+              })
+            : JSON.stringify({
+                reply: "第一轮回复",
+                briefUpdates: { coreConflict: "第一轮冲突" },
+              });
+
+        return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+
+      const firstResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          content: "first user",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(firstResponse.status, 201);
+      const firstResult = lastDoneResult<{
+        sessionId: string;
+        session: { messages: Array<{ id: string; role: string; createdAt: string; stateAfter?: unknown }> };
+      }>(await firstResponse.text());
+      assert.equal(firstResult.session.messages.length, 3);
+      assert.match(firstResult.session.messages[0].id, /^msg_/);
+      assert.match(firstResult.session.messages[0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
+      const firstUserId = firstResult.session.messages[1].id;
+
+      const secondResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          content: "second user",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(secondResponse.status, 201);
+      const secondResult = lastDoneResult<{
+        session: {
+          messages: Array<{ id: string; role: string; content: string; stateAfter?: { brief?: Record<string, string> } }>;
+          brief: { coreConflict?: string; protagonist?: string };
+        };
+      }>(await secondResponse.text());
+      assert.equal(secondResult.session.messages.length, 5);
+      assert.equal(secondResult.session.brief.protagonist, "第二轮主角");
+
+      const editResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message/edit`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          messageId: firstUserId,
+          content: "edited user",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(editResponse.status, 201);
+      const editResult = lastDoneResult<{
+        session: {
+          messages: Array<{ id: string; role: string; content: string }>;
+          brief: { coreConflict?: string; protagonist?: string };
+        };
+      }>(await editResponse.text());
+      assert.equal(editResult.session.messages.length, 3);
+      assert.equal(editResult.session.messages[1].id, firstUserId);
+      assert.equal(editResult.session.messages[1].content, "edited user");
+      assert.equal(editResult.session.brief.coreConflict, "编辑后的冲突");
+      assert.equal(editResult.session.brief.protagonist, undefined);
+      const editedAiId = editResult.session.messages[2].id;
+
+      const secondAfterEditResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          content: "second user",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(secondAfterEditResponse.status, 201);
+      const secondAfterEditResult = lastDoneResult<{
+        session: { messages: Array<{ id: string; role: string; content: string }> };
+      }>(await secondAfterEditResponse.text());
+      assert.equal(secondAfterEditResult.session.messages.length, 5);
+
+      const regenerateResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message/regenerate`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          messageId: editedAiId,
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(regenerateResponse.status, 201);
+      const regenerateResult = lastDoneResult<{
+        session: { messages: Array<{ id: string; role: string; content: string }> };
+      }>(await regenerateResponse.text());
+      assert.equal(regenerateResult.session.messages.length, 3);
+      assert.equal(regenerateResult.session.messages[2].id, editedAiId);
+      assert.equal(regenerateResult.session.messages[2].role, "ai");
+      assert.equal(regenerateResult.session.messages.some((message) => message.content === "second user"), false);
+
+      const editAiResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message/edit`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          messageId: editedAiId,
+          content: "invalid edit",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(editAiResponse.status, 400);
+
+      const regenerateUserResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message/regenerate`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          messageId: firstUserId,
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(regenerateUserResponse.status, 400);
+
+      const regenerateGreetingResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message/regenerate`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          messageId: regenerateResult.session.messages[0].id,
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(regenerateGreetingResponse.status, 400);
+
+      const outsiderEditResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message/edit`, {
+        method: "POST",
+        headers: outsiderJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          messageId: firstUserId,
+          content: "outsider edit",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(outsiderEditResponse.status, 403);
+
+      const beforeFailureResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/${firstResult.sessionId}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      assert.equal(beforeFailureResponse.status, 200);
+      const beforeFailure = await beforeFailureResponse.json() as {
+        messages: Array<{ id: string; content: string }>;
+      };
+      const failureResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/message`, {
+        method: "POST",
+        headers: ownerJsonHeaders,
+        body: JSON.stringify({
+          sessionId: firstResult.sessionId,
+          content: "FAIL",
+          targetDocType: "synopsis",
+          llmConfigSource: "team",
+        }),
+      });
+      assert.equal(failureResponse.status, 201);
+      assert.match(await failureResponse.text(), /Chat failed|provider failed/);
+      const afterFailureResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/${firstResult.sessionId}`, {
+        headers: authHeaders(owner.accessToken),
+      });
+      const afterFailure = await afterFailureResponse.json() as {
+        messages: Array<{ id: string; content: string }>;
+      };
+      assert.deepEqual(afterFailure.messages, beforeFailure.messages);
+
+      const testPrisma = new PrismaClient({
+        datasources: { db: { url: process.env.TEST_DATABASE_URL ?? "" } },
+      });
+      try {
+        const legacySession = await testPrisma.conversationSession.findUnique({
+          where: { id: firstResult.sessionId },
+        });
+        assert.ok(legacySession);
+        const fallbackCreatedAt = legacySession.createdAt.toISOString();
+        await testPrisma.conversationSession.update({
+          where: { id: firstResult.sessionId },
+          data: {
+            messages: [
+              { role: "user", content: "legacy user" },
+              { role: "ai", content: "legacy ai" },
+            ] as unknown as Prisma.InputJsonValue,
+          },
+        });
+
+        const legacyResponse = await originalFetch(`${baseUrl}/projects/${project.id}/conversation-jobs/${firstResult.sessionId}`, {
+          headers: authHeaders(owner.accessToken),
+        });
+        assert.equal(legacyResponse.status, 200);
+        const normalizedLegacy = await legacyResponse.json() as {
+          messages: Array<{ id: string; createdAt: string }>;
+        };
+        assert.equal(normalizedLegacy.messages[0].id, `legacy-${firstResult.sessionId}-0`);
+        assert.equal(normalizedLegacy.messages[1].id, `legacy-${firstResult.sessionId}-1`);
+        assert.equal(normalizedLegacy.messages[0].createdAt, fallbackCreatedAt);
+        assert.equal(normalizedLegacy.messages[1].createdAt, fallbackCreatedAt);
+      } finally {
+        await testPrisma.$disconnect();
+      }
+      assert.ok(providerRequests.length >= 5);
     });
   });
 

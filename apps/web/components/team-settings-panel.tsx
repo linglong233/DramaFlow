@@ -60,6 +60,7 @@ import { ErrorState } from "./error-state";
 import { InlineFeedback } from "./inline-feedback";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { ProviderEntryForm } from "./provider-entry-form";
+import { useToast } from "./toast-provider";
 
 function StarIcon({ filled }: { filled: boolean }) {
   return (
@@ -71,6 +72,7 @@ function StarIcon({ filled }: { filled: boolean }) {
 
 export function TeamSettingsPanel() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const router = useRouter();
   const { t } = useI18n();
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -288,12 +290,14 @@ export function TeamSettingsPanel() {
       });
     },
     onSuccess: async () => {
-      setFeedback({ message: t("settingsPages.teamSettings.saveSuccess"), error: null });
+      toast.success(t("settingsPages.teamSettings.saveSuccess"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.teamSettings(selectedTeamId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.teamOverview(selectedTeamId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.teams });
     },
-    onError: (error) => setFeedback({ message: null, error: formatApiError(error, t, "settingsPages.teamSettings.saveError") }),
+    onError: (error) => {
+      toast.error(formatApiError(error, t, "settingsPages.teamSettings.saveError"));
+    },
   });
 
   // --- 保存权限模板 ---
@@ -303,14 +307,13 @@ export function TeamSettingsPanel() {
       body: { templates: permissionTemplates } satisfies UpdateTeamPermissionTemplatesPayload,
     }),
     onSuccess: async () => {
-      setFeedback({ message: t("settingsPages.teamSettings.permissionTemplatesSaved"), error: null });
+      toast.success(t("settingsPages.teamSettings.permissionTemplatesSaved"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.teamPermissionTemplates(selectedTeamId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.teamSettings(selectedTeamId) });
     },
-    onError: (error) => setFeedback({
-      message: null,
-      error: formatApiError(error, t, "settingsPages.teamSettings.permissionTemplatesSaveFailed"),
-    }),
+    onError: (error) => {
+      toast.error(formatApiError(error, t, "settingsPages.teamSettings.permissionTemplatesSaveFailed"));
+    },
   });
 
   const deleteTeamMutation = useMutation({

@@ -16,6 +16,10 @@ import { normalizeStoryboardContent, normalizeScriptContent } from "@dramaflow/s
 import type { ProjectWorkspacePayload } from "@dramaflow/shared";
 import { buildProductionOverviewModel } from "../lib/hooks/use-production-overview";
 import type { TranslateFn } from "../lib/i18n";
+import {
+  formatConversationTimestamp,
+  normalizeConversationMessages,
+} from "../lib/conversation-message";
 
 /** 最小合法 TranslateFn：直接返回 key 文本，参数插值后回退。 */
 const noopT: TranslateFn = ((key: unknown, params?: Record<string, unknown>) => {
@@ -55,6 +59,27 @@ test("normalizeScriptContent: 非法输入不崩溃", () => {
   const malformed = normalizeScriptContent({ characters: "x", scenes: 123 });
   assert.ok(malformed, "畸形输入不应崩溃");
   assert.ok(Array.isArray(malformed.scenes));
+});
+
+test("conversation message helpers: 时间按本地时区格式化并兼容旧消息", () => {
+  const timestamp = "2026-01-02T03:04:05.000Z";
+  const date = new Date(timestamp);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  const expected = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  assert.equal(formatConversationTimestamp(timestamp), expected);
+
+  const messages = normalizeConversationMessages(
+    [
+      { role: "user", content: "旧消息" },
+      { id: "known-message", role: "ai", content: "新格式消息", createdAt: timestamp },
+    ],
+    "session-1",
+    timestamp,
+  );
+  assert.equal(messages[0].id, "legacy-session-1-0");
+  assert.equal(messages[0].createdAt, timestamp);
+  assert.equal(messages[1].id, "known-message");
+  assert.equal(messages[1].createdAt, timestamp);
 });
 
 test("buildProductionOverviewModel: 空数据不崩溃", () => {

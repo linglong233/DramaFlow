@@ -26,10 +26,15 @@ import { useFeedback } from "../../../lib/hooks";
 import { useI18n } from "../../../lib/i18n";
 import { queryKeys } from "../../../lib/query-keys";
 import { ConversationChat } from "../conversation-chat";
+import type { ConversationStreamingPlacement } from "../conversation-chat";
 import { ConversationBrief as ConversationBriefPanel } from "../conversation-brief";
 import type { GeneratorConfig } from "./generator-registry";
 import { ConversationHistory } from "./conversation-history";
 import { WorldBibleIndicator } from "./world-bible-indicator";
+import {
+  createOptimisticConversationMessage,
+  normalizeConversationMessages,
+} from "../../../lib/conversation-message";
 
 interface Props {
   config: GeneratorConfig;
@@ -51,6 +56,23 @@ function countConfirmed(status: Record<ConversationDimension, ConversationDimens
   return Object.values(status).filter((s) => s === "confirmed").length;
 }
 
+interface ConversationStateSnapshot {
+  sessionId: string | null;
+  messages: ConversationMessage[];
+  brief: ConversationBrief;
+  dimensionStatus: Record<ConversationDimension, ConversationDimensionStatus>;
+  generatedContent: string | null;
+  pendingFocusDimension: ConversationDimension | null;
+  hasInitialized: boolean;
+}
+
+interface ConversationActionInput {
+  path: string;
+  body: Record<string, unknown>;
+  placement: ConversationStreamingPlacement;
+  previous: ConversationStateSnapshot;
+}
+
 export function ConversationalGenerator({ config, projectId, project, llmConfigSource }: Props) {
   const { t } = useI18n();
   const { feedback, setFeedback } = useFeedback();
@@ -61,9 +83,11 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
   const [brief, setBrief] = useState<ConversationBrief>({});
   const [dimensionStatus, setDimensionStatus] = useState(DEFAULT_DIMENSION_STATUS);
   const [streamingText, setStreamingText] = useState("");
+  const [streamingPlacement, setStreamingPlacement] = useState<ConversationStreamingPlacement>("append");
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
   const [pendingFocusDimension, setPendingFocusDimension] = useState<ConversationDimension | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const hasInitialized = useRef(false);
 
   const { data: sessionList } = useQuery({
     queryKey: queryKeys.conversationSessions(projectId),
@@ -86,70 +110,85 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
   const targetDocType = config.id === "script" ? "script" : "synopsis";
   const canGenerate = countConfirmed(dimensionStatus) >= 3;
 
-  // Send message mutation
-  const messageMutation = useMutation({
-    mutationFn: async (content: string) => {
+  function applyConversationSession(session: ConversationSession) {
+    setSessionId(session.id);
+    setMessages(normalizeConversationMessages(session.messages, session.id, session.createdAt));
+    setBrief(session.brief);
+    setDimensionStatus(session.dimensionStatus);
+    hasInitialized.current = true;
+  }
+
+  function snapshotConversationState(): ConversationStateSnapshot {
+    return {
+      sessionId,
+      messages,
+      brief,
+      dimensionStatus,
+      generatedContent,
+      pendingFocusDimension,
+      hasInitialized: hasInitialized.current,
+    };
+  }
+
+  function restoreConversationState(snapshot: ConversationStateSnapshot) {
+    setSessionId(snapshot.sessionId);
+    setMessages(snapshot.messages);
+    setBrief(snapshot.brief);
+    setDimensionStatus(snapshot.dimensionStatus);
+    setGeneratedContent(snapshot.generatedContent);
+    setPendingFocusDimension(snapshot.pendingFocusDimension);
+    hasInitialized.current = snapshot.hasInitialized;
+  }
+
+  // 普通发送、编辑重发和 AI 重新生成共用同一条流式状态链路。
+  const conversationMutation = useMutation({
+    mutationFn: async (input: ConversationActionInput) => {
       setStreamingText("");
+      setStreamingPlacement(input.placement);
+      setGeneratedContent(null);
       setFeedback({ message: null, error: null });
 
       const controller = new AbortController();
       abortRef.current = controller;
+      let completedSession: ConversationSession | null = null;
 
-      let accumulated = "";
-      let latestBrief = brief;
-      let latestStatus = dimensionStatus;
-      let latestSessionId = sessionId;
-
-      for await (const chunk of apiStreamFetch(`/projects/${projectId}/conversation-jobs/message`, {
+      for await (const chunk of apiStreamFetch(`/projects/${projectId}${input.path}`, {
         method: "POST",
         signal: controller.signal,
-        body: {
-          sessionId: latestSessionId,
-          content,
-          targetDocType,
-          llmConfigSource,
-          ...(pendingFocusDimension ? { focusDimension: pendingFocusDimension } : {}),
-        },
+        body: input.body,
       })) {
         if (chunk.type === "chunk" && chunk.content) {
-          accumulated += chunk.content;
+          setStreamingText((current) => current + chunk.content);
         } else if (chunk.type === "done" && chunk.result) {
           const result = chunk.result as Record<string, unknown>;
-
-          if (result.sessionId && typeof result.sessionId === "string") {
-            latestSessionId = result.sessionId;
-            setSessionId(result.sessionId);
-          }
-          if (result.brief && typeof result.brief === "object") {
-            latestBrief = result.brief as ConversationBrief;
-            setBrief(latestBrief);
-          }
-          if (result.dimensionStatus && typeof result.dimensionStatus === "object") {
-            latestStatus = result.dimensionStatus as Record<ConversationDimension, ConversationDimensionStatus>;
-            setDimensionStatus(latestStatus);
-          }
-          if (result.message && typeof result.message === "object") {
-            const msg = result.message as ConversationMessage;
-            setMessages((prev) => [...prev, msg]);
+          if (result.session && typeof result.session === "object") {
+            completedSession = result.session as ConversationSession;
           }
         } else if (chunk.type === "error") {
           throw new Error(chunk.error);
         }
       }
 
-      abortRef.current = null;
-      setStreamingText("");
-
-      if (!latestSessionId && accumulated.trim()) {
-        setMessages((prev) => [...prev, { role: "ai", content: accumulated }]);
+      if (!completedSession) {
+        throw new Error("Conversation response did not include a session");
       }
-
+      return completedSession;
+    },
+    onSuccess: (session) => {
+      applyConversationSession(session);
+      setStreamingText("");
+      setStreamingPlacement("append");
       setPendingFocusDimension(null);
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      restoreConversationState(input.previous);
       setStreamingText("");
-      abortRef.current = null;
+      setStreamingPlacement("append");
       setFeedback({ message: null, error: formatApiError(error, t, "conversation.messageFailed") });
+    },
+    onSettled: () => {
+      abortRef.current = null;
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversationSessions(projectId) });
     },
   });
 
@@ -159,6 +198,7 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
       if (!sessionId) return;
 
       setStreamingText("");
+      setStreamingPlacement("append");
       setFeedback({ message: null, error: null });
 
       const controller = new AbortController();
@@ -194,12 +234,14 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
 
       abortRef.current = null;
       setStreamingText("");
+      setStreamingPlacement("append");
       setGeneratedContent(accumulated);
       setFeedback({ message: t("conversation.generateSuccess"), error: null });
       await invalidateWorkspace();
     },
     onError: (error) => {
       setStreamingText("");
+      setStreamingPlacement("append");
       abortRef.current = null;
       setFeedback({ message: null, error: formatApiError(error, t, "conversation.generateFailed") });
     },
@@ -214,11 +256,12 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
     },
     onSuccess: (session) => {
       setSessionId(session.id);
-      setMessages(session.messages);
+      setMessages(normalizeConversationMessages(session.messages, session.id, session.createdAt));
       setBrief(session.brief);
       setDimensionStatus(session.dimensionStatus);
       setGeneratedContent(null);
       setStreamingText("");
+      setStreamingPlacement("append");
       setPendingFocusDimension(null);
       hasInitialized.current = true;
     },
@@ -235,21 +278,96 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
     },
   });
 
-  const isStreaming = messageMutation.isPending || generateMutation.isPending;
+  const isStreaming = conversationMutation.isPending || generateMutation.isPending;
 
-  const hasInitialized = useRef(false);
   const handleSendMessage = useCallback((content: string) => {
-    if (!hasInitialized.current && messages.length === 0) {
+    if (isStreaming) return;
+    const previous = snapshotConversationState();
+    const nextMessages = [...messages];
+    if (messages.length === 0) {
       hasInitialized.current = true;
-      setMessages([{ role: "ai", content: t("conversation.greeting") }]);
+      nextMessages.push(createOptimisticConversationMessage("ai", t("conversation.greeting")));
     }
-    setMessages((prev) => [...prev, { role: "user", content }]);
-    messageMutation.mutate(content, {
-      onSettled: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.conversationSessions(projectId) });
+    nextMessages.push(createOptimisticConversationMessage("user", content));
+    setMessages(nextMessages);
+
+    const focusDimension = pendingFocusDimension;
+    conversationMutation.mutate({
+      path: "/conversation-jobs/message",
+      body: {
+        ...(sessionId ? { sessionId } : {}),
+        content,
+        targetDocType,
+        llmConfigSource,
+        ...(focusDimension ? { focusDimension } : {}),
       },
+      placement: "append",
+      previous,
     });
-  }, [messageMutation, messages.length, t, projectId, queryClient]);
+  }, [conversationMutation, isStreaming, messages, pendingFocusDimension, sessionId, targetDocType, llmConfigSource, t]);
+
+  const getBranchState = useCallback((messageIndex: number) => {
+    const previousMessage = messages[messageIndex - 1];
+    return {
+      brief: previousMessage?.stateAfter?.brief ?? {},
+      dimensionStatus: previousMessage?.stateAfter?.dimensionStatus ?? { ...DEFAULT_DIMENSION_STATUS },
+    };
+  }, [messages]);
+
+  const handleEditMessage = useCallback((messageId: string, content: string) => {
+    if (isStreaming || !sessionId) return;
+    const messageIndex = messages.findIndex((message) => message.id === messageId);
+    const target = messages[messageIndex];
+    if (!target || target.role !== "user") return;
+
+    const previous = snapshotConversationState();
+    const state = getBranchState(messageIndex);
+    const editedMessage: ConversationMessage = {
+      ...target,
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages([...messages.slice(0, messageIndex), editedMessage]);
+    setBrief(state.brief);
+    setDimensionStatus(state.dimensionStatus);
+    conversationMutation.mutate({
+      path: "/conversation-jobs/message/edit",
+      body: {
+        sessionId,
+        messageId,
+        content,
+        targetDocType,
+        llmConfigSource,
+        ...(target.focusDimension ? { focusDimension: target.focusDimension } : {}),
+      },
+      placement: { mode: "after", messageId },
+      previous,
+    });
+  }, [conversationMutation, getBranchState, isStreaming, llmConfigSource, messages, sessionId, targetDocType]);
+
+  const handleRegenerateMessage = useCallback((messageId: string) => {
+    if (isStreaming || !sessionId) return;
+    const messageIndex = messages.findIndex((message) => message.id === messageId);
+    const target = messages[messageIndex];
+    if (!target || target.role !== "ai") return;
+
+    const previous = snapshotConversationState();
+    const state = getBranchState(messageIndex);
+    setMessages(messages.slice(0, messageIndex + 1));
+    setBrief(state.brief);
+    setDimensionStatus(state.dimensionStatus);
+    conversationMutation.mutate({
+      path: "/conversation-jobs/message/regenerate",
+      body: {
+        sessionId,
+        messageId,
+        targetDocType,
+        llmConfigSource,
+      },
+      placement: { mode: "replace", messageId },
+      previous,
+    });
+  }, [conversationMutation, getBranchState, isStreaming, llmConfigSource, messages, sessionId, targetDocType]);
 
   const handleBriefFieldChange = useCallback((field: keyof ConversationBrief, value: string) => {
     setBrief((prev) => ({ ...prev, [field]: value }));
@@ -273,7 +391,9 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
     setBrief({});
     setDimensionStatus(DEFAULT_DIMENSION_STATUS);
     setStreamingText("");
+    setStreamingPlacement("append");
     setGeneratedContent(null);
+    setPendingFocusDimension(null);
     hasInitialized.current = false;
   }, []);
 
@@ -307,7 +427,10 @@ export function ConversationalGenerator({ config, projectId, project, llmConfigS
             messages={messages}
             streamingText={streamingText}
             isStreaming={isStreaming}
+            streamingPlacement={streamingPlacement}
             onSendMessage={handleSendMessage}
+            onEditMessage={handleEditMessage}
+            onRegenerateMessage={handleRegenerateMessage}
           />
         </div>
         <div className="conv-layout__brief">
