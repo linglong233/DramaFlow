@@ -27,3 +27,7 @@ AGENTS.md
 CLAUDE.md
 .superpowers/
 docs/
+# ZCode 会话产物（plans 等本地工作文件，曾误提交过一次）
+.zcode/
+# mimosa 安全扫描插件的会话缓存
+.mimosa/
