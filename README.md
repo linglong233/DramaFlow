@@ -9,7 +9,7 @@ DramaFlow is a TypeScript monorepo for a director- and studio-facing short-drama
 - Backend: NestJS 11
 - Worker: polling worker that claims jobs from the API through internal endpoints
 - Shared contracts: `@dramaflow/shared`
-- Auth model: JWT access token + opaque refresh token stored as an argon2 hash
+- Auth model: JWT access token + opaque refresh token stored as a SHA-256 hash (argon2 is used for password hashing)
 - Runtime persistence: Prisma ORM with PostgreSQL
 
 ## Current State
@@ -21,6 +21,7 @@ DramaFlow is development-ready, but not fully productionized.
 - The project workspace uses split data loading: `GET /projects/:id` returns summary data, while versions, jobs, timeline, and exports refresh through dedicated endpoints.
 - Realtime delivery is available through a NestJS + Socket.IO gateway for `job.updated`, `review.updated`, and `notification.created`, with polling as the fallback path.
 - Text generation, image generation, video generation, and TTS can talk to configured providers, with mock fallback paths preserved for running without external services.
+- The web UI is fully bilingual (Simplified Chinese / English) through a lightweight in-house i18n layer in `apps/web/lib/i18n`, with a language settings page and a persistent locale preference.
 - Video export uses FFmpeg when available, with mock export fallback when explicitly allowed.
 
 ## Architecture
@@ -29,11 +30,12 @@ DramaFlow is development-ready, but not fully productionized.
 
 The Next.js frontend includes:
 
-- Public routes: landing, login, forgot password, reset password, team invite acceptance, project invite acceptance
+- Public routes: landing, login, forgot password, reset password, team invite acceptance (`/join/team`); project invites are accepted inside the dashboard
 - Protected dashboard routes: projects, platform admin, team admin, team settings, profile settings, language settings, notifications
 - A unified project workspace at `/projects/[projectId]/workspace` with these modes (switched via `?mode=` URL parameter):
+  - `overview` — production overview (default mode): cross-document production status
   - `info` — project info panel
-  - `document` — document mode with sub-tabs: view, edit, generate, versions (worldbible and media are mapped into this mode)
+  - `document` — document mode with sub-tabs: view, edit, generate, versions, novel import (worldbible and media are mapped into this mode)
   - `tasks` — task panel
   - `timeline` — timeline editor
 - Additional project routes: `/projects/:id/generate` (AI generation), `/projects/:id/review` (review panel), `/projects/:id/drafts` (draft management)
@@ -41,6 +43,11 @@ The Next.js frontend includes:
 - Review actions, threaded comments, audit support, and AI rewrite tools
 - SSE-based synopsis, script, storyboard, and rewrite generation
 - Conversational AI generation mode: QA dialogue with dimension tracking (core conflict, protagonist, supporting characters, tone, pacing, constraints), real-time editable brief panel, world bible context injection, two-step synopsis → script flow
+- Conversation message actions: edit a user message and regenerate from that point, or regenerate an AI reply in place
+- Novel import workbench (document mode → novel import tab): chunked novel parsing with per-chunk retry / split / merge / confirm and one-click draft writing
+- Impact issue list: cross-document dependency issues detected between versions, with resolve / ignore / reopen actions
+- Rich-text script editing (TipTap) alongside the plain-text editor
+- Video generation reference image modes: none, single (first frame), first+last frame, or multiple references
 - Synopsis document manual editing
 - Inline character editing in script editors (hover-to-edit character name and profile)
 - Paired draft sync between script and world bible characters with WebSocket-based real-time bidirectional synchronization
@@ -63,13 +70,15 @@ The NestJS API includes:
 
 - `/health` health check and `/docs` Swagger documentation
 - **Auth flows**: register, login (with IP-based rate limiting), refresh, logout, forgot password, reset password, profile updates (including LLM config, multi-provider config, default provider), per-user model listing
-- **Team flows**: team CRUD, team members (add/remove/role change), team invite links (create/list/revoke/query/accept), team LLM model listing, team settings (LLM, image generation config)
-- **Project flows**: project CRUD, project members (invite/add), project invite acceptance, pending invites, project review policy, workspace summary
+- **Team flows**: team CRUD, team members (add/remove/role change), team invite links (create/list/revoke/query/accept), team LLM model listing, team settings (LLM, image generation config), role permission templates
+- **Project flows**: project CRUD, project members (invite/add), project invite acceptance, pending invites, project review policy, workspace summary, member-level permission overrides
 - **Document & version flows**: version listing (with pagination), version creation, draft editing, deletion, submission, advance-to-review, approval, rejection, restoration, adoption, media binding updates, paired draft sync between script and world bible characters
 - **Comment flows**: version-scoped comments with threaded replies (`parentId`)
-- **World-bible flows**: full CRUD for characters (with costumes), locations, style guide, character voice config, AI reference image generation
+- **World-bible flows**: full CRUD for characters (with costumes), locations, style guide, character voice config, AI reference image generation, reference-prompt enhancement
 - **Audit flows**: per-content-type audit config (review required, auto-approve roles), audit record listing (with type filtering and pagination)
-- **Job types**:
+- **Novel import flows**: novel import sessions (create/latest/detail), chunked parsing with start/cancel, per-chunk retry / rerun-following / rename / split / merge-previous / confirm / confirm-all, draft writing, SSE progress stream
+- **Impact flows**: project impact issue listing and detail, version impact summary, issue ignore/reopen/resolve/assign, impact suggestion creation/acceptance/reverted acceptance
+- **Job types** (see `JobType` in `packages/shared/src/domain.ts`):
   - Script generation (sync + SSE stream)
   - Synopsis generation (sync + SSE stream)
   - Storyboard generation (sync + SSE stream)
@@ -79,6 +88,10 @@ The NestJS API includes:
   - Image generation (per-shot, batch)
   - Video generation (per-shot, batch)
   - TTS generation (per-shot, per-scene batch)
+  - Single-shot composition (compose a shot from storyboard content)
+  - Shot regeneration
+  - Novel import parsing (chunked, SSE progress stream)
+  - Impact suggestion generation
   - Export jobs
 - **Prompt preview**: image and video prompt preview endpoints
 - **Batch operations**: batch image/video jobs with batch status tracking
@@ -133,6 +146,8 @@ The shared package is the contract layer across the stack:
 | PATCH | `/teams/:id` | Update team |
 | DELETE | `/teams/:id` | Delete team |
 | POST | `/teams/:id/llm-models` | List team LLM models |
+| GET | `/teams/:id/permission-templates` | Get role permission templates |
+| PUT | `/teams/:id/permission-templates` | Update role permission templates |
 | POST | `/teams/:id/members` | Add team member |
 | DELETE | `/teams/:teamId/members/:memberId` | Remove team member |
 | PATCH | `/teams/:teamId/members/:memberId` | Change member role |
@@ -156,6 +171,8 @@ The shared package is the contract layer across the stack:
 | POST | `/projects/:id/members` | Add project member |
 | GET | `/project-invites/pending` | List pending invites |
 | POST | `/project-invites/:id/accept` | Accept project invite |
+| GET | `/projects/:projectId/members/:memberId/permissions` | Get member permission overrides |
+| PUT | `/projects/:projectId/members/:memberId/permissions` | Update member permission overrides |
 
 ### Documents & Versions
 
@@ -196,6 +213,7 @@ The shared package is the contract layer across the stack:
 | DELETE | `/projects/:projectId/world-bible/locations/:locationId` | Delete location |
 | PATCH | `/projects/:id/world-bible/style-guide` | Update style guide |
 | PATCH | `/projects/:projectId/world-bible/characters/:characterId/voice` | Update character voice |
+| POST | `/projects/:projectId/world-bible/enhance-reference-prompt` | Enhance reference image prompt |
 
 ### Audit
 
@@ -221,6 +239,8 @@ The shared package is the contract layer across the stack:
 | POST | `/shots/:id/image-jobs` | Create image generation job |
 | POST | `/shots/:id/video-jobs` | Create video generation job |
 | POST | `/shots/:id/tts-jobs` | Create TTS job |
+| POST | `/shots/:id/regenerate-jobs` | Create shot regeneration job |
+| POST | `/shots/:id/composition-jobs` | Create single-shot composition job |
 | POST | `/scenes/:id/batch-tts-jobs` | Batch TTS for scene shots |
 | POST | `/projects/:id/batch-image-jobs` | Batch image generation |
 | POST | `/projects/:id/batch-video-jobs` | Batch video generation |
@@ -233,9 +253,46 @@ The shared package is the contract layer across the stack:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/projects/:id/conversation-jobs/message` | Send message, SSE stream AI reply with brief updates |
+| POST | `/projects/:id/conversation-jobs/message/edit` | Edit a user message and regenerate from that point (SSE stream) |
+| POST | `/projects/:id/conversation-jobs/message/regenerate` | Regenerate an AI reply in place (SSE stream) |
 | POST | `/projects/:id/conversation-jobs/generate` | Generate synopsis/script from conversation, SSE stream |
+| GET | `/projects/:id/conversation-jobs` | List conversation sessions |
 | GET | `/projects/:id/conversation-jobs/:sessionId` | Get conversation session state |
 | POST | `/projects/:id/conversation-jobs/:sessionId/delete` | Delete conversation session |
+
+### Novel Import
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/projects/:id/novel-import-sessions` | Create novel import session |
+| GET | `/projects/:id/novel-import-sessions/latest` | Get latest session for project |
+| GET | `/novel-import-sessions/:id` | Get session detail |
+| POST | `/novel-import-sessions/:id/start` | Start chunked parsing |
+| POST | `/novel-import-sessions/:id/cancel` | Cancel session |
+| POST | `/novel-import-sessions/:id/chunks/:index/retry` | Retry a failed chunk |
+| POST | `/novel-import-sessions/:id/chunks/:index/rerun-following` | Re-run a chunk and all following chunks |
+| PATCH | `/novel-import-sessions/:id/chunks/:index/title` | Rename a chunk |
+| POST | `/novel-import-sessions/:id/chunks/:index/split` | Split a chunk |
+| POST | `/novel-import-sessions/:id/chunks/:index/merge-previous` | Merge a chunk into the previous one |
+| POST | `/novel-import-sessions/:id/chunks/:index/confirm` | Confirm a chunk |
+| POST | `/novel-import-sessions/:id/chunks/confirm-all` | Confirm all chunks |
+| POST | `/novel-import-sessions/:id/write-drafts` | Write confirmed chunks into script drafts |
+| POST | `/projects/:id/novel-import/stream` | SSE stream of session progress |
+
+### Impact Analysis
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects/:id/impact-issues` | List project impact issues |
+| GET | `/impact-issues/:id` | Get impact issue detail |
+| GET | `/versions/:id/impact-summary` | Get version impact summary |
+| POST | `/impact-issues/:id/suggestions` | Generate impact suggestions for an issue |
+| POST | `/impact-issues/:id/ignore` | Ignore an issue |
+| POST | `/impact-issues/:id/reopen` | Reopen an issue |
+| POST | `/impact-issues/:id/resolve` | Resolve an issue |
+| POST | `/impact-issues/:id/assign` | Assign an issue |
+| POST | `/impact-suggestions/:id/accept` | Accept a suggestion |
+| POST | `/impact-suggestions/:id/revert-acceptance` | Revert an accepted suggestion |
 
 ### World Bible Reference Image Generation
 
@@ -313,6 +370,7 @@ These endpoints are protected by `InternalApiKeyGuard` and not exposed publicly.
 | GET | `/internal/jobs/next` | Claim next pending job (priority-sorted) |
 | POST | `/internal/jobs/:id/process` | Execute job |
 | POST | `/internal/jobs/:id/retry` | System-level retry |
+| POST | `/internal/jobs/reap` | Manually trigger stuck-job reaping |
 
 ## Repository Layout
 
@@ -328,8 +386,13 @@ These endpoints are protected by `InternalApiKeyGuard` and not exposed publicly.
 |-- tests
 |-- .env.example
 |-- AGENTS.md
+|-- CLAUDE.md
 |-- README.md
 |-- README_ZH.md
+|-- 目前已实现.md
+|-- docker-compose.yml
+|-- docker-compose.prod.yml
+|-- start-all.bat / start-all.sh
 |-- package.json
 `-- tsconfig.base.json
 ```
@@ -504,6 +567,8 @@ npm run dev:worker
 | Variable | Description |
 |----------|-------------|
 | `FFMPEG_PATH` | Path to FFmpeg binary |
+| `FFPROBE_PATH` | Path to FFprobe binary (timeline media probing) |
+| `FFMPEG_FONT_PATH` | Font file path for FFmpeg subtitle rendering |
 | `EXPORT_KEEP_TEMP` | Keep temporary export files |
 | `WORKER_POLL_INTERVAL_MS` | Worker polling interval |
 | `WORKER_FETCH_TIMEOUT_MS` | Per-request timeout for worker fetches (`/next`, `/process`, `/retry`). A `/process` timeout is treated as failure and triggers retry. Set higher than your slowest AI task to avoid false kills. Default `30000`. |
@@ -542,8 +607,8 @@ By default `OPENAI_COMPAT_MOCK_FALLBACK=false`. The API will fail-fast on boot i
 | Channel | Required env | Notes |
 |---|---|---|
 | Text | `OPENAI_COMPAT_API_KEY` | OpenAI-compatible endpoint, set `OPENAI_COMPAT_BASE_URL` to point to other gateways |
-| Image | `OPENAI_COMPAT_API_KEY` OR `GOOGLE_IMAGE_API_KEY` OR `SD_WEBUI_BASE_URL` OR `COMFYUI_BASE_URL` | Any one configured enables image path |
-| Video | `OPENAI_COMPAT_API_KEY` | Sora via OpenAI-compatible; more providers in later batches |
+| Image | `OPENAI_COMPAT_API_KEY` OR `GOOGLE_IMAGE_API_KEY` OR `SD_WEBUI_BASE_URL` OR `COMFYUI_BASE_URL` | Any one configured enables image path. Providers: OpenAI-compatible, Google Gemini, SD WebUI, ComfyUI, Grok (Grok is configured per user/team in the app) |
+| Video | `OPENAI_COMPAT_API_KEY` | 8 providers: openai-compatible (Sora via `MEDIA_VIDEO_MODEL`), grok, minimax, volcengine, vidu, ali, runway, comfyui (MiniMax H3 workflow). Non-OpenAI providers take per-user/team provider config from the app; ComfyUI falls back to `COMFYUI_BASE_URL`/`COMFYUI_API_KEY`; per-provider default models live in `DEFAULT_VIDEO_PROVIDER_MODELS` (`packages/shared/src/providers.ts`) |
 | TTS | `OPENAI_COMPAT_API_KEY` | OpenAI-compatible TTS |
 
 For local dev without keys, set `OPENAI_COMPAT_MOCK_FALLBACK=true` — the UI shows a "Mock mode" badge on every generation entry point.
@@ -613,7 +678,7 @@ npm test
 Notes:
 
 - `npm run lint` fans out to workspace `tsc --noEmit` scripts; it is not an ESLint pass.
-- `npm test` only runs packages that define a `test` script, which means API and shared, not web or worker.
+- `npm test` runs the root build-workspace test and then each workspace's `test` script; all four packages (api, shared, web, worker) define one, and web includes UI behavior tests.
 
 ## Development Notes
 

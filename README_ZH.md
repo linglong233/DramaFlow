@@ -9,7 +9,7 @@ DramaFlow 是一个面向导演与工作室的短剧生产平台 TypeScript mono
 - 后端：NestJS 11
 - Worker：通过 API 内部接口领取任务的轮询型 Worker
 - 共享契约：`@dramaflow/shared`
-- 认证模型：JWT access token + 以 argon2 哈希保存的不透明 refresh token
+- 认证模型：JWT access token + 以 SHA-256 哈希保存的不透明 refresh token（argon2 仅用于密码哈希）
 - 运行时持久化：Prisma ORM + PostgreSQL
 
 ## 当前状态
@@ -21,6 +21,7 @@ DramaFlow 目前已经达到"开发可用"，但还不是完整生产化实现�
 - 项目工作区已改为按需拆分加载：`GET /projects/:id` 只返回 summary，版本、任务、时间线、导出分别走独立接口刷新。
 - 实时更新已通过 NestJS + Socket.IO gateway 提供，覆盖 `job.updated`、`review.updated`、`notification.created` 三类事件，同时保留轮询作为降级路径。
 - 文本、图片、视频、TTS 都可以接入已配置的 Provider，同时保留 mock fallback 路径，保证仓库在没有外部服务时也能跑通。
+- Web 前端已全面国际化（简体中文 / 英文），基于 `apps/web/lib/i18n` 的轻量自研 i18n 层，提供语言设置页与持久化的语言偏好。
 - 视频导出优先使用 FFmpeg；在显式允许时也可以回退为 mock 导出产物。
 
 ## 架构说明
@@ -29,11 +30,12 @@ DramaFlow 目前已经达到"开发可用"，但还不是完整生产化实现�
 
 Next.js 前端包含：
 
-- 公开路由：首页、登录、忘记密码、重置密码、团队邀请接受、项目邀请接受
+- 公开路由：首页、登录、忘记密码、重置密码、团队邀请接受（`/join/team`）；项目邀请在 dashboard 内接受
 - 受保护的 dashboard 路由：项目列表、平台管理后台、团队管理、团队设置、个人设置、语言设置、通知页
 - 统一项目工作区 `/projects/[projectId]/workspace`，通过 `?mode=` URL 参数切换模式：
+  - `overview` — 生产总览（默认模式）：跨文档的生产状态
   - `info` — 项目信息面板
-  - `document` — 文档模式，含子标签页：view、edit、generate、versions（worldbible 和 media 映射到此模式）
+  - `document` — 文档模式，含子标签页：view、edit、generate、versions、小说导入（worldbible 和 media 映射到此模式）
   - `tasks` — 任务面板
   - `timeline` — 时间线编辑器
 - 额外项目路由：`/projects/:id/generate`（AI 生成）、`/projects/:id/review`（审核面板）、`/projects/:id/drafts`（草稿管理）
@@ -41,6 +43,11 @@ Next.js 前端包含：
 - 审核动作、线程化评论、审计支持、AI rewrite 工具
 - 基于 SSE 的 synopsis、script、storyboard、rewrite 流式生成
 - 对话式 AI 生成模式：QA 对话 + 维度追踪（核心冲突、主角设定、配角关系、故事基调、集数节奏、特殊要求）+ 实时可编辑简报面板 + 世界观上下文注入 + 大纲→剧本两步生成流程
+- 会话消息操作：编辑用户消息并从该处分支重生成、原位重生成 AI 回复
+- 小说导入工作台（文档模式 → 小说导入子标签）：分块解析，支持按块重试 / 拆分 / 合并 / 确认，一键写入剧本草稿
+- 影响问题列表：展示版本间检测到的跨文档依赖问题，支持 resolve / ignore / reopen 操作
+- 富文本剧本编辑（TipTap），同时保留纯文本编辑器
+- 视频生成参考图模式：无参考、单张（首帧）、首帧+尾帧、多张参考图
 - 大纲文档手工编辑
 - 剧本编辑器中角色名/简介行内编辑（hover 显示编辑图标）
 - 剧本与世界观角色配对草稿同步，通过 WebSocket 实现双向实时同步
@@ -63,13 +70,15 @@ NestJS API 包含：
 
 - `/health` 健康检查与 `/docs` Swagger 文档
 - **认证流程**：注册、登录（含 IP 速率限制）、刷新、登出、忘记密码、重置密码、个人资料更新（含 LLM 配置、多 Provider 配置、默认 Provider）、个人模型列表
-- **团队流程**：团队 CRUD、团队成员（添加/移除/角色变更）、团队邀请链接（创建/列表/吊销/查询/接受）、团队 LLM 模型列表、团队设置（LLM、图片生成配置）
-- **项目流程**：项目 CRUD、项目成员（邀请/添加）、项目邀请接受、待处理邀请、项目审核策略、工作区 summary
+- **团队流程**：团队 CRUD、团队成员（添加/移除/角色变更）、团队邀请链接（创建/列表/吊销/查询/接受）、团队 LLM 模型列表、团队设置（LLM、图片生成配置）、角色权限模板
+- **项目流程**：项目 CRUD、项目成员（邀请/添加）、项目邀请接受、待处理邀请、项目审核策略、工作区 summary、成员级权限覆盖
 - **文档与版本流程**：版本列表（分页）、版本创建、草稿编辑、删除、提交、推进审核、批准、驳回、恢复、采纳、媒体绑定更新、剧本与世界观角色配对草稿同步
 - **评论流程**：版本级评论，支持线程回复（`parentId`）
-- **世界观流程**：角色（含服装）CRUD、地点 CRUD、风格指南更新、角色音色配置、AI 参考图生成
+- **世界观流程**：角色（含服装）CRUD、地点 CRUD、风格指南更新、角色音色配置、AI 参考图生成、参考图提示词增强
 - **审核流程**：按内容类型的审核配置（是否需要审核、可自动通过的角色列表）、审核记录列表（类型过滤+分页）
-- **任务类型**：
+- **小说导入流程**：小说导入会话（创建/最新/详情）、分块解析（start/cancel）、按块重试 / 重跑后续 / 重命名 / 拆分 / 向前合并 / 确认 / 全部确认、草稿写入、SSE 进度流
+- **影响分析流程**：项目影响问题列表与详情、版本影响摘要、问题 ignore/reopen/resolve/assign、影响建议生成/接受/撤销接受
+- **任务类型**（见 `packages/shared/src/domain.ts` 的 `JobType`）：
   - 剧本生成（同步 + SSE 流式）
   - 大纲生成（同步 + SSE 流式）
   - 分镜生成（同步 + SSE 流式）
@@ -79,6 +88,10 @@ NestJS API 包含：
   - 图片生成（单镜头、批量）
   - 视频生成（单镜头、批量）
   - TTS（单镜头、按场景批量）
+  - 单镜头合成（基于分镜内容合成镜头）
+  - 镜头重生成
+  - 小说导入解析（分块 + SSE 进度流）
+  - 影响建议生成
   - 导出任务
 - **提示词预览**：图片和视频提示词预览端点
 - **批量操作**：批量图片/视频任务，支持批量状态跟踪
@@ -133,6 +146,8 @@ Worker 故意保持轻量：
 | PATCH | `/teams/:id` | 更新团队 |
 | DELETE | `/teams/:id` | 删除团队 |
 | POST | `/teams/:id/llm-models` | 列出团队可用 LLM 模型 |
+| GET | `/teams/:id/permission-templates` | 获取角色权限模板 |
+| PUT | `/teams/:id/permission-templates` | 更新角色权限模板 |
 | POST | `/teams/:id/members` | 添加团队成员 |
 | DELETE | `/teams/:teamId/members/:memberId` | 移除团队成员 |
 | PATCH | `/teams/:teamId/members/:memberId` | 变更成员角色 |
@@ -156,6 +171,8 @@ Worker 故意保持轻量：
 | POST | `/projects/:id/members` | 添加项目成员 |
 | GET | `/project-invites/pending` | 列出待处理邀请 |
 | POST | `/project-invites/:id/accept` | 接受项目邀请 |
+| GET | `/projects/:projectId/members/:memberId/permissions` | 获取成员权限覆盖 |
+| PUT | `/projects/:projectId/members/:memberId/permissions` | 更新成员权限覆盖 |
 
 ### 文档与版本
 
@@ -196,6 +213,7 @@ Worker 故意保持轻量：
 | DELETE | `/projects/:projectId/world-bible/locations/:locationId` | 删除地点 |
 | PATCH | `/projects/:id/world-bible/style-guide` | 更新视觉风格指南 |
 | PATCH | `/projects/:projectId/world-bible/characters/:characterId/voice` | 更新角色语音配置 |
+| POST | `/projects/:projectId/world-bible/enhance-reference-prompt` | 增强参考图提示词 |
 
 ### 审核
 
@@ -221,6 +239,8 @@ Worker 故意保持轻量：
 | POST | `/shots/:id/image-jobs` | 创建图片生成任务 |
 | POST | `/shots/:id/video-jobs` | 创建视频生成任务 |
 | POST | `/shots/:id/tts-jobs` | 创建 TTS 任务 |
+| POST | `/shots/:id/regenerate-jobs` | 创建镜头重生成任务 |
+| POST | `/shots/:id/composition-jobs` | 创建单镜头合成任务 |
 | POST | `/scenes/:id/batch-tts-jobs` | 按场景批量 TTS |
 | POST | `/projects/:id/batch-image-jobs` | 批量图片生成 |
 | POST | `/projects/:id/batch-video-jobs` | 批量视频生成 |
@@ -233,9 +253,46 @@ Worker 故意保持轻量：
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | POST | `/projects/:id/conversation-jobs/message` | 发送消息，SSE 流式返回 AI 回复及简报更新 |
+| POST | `/projects/:id/conversation-jobs/message/edit` | 编辑用户消息并从该处分支重生成（SSE 流式） |
+| POST | `/projects/:id/conversation-jobs/message/regenerate` | 原位重生成 AI 回复（SSE 流式） |
 | POST | `/projects/:id/conversation-jobs/generate` | 基于对话历史生成大纲/剧本，SSE 流式输出 |
+| GET | `/projects/:id/conversation-jobs` | 列出对话会话 |
 | GET | `/projects/:id/conversation-jobs/:sessionId` | 获取对话会话状态 |
 | POST | `/projects/:id/conversation-jobs/:sessionId/delete` | 删除对话会话 |
+
+### 小说导入
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| POST | `/projects/:id/novel-import-sessions` | 创建小说导入会话 |
+| GET | `/projects/:id/novel-import-sessions/latest` | 获取项目最新会话 |
+| GET | `/novel-import-sessions/:id` | 获取会话详情 |
+| POST | `/novel-import-sessions/:id/start` | 开始分块解析 |
+| POST | `/novel-import-sessions/:id/cancel` | 取消会话 |
+| POST | `/novel-import-sessions/:id/chunks/:index/retry` | 重试失败分块 |
+| POST | `/novel-import-sessions/:id/chunks/:index/rerun-following` | 重跑该分块及其后所有分块 |
+| PATCH | `/novel-import-sessions/:id/chunks/:index/title` | 重命名分块 |
+| POST | `/novel-import-sessions/:id/chunks/:index/split` | 拆分分块 |
+| POST | `/novel-import-sessions/:id/chunks/:index/merge-previous` | 与前一分块合并 |
+| POST | `/novel-import-sessions/:id/chunks/:index/confirm` | 确认分块 |
+| POST | `/novel-import-sessions/:id/chunks/confirm-all` | 全部确认 |
+| POST | `/novel-import-sessions/:id/write-drafts` | 将已确认分块写入剧本草稿 |
+| POST | `/projects/:id/novel-import/stream` | 会话进度 SSE 流 |
+
+### 影响分析
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/projects/:id/impact-issues` | 列出项目影响问题 |
+| GET | `/impact-issues/:id` | 获取影响问题详情 |
+| GET | `/versions/:id/impact-summary` | 获取版本影响摘要 |
+| POST | `/impact-issues/:id/suggestions` | 为问题生成影响建议 |
+| POST | `/impact-issues/:id/ignore` | 忽略问题 |
+| POST | `/impact-issues/:id/reopen` | 重新打开问题 |
+| POST | `/impact-issues/:id/resolve` | 解决问题 |
+| POST | `/impact-issues/:id/assign` | 指派问题 |
+| POST | `/impact-suggestions/:id/accept` | 接受建议 |
+| POST | `/impact-suggestions/:id/revert-acceptance` | 撤销已接受的建议 |
 
 ### 世界观参考图生成
 
@@ -313,6 +370,7 @@ Worker 故意保持轻量：
 | GET | `/internal/jobs/next` | 领取下一个待处理任务（按优先级排序） |
 | POST | `/internal/jobs/:id/process` | 执行任务 |
 | POST | `/internal/jobs/:id/retry` | 系统级重试 |
+| POST | `/internal/jobs/reap` | 手动触发滞留任务回收 |
 
 ## 仓库结构
 
@@ -328,8 +386,13 @@ Worker 故意保持轻量：
 |-- tests
 |-- .env.example
 |-- AGENTS.md
+|-- CLAUDE.md
 |-- README.md
 |-- README_ZH.md
+|-- 目前已实现.md
+|-- docker-compose.yml
+|-- docker-compose.prod.yml
+|-- start-all.bat / start-all.sh
 |-- package.json
 `-- tsconfig.base.json
 ```
@@ -504,6 +567,8 @@ npm run dev:worker
 | 变量 | 说明 |
 |------|------|
 | `FFMPEG_PATH` | FFmpeg 二进制文件路径 |
+| `FFPROBE_PATH` | FFprobe 二进制文件路径（时间线媒体探测） |
+| `FFMPEG_FONT_PATH` | FFmpeg 字幕渲染字体文件路径 |
 | `EXPORT_KEEP_TEMP` | 保留导出临时文件 |
 | `WORKER_POLL_INTERVAL_MS` | Worker 轮询间隔 |
 | `WORKER_FETCH_TIMEOUT_MS` | Worker 单次 fetch（`/next`、`/process`、`/retry`）的超时时间。`/process` 超时会被当作失败触发重试。设为略大于最慢 AI 任务的值，避免误杀慢任务。默认 `30000`。 |
@@ -542,8 +607,8 @@ docker compose up --build
 | 路径 | 必填 env | 说明 |
 |---|---|---|
 | 文本 | `OPENAI_COMPAT_API_KEY` | OpenAI 兼容端点，改 `OPENAI_COMPAT_BASE_URL` 可指向其他网关 |
-| 图片 | `OPENAI_COMPAT_API_KEY` 或 `GOOGLE_IMAGE_API_KEY` 或 `SD_WEBUI_BASE_URL` 或 `COMFYUI_BASE_URL` | 任一配置即启用 |
-| 视频 | `OPENAI_COMPAT_API_KEY` | 经 OpenAI 兼容调用 Sora；后续批次补更多 provider |
+| 图片 | `OPENAI_COMPAT_API_KEY` 或 `GOOGLE_IMAGE_API_KEY` 或 `SD_WEBUI_BASE_URL` 或 `COMFYUI_BASE_URL` | 任一配置即启用。支持 provider：OpenAI 兼容、Google Gemini、SD WebUI、ComfyUI、Grok（Grok 在应用内按用户/团队配置） |
+| 视频 | `OPENAI_COMPAT_API_KEY` | 8 种 provider：openai-compatible（经 `MEDIA_VIDEO_MODEL` 调 Sora）、grok、minimax、volcengine、vidu、ali、runway、comfyui（MiniMax H3 工作流）。非 OpenAI provider 使用应用内按用户/团队配置；ComfyUI 可回退 `COMFYUI_BASE_URL`/`COMFYUI_API_KEY`；各 provider 默认模型见 `DEFAULT_VIDEO_PROVIDER_MODELS`（`packages/shared/src/providers.ts`） |
 | TTS | `OPENAI_COMPAT_API_KEY` | OpenAI 兼容 TTS |
 
 本地开发无 key 时可设 `OPENAI_COMPAT_MOCK_FALLBACK=true` —— 此时每个生成入口会显示 "Mock 模式" 徽章。
@@ -613,7 +678,7 @@ npm test
 补充说明：
 
 - `npm run lint` 当前实际是分发到各 workspace 的 `tsc --noEmit`，不是 ESLint 检查。
-- `npm test` 当前只会运行声明了 `test` 脚本的包，即 API 和 shared，不包含 web 和 worker。
+- `npm test` 先跑根目录 build-workspace 测试，再跑各 workspace 的 `test` 脚本；四个包（api、shared、web、worker）都定义了 test 脚本，web 还包含 UI 行为测试。
 
 ## 开发说明
 
