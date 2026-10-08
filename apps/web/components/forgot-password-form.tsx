@@ -49,7 +49,7 @@ export function ForgotPasswordForm() {
   }, [response?.token]);
 
   return (
-    <div className="stack stack-gap-4">
+    <form className="stack stack-gap-4" onSubmit={(event) => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(); }}>
       <div className="stack stack-gap-2">
         <span className="kicker">{t("authRecovery.forgot.kicker")}</span>
         <h1 className="page-title">{t("authRecovery.forgot.title")}</h1>
@@ -63,6 +63,7 @@ export function ForgotPasswordForm() {
           className="input"
           type="email"
           autoComplete="email"
+          required
           placeholder={t("authRecovery.forgot.emailPlaceholder")}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -85,13 +86,13 @@ export function ForgotPasswordForm() {
         </div>
       ) : null}
 
-      <button className="btn btn-primary" type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending || !email.trim()}>
+      <button className="btn btn-primary" type="submit" disabled={mutation.isPending || !email.trim()}>
         {mutation.isPending ? t("common.submitting") : t("authRecovery.forgot.submit")}
       </button>
 
       <Link href={"/login" as const} style={{ textAlign: "center", fontSize: 13 }}>
         {t("authRecovery.backToLogin")}
       </Link>
-    </div>
+    </form>
   );
 }

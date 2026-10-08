@@ -239,6 +239,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
           className={`task-panel__filter${panelView === "jobs" ? " task-panel__filter--active" : ""}`}
           type="button"
           onClick={() => setPanelView("jobs")}
+          aria-pressed={panelView === "jobs"}
         >
           {t("taskPanel.jobsView" as any)}
         </button>
@@ -246,6 +247,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
           className={`task-panel__filter${panelView === "impacts" ? " task-panel__filter--active" : ""}`}
           type="button"
           onClick={() => setPanelView("impacts")}
+          aria-pressed={panelView === "impacts"}
         >
           {t("impact.title" as any)}
         </button>
@@ -262,6 +264,7 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
             className={`task-panel__filter${activeFilter === tab ? " task-panel__filter--active" : ""}`}
             type="button"
             onClick={() => setActiveFilter(tab)}
+            aria-pressed={activeFilter === tab}
           >
             {t(FILTER_TAB_KEYS[tab] as any)}
             {tab === "all" ? ` (${jobs.length})` : ` (${jobs.filter((j) => j.status === tab).length})`}
@@ -270,12 +273,18 @@ export function TaskPanel({ projectId, shotIds, imageConfigSource, selectedImage
       </div>
 
       {/* Job list */}
-      <div className="task-panel__list">
+      <div className="task-panel__list" aria-busy={jobsQuery.isPending}>
         {jobsQuery.isPending && (
-          <div className="task-panel__empty">{t("taskPanel.loading")}</div>
+          <div className="task-panel__empty" role="status">{t("taskPanel.loading")}</div>
         )}
 
-        {!jobsQuery.isPending && filteredJobs.length === 0 && (
+        {jobsQuery.isError && (
+          <div className="task-panel__empty" role="alert">
+            <p>{formatApiError(jobsQuery.error, t, "ui.loadFailed")}</p>
+            <button className="btn btn-secondary" type="button" onClick={() => void jobsQuery.refetch()}>{t("common.reload")}</button>
+          </div>
+        )}
+        {!jobsQuery.isPending && !jobsQuery.isError && filteredJobs.length === 0 && (
           <div className="task-panel__empty">{t("taskPanel.emptyTitle")}</div>
         )}
 

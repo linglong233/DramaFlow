@@ -41,6 +41,7 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
               <button
                 key={m}
                 className={`gen-toggle${mode === m ? " gen-toggle--on" : ""}`}
+                aria-pressed={mode === m}
                 type="button"
                 onClick={() => setMode(m)}
               >
@@ -54,6 +55,7 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
         <div className="gen-toggle-group">
           <button
             className={`gen-toggle${llmConfigSource === "team" ? " gen-toggle--on" : ""}`}
+            aria-pressed={llmConfigSource === "team"}
             type="button"
             onClick={() => setLlmConfigSource("team")}
           >
@@ -61,6 +63,7 @@ export function GeneratorHost({ generatorId, projectId, project }: Props) {
           </button>
           <button
             className={`gen-toggle${llmConfigSource === "personal" ? " gen-toggle--on" : ""}`}
+            aria-pressed={llmConfigSource === "personal"}
             type="button"
             onClick={() => setLlmConfigSource("personal")}
           >

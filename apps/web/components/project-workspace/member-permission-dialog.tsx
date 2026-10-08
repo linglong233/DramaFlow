@@ -8,6 +8,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PROJECT_PERMISSIONS,
@@ -24,6 +25,7 @@ import { useI18n, getProjectRoleLabel } from "../../lib/i18n";
 import { getProjectPermissionHelp, getProjectPermissionLabel } from "../../lib/project-permissions";
 import { queryKeys } from "../../lib/query-keys";
 import { InlineFeedback } from "../inline-feedback";
+import { useWorkspaceDialog } from "./use-workspace-dialog";
 
 interface Props {
   projectId: string;
@@ -74,6 +76,8 @@ export function MemberPermissionDialog({ projectId, member, onClose }: Props) {
       error: formatApiError(error, t, "projectWorkspace.collaboration.permissionsSaveFailed"),
     }),
   });
+  const closeDialog = () => { if (!saveMutation.isPending) onClose(); };
+  const dialogRef = useWorkspaceDialog(true, closeDialog);
 
   const source = permissionsQuery.data ?? {
     inheritedPermissions: member.inheritedPermissions,
@@ -81,15 +85,15 @@ export function MemberPermissionDialog({ projectId, member, onClose }: Props) {
     effectivePermissions: member.effectivePermissions,
   };
 
-  return (
-    <div className="uw-drawer-overlay" role="presentation" onClick={onClose}>
-      <div className="create-project-modal permission-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+  return createPortal(
+    <div className="workspace-modal-overlay" role="presentation" onClick={closeDialog}>
+      <div ref={dialogRef} className="workspace-modal permission-dialog" role="dialog" aria-modal="true" aria-label={t("projectWorkspace.collaboration.permissionsDialogTitle")} aria-busy={saveMutation.isPending} tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <div className="permission-dialog__header">
           <div>
             <h3 className="create-project-modal-title">{t("projectWorkspace.collaboration.permissionsDialogTitle")}</h3>
             <p style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 4 }}>{member.displayName} · {getProjectRoleLabel(t, member.role)}</p>
           </div>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>{t("common.cancel")}</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={closeDialog} disabled={saveMutation.isPending}>{t("common.cancel")}</button>
         </div>
         <InlineFeedback message={feedback.message} error={feedback.error} />
         <div className="permission-dialog__grid">
@@ -103,6 +107,8 @@ export function MemberPermissionDialog({ projectId, member, onClose }: Props) {
               <label>
                 <input
                   type="checkbox"
+                  aria-label={`${getProjectPermissionLabel(t, permission)} — ${t("projectWorkspace.collaboration.permissionsAllow")}`}
+                  disabled={saveMutation.isPending}
                   checked={override.allow.includes(permission)}
                   onChange={() => setOverride((current) => ({ ...current, allow: togglePermission(current.allow, permission) }))}
                 />
@@ -111,6 +117,8 @@ export function MemberPermissionDialog({ projectId, member, onClose }: Props) {
               <label>
                 <input
                   type="checkbox"
+                  aria-label={`${getProjectPermissionLabel(t, permission)} — ${t("projectWorkspace.collaboration.permissionsDeny")}`}
+                  disabled={saveMutation.isPending}
                   checked={override.deny.includes(permission)}
                   onChange={() => setOverride((current) => ({ ...current, deny: togglePermission(current.deny, permission) }))}
                 />
@@ -126,6 +134,6 @@ export function MemberPermissionDialog({ projectId, member, onClose }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 }

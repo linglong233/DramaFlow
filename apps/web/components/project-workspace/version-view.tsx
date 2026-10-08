@@ -354,7 +354,7 @@ export function ScriptView({ content }: { content: ScriptContent }) {
   }, [allExpanded, safeContent.scenes]);
 
   return (
-    <div className="vv-content">
+    <div className="vv-content vv-content--script">
       {safeContent.logline ? (
         <div className="vv-hero-field">
           <span className="vv-hero-field__label">{t("versionView.logline")}</span>
@@ -640,7 +640,7 @@ export function VersionView({
   }
 
   return (
-    <div className="stack stack-gap-4">
+    <div className="vv-version stack stack-gap-4">
       <div className="vv-header">
         <div className="vv-header__info">
           <h2 className="vv-header__title">{currentVersion.title}</h2>
@@ -696,7 +696,7 @@ export function VersionView({
       {/* 影响链路条 */}
       <VersionLineageStrip summary={currentVersion.impactSummary} />
 
-      <div style={{ marginTop: "var(--space-4)" }}>
+      <div className="vv-version-content">
         {renderContent()}
       </div>
     </div>

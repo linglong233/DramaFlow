@@ -32,6 +32,7 @@ import { ProviderSelector } from "./provider-selector";
 import { CandidateThumbnailGrid } from "./candidate-thumbnail-grid";
 import { CandidateLightbox } from "./candidate-lightbox";
 import { RegenerateOverlay, type RegenFieldEntry } from "./regenerate-overlay";
+import { useWorkspaceDialog } from "./use-workspace-dialog";
 
 interface MediaVersionContent {
   assetId?: string;
@@ -335,6 +336,11 @@ export function ShotDetailModal({
   const [imagePromptPreview, setImagePromptPreview] = useState<string | null>(null);
   const [videoPromptPreview, setVideoPromptPreview] = useState<string | null>(null);
   const [regenFields, setRegenFields] = useState<RegenFieldEntry[] | null>(null);
+  const dialogRef = useWorkspaceDialog(visible && mounted, () => {
+    if (confirmDelete) setConfirmDelete(false);
+    else if (regenFields) setRegenFields(null);
+    else onClose();
+  });
 
   // 视频参考模式状态
   const currentImageAssetId = (state?.currentImage?.content as MediaVersionContent | undefined)?.assetId;
@@ -359,9 +365,7 @@ export function ShotDetailModal({
     if (visible) {
       setMounted(true);
       setClosing(false);
-      document.body.style.overflow = "hidden";
     } else if (mounted) {
-      document.body.style.overflow = "";
       setClosing(true);
       const timer = setTimeout(() => {
         setMounted(false);
@@ -371,19 +375,13 @@ export function ShotDetailModal({
     }
   }, [visible, mounted]);
 
-  useEffect(() => () => { document.body.style.overflow = ""; }, []);
-
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!visible || lightboxIndex !== null || regenFields || !dialogRef.current?.contains(e.target as Node)) return;
     const inEditor = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
-    if (e.key === "Escape") {
-      if (confirmDelete) { setConfirmDelete(false); return; }
-      onClose();
-      return;
-    }
     if (inEditor) return;
     if (e.key === "ArrowLeft" && hasPrev) { e.preventDefault(); onPrev(); }
     else if (e.key === "ArrowRight" && hasNext) { e.preventDefault(); onNext(); }
-  }, [onClose, confirmDelete, hasPrev, hasNext, onPrev, onNext]);
+  }, [visible, lightboxIndex, regenFields, dialogRef, hasPrev, hasNext, onPrev, onNext]);
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
@@ -552,15 +550,15 @@ export function ShotDetailModal({
 
   return createPortal(
     <div className={`sm-overlay${closing ? " sm-overlay--closing" : ""}`} onClick={closing ? undefined : onClose}>
-      <div className={`sm-dialog${closing ? " sm-dialog--closing" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className={`sm-dialog${closing ? " sm-dialog--closing" : ""}`} role="dialog" aria-modal="true" aria-label={shot.shotLabel} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         {/* Header — simplified */}
         <div className="sm-header">
           <div className="sm-header__nav">
-            <button className="btn btn-ghost btn-sm" type="button" disabled={!hasPrev} onClick={onPrev}>
+            <button className="btn btn-ghost btn-sm" type="button" aria-label={t("shotDetailDrawer.prev")} disabled={!hasPrev} onClick={onPrev}>
               <ChevronLeftIcon />
             </button>
             <span className="sm-header__shot-label">{shot.shotLabel}</span>
-            <button className="btn btn-ghost btn-sm" type="button" disabled={!hasNext} onClick={onNext}>
+            <button className="btn btn-ghost btn-sm" type="button" aria-label={t("shotDetailDrawer.next")} disabled={!hasNext} onClick={onNext}>
               <ChevronRightIcon />
             </button>
           </div>
@@ -570,7 +568,7 @@ export function ShotDetailModal({
               <span className="sm-header__position"> ({shotPositionInScene}/{sceneShotCount})</span>
             )}
           </span>
-          <button className="sm-header__close" type="button" onClick={onClose}>
+          <button className="sm-header__close" type="button" aria-label={t("common.close")} onClick={onClose}>
             <CloseIcon />
           </button>
         </div>

@@ -131,7 +131,19 @@ export function StoryboardToolbar({
   ];
 
   return (
-    <div className="swb-toolbar">
+    <div className="swb-toolbar" onKeyDown={(event) => {
+      if (event.key !== "Escape") return;
+      if (sceneDropdownOpen && sceneDropdownRef.current?.contains(event.target as Node)) {
+        setSceneDropdownOpen(false);
+        sceneDropdownRef.current.querySelector<HTMLButtonElement>("button")?.focus();
+        event.stopPropagation();
+      }
+      if (batchDropdownOpen && batchDropdownRef.current?.contains(event.target as Node)) {
+        setBatchDropdownOpen(false);
+        batchDropdownRef.current.querySelector<HTMLButtonElement>("button")?.focus();
+        event.stopPropagation();
+      }
+    }}>
       <div className="swb-toolbar__left">
         {/* Scene selector dropdown */}
         <div className="swb-toolbar__scene-select" ref={sceneDropdownRef}>
@@ -139,6 +151,7 @@ export function StoryboardToolbar({
             className="swb-toolbar__scene-btn"
             type="button"
             onClick={() => setSceneDropdownOpen(!sceneDropdownOpen)}
+            aria-expanded={sceneDropdownOpen}
           >
             {selectedSceneLabel}
             <ChevronDownIcon />
@@ -191,6 +204,7 @@ export function StoryboardToolbar({
               className={`swb-toolbar__chip${filter === f.key ? " swb-toolbar__chip--active" : ""}`}
               type="button"
               onClick={() => onFilterChange(f.key)}
+              aria-pressed={filter === f.key}
             >
               {f.label}{f.count !== undefined ? ` (${f.count})` : ""}
             </button>
@@ -217,6 +231,9 @@ export function StoryboardToolbar({
               className="btn btn-ghost btn-sm"
               type="button"
               onClick={() => setBatchDropdownOpen(!batchDropdownOpen)}
+              aria-expanded={batchDropdownOpen}
+              aria-label={t("nav.settings")}
+              title={t("nav.settings")}
             >
               <SettingsIcon />
             </button>

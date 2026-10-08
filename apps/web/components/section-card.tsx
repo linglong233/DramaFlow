@@ -29,9 +29,9 @@ export function SectionCard({
 
   return (
     <section className={resolvedClassName}>
-      {title || description ? (
+      {title || description || actions ? (
         <div className="section-card__header">
-          <div>
+          <div className="section-card__heading">
             {title ? <h2>{title}</h2> : null}
             {description ? <p className="muted">{description}</p> : null}
           </div>

@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, formatApiError } from "../lib/api";
@@ -16,6 +16,7 @@ import { useSession } from "../lib/use-session";
 import { useFeedback } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 import { useToast } from "./toast-provider";
+import { ErrorState } from "./error-state";
 import type { TeamSummary } from "@dramaflow/shared";
 
 interface ProjectItem {
@@ -153,8 +154,35 @@ export function DashboardOverview() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const dialogRef = useRef<HTMLFormElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
-  const { data: projects = [], isLoading } = useQuery<ProjectItem[]>({
+  useEffect(() => {
+    if (!showCreate && !showCreateTeam) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowCreate(false);
+        setShowCreateTeam(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]), input, textarea, select, a[href]") ?? []);
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      returnFocusRef.current?.focus();
+    };
+  }, [showCreate, showCreateTeam]);
+
+  const { data: projects = [], isLoading, error: projectsError, refetch: refetchProjects } = useQuery<ProjectItem[]>({
     queryKey: queryKeys.projects,
     queryFn: () => apiFetch("/projects"),
   });
@@ -275,6 +303,7 @@ export function DashboardOverview() {
   };
 
   const openCreateProject = () => {
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     setFeedback({ message: null, error: null });
     if (!hasTeams) {
       setShowCreateTeam(true);
@@ -284,6 +313,7 @@ export function DashboardOverview() {
   };
 
   const openCreateTeam = () => {
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     setFeedback({ message: null, error: null });
     setShowCreateTeam(true);
   };
@@ -291,7 +321,7 @@ export function DashboardOverview() {
   const displayName = session?.user.displayName ?? "";
 
   return (
-    <div className="animate-fade-in">
+    <div className="dashboard-page animate-fade-in">
       {/* Feedback banner */}
       {feedback.message && (
         <div className="inline-feedback inline-feedback-success" role="status" style={{ marginBottom: "var(--space-4)" }}>
@@ -306,24 +336,16 @@ export function DashboardOverview() {
 
       {/* Hero */}
       <div className="projects-hero">
-        <div className="projects-hero-kicker">{t("dashboard.recentProjects.title")}</div>
-        <h2 className="projects-hero-title">
+        <div className="projects-hero-kicker">{t("dashboard.recentProjects.title")}{projects.length > 0 && <span className="projects-count">{projects.length}</span>}</div>
+        <h1 className="projects-hero-title">
           {displayName ? t("dashboard.title", { name: displayName }) : t("dashboard.recentProjects.title")}
-        </h2>
+        </h1>
         <p className="projects-hero-desc">
           {t("dashboard.recentProjects.description")}
         </p>
-        {projects.length > 0 && (
-          <div className="projects-hero-stats">
-            <div className="projects-hero-stat">
-              <span className="projects-hero-stat-value">{projects.length}</span>
-              {t("dashboard.stats.projectsLabel")}
-            </div>
-          </div>
-        )}
       </div>
 
-      {!teamsQuery.isPending && !hasTeams ? (
+      {teamsQuery.error ? <ErrorState title={t("ui.loadFailed")} description={formatApiError(teamsQuery.error, t)} action={<button type="button" className="btn btn-secondary" onClick={() => void teamsQuery.refetch()}>{t("common.reload")}</button>} /> : !teamsQuery.isPending && !hasTeams ? (
         <div className="projects-empty" style={{ marginBottom: "var(--space-5)" }}>
           <div className="projects-empty-icon">
             <EmptyIcon />
@@ -345,48 +367,53 @@ export function DashboardOverview() {
             <input
               id="project-search-input"
               className="input"
-              placeholder={t("dashboard.recentProjects.title") + "..."}
+              placeholder={t("teamAdmin.projects.searchPlaceholder")}
+              aria-label={t("teamAdmin.projects.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         )}
 
-        <div className="view-toggle">
-          <button
-            className={`view-toggle-btn${viewMode === "grid" ? " active" : ""}`}
-            onClick={() => setViewMode("grid")}
-            aria-label="Grid view"
-          >
-            <GridIcon />
-          </button>
-          <button
-            className={`view-toggle-btn${viewMode === "list" ? " active" : ""}`}
-            onClick={() => setViewMode("list")}
-            aria-label="List view"
-          >
-            <ListIcon />
-          </button>
-        </div>
+        <div className="projects-toolbar-actions">
+          <div className="view-toggle">
+            <button
+              className={`view-toggle-btn${viewMode === "grid" ? " active" : ""}`}
+              onClick={() => setViewMode("grid")}
+              aria-label={t("ui.viewGrid")}
+              aria-pressed={viewMode === "grid"}
+            >
+              <GridIcon />
+            </button>
+            <button
+              className={`view-toggle-btn${viewMode === "list" ? " active" : ""}`}
+              onClick={() => setViewMode("list")}
+              aria-label={t("ui.viewList")}
+              aria-pressed={viewMode === "list"}
+            >
+              <ListIcon />
+            </button>
+          </div>
 
-        {hasTeams ? (
-          <button
-            className="btn btn-primary"
-            type="button"
-            onClick={openCreateProject}
-          >
-            {t("dashboard.createProject.title")}
-          </button>
-        ) : (
-          <button
-            className="btn btn-primary"
-            type="button"
-            onClick={openCreateTeam}
-            disabled={teamsQuery.isPending}
-          >
-            {t("dashboard.createTeam.title")}
-          </button>
-        )}
+          {hasTeams ? (
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={openCreateProject}
+            >
+              {t("dashboard.createProject.title")}
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={openCreateTeam}
+              disabled={teamsQuery.isPending}
+            >
+              {t("dashboard.createTeam.title")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Status filter chips */}
@@ -398,6 +425,7 @@ export function DashboardOverview() {
               className={`dash-filter-chip${statusFilter === status ? " dash-filter-chip--active" : ""}`}
               type="button"
               onClick={() => setStatusFilter(status)}
+              aria-pressed={statusFilter === status}
             >
               {t(`dashboard.filter${status === "all" ? "All" : status === "draft" ? "Draft" : status === "in_progress" ? "InProgress" : status === "completed" ? "Completed" : "Archived"}` as any)}
             </button>
@@ -407,12 +435,12 @@ export function DashboardOverview() {
 
       {/* Create Modal */}
       {showCreate && (
-        <div className="create-project-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true">
-          <form onSubmit={handleCreate} className="create-project-modal">
+        <div className="create-project-overlay" onClick={handleOverlayClick}>
+          <form ref={dialogRef} onSubmit={handleCreate} className="create-project-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" aria-describedby="create-project-description">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-4)" }}>
               <div>
-                <div className="create-project-modal-title">{t("dashboard.createProject.title")}</div>
-                <div className="create-project-modal-desc">{t("dashboard.createProject.description")}</div>
+                <h2 id="create-project-title" className="create-project-modal-title">{t("dashboard.createProject.title")}</h2>
+                <p id="create-project-description" className="create-project-modal-desc">{t("dashboard.createProject.description")}</p>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowCreate(false)} aria-label={t("common.cancel")}>
                 <CloseIcon />
@@ -420,9 +448,10 @@ export function DashboardOverview() {
             </div>
             <div className="stack stack-gap-4">
               <div>
-                <label className="form-label">{t("dashboard.createProject.nameLabel")}</label>
+                <label className="form-label" htmlFor="create-project-name">{t("dashboard.createProject.nameLabel")}</label>
                 <input
                   id="create-project-name"
+                  required
                   className="input"
                   placeholder={t("dashboard.createProject.namePlaceholder")}
                   value={newName}
@@ -431,9 +460,10 @@ export function DashboardOverview() {
                 />
               </div>
               <div>
-                <label className="form-label">{t("dashboard.createProject.descriptionLabel")}</label>
-                <input
+                <label className="form-label" htmlFor="create-project-desc">{t("dashboard.createProject.descriptionLabel")}</label>
+                <textarea
                   id="create-project-desc"
+                  rows={3}
                   className="input"
                   placeholder={t("dashboard.createProject.descriptionPlaceholder")}
                   value={newDesc}
@@ -444,22 +474,23 @@ export function DashboardOverview() {
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>
                   {t("common.cancel")}
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
+                <button type="submit" className="btn btn-primary" disabled={createMutation.isPending || !newName.trim()}>
                   {createMutation.isPending ? t("common.submitting") : t("dashboard.createProject.submit")}
                 </button>
               </div>
             </div>
+            {feedback.error && <p className="inline-feedback inline-feedback-error" role="alert">{feedback.error}</p>}
           </form>
         </div>
       )}
 
       {showCreateTeam && (
-        <div className="create-project-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true">
-          <form onSubmit={handleCreateTeam} className="create-project-modal">
+        <div className="create-project-overlay" onClick={handleOverlayClick}>
+          <form ref={dialogRef} onSubmit={handleCreateTeam} className="create-project-modal" role="dialog" aria-modal="true" aria-labelledby="create-team-title" aria-describedby="create-team-description">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-4)" }}>
               <div>
-                <div className="create-project-modal-title">{t("dashboard.createTeam.title")}</div>
-                <div className="create-project-modal-desc">{t("dashboard.createTeam.description")}</div>
+                <h2 id="create-team-title" className="create-project-modal-title">{t("dashboard.createTeam.title")}</h2>
+                <p id="create-team-description" className="create-project-modal-desc">{t("dashboard.createTeam.description")}</p>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowCreateTeam(false)} aria-label={t("common.cancel")}>
                 <CloseIcon />
@@ -467,9 +498,10 @@ export function DashboardOverview() {
             </div>
             <div className="stack stack-gap-4">
               <div>
-                <label className="form-label">{t("dashboard.createTeam.teamNameLabel")}</label>
+                <label className="form-label" htmlFor="create-team-name">{t("dashboard.createTeam.teamNameLabel")}</label>
                 <input
                   id="create-team-name"
+                  required
                   className="input"
                   placeholder={t("dashboard.createTeam.teamNamePlaceholder")}
                   value={newTeamName}
@@ -486,6 +518,7 @@ export function DashboardOverview() {
                 </button>
               </div>
             </div>
+            {feedback.error && <p className="inline-feedback inline-feedback-error" role="alert">{feedback.error}</p>}
           </form>
         </div>
       )}
@@ -522,7 +555,7 @@ export function DashboardOverview() {
       ) : null}
 
       {/* Project list */}
-      {isLoading ? (
+      {projectsError ? <ErrorState title={t("ui.loadFailed")} description={formatApiError(projectsError, t)} action={<button type="button" className="btn btn-secondary" onClick={() => void refetchProjects()}>{t("common.reload")}</button>} /> : isLoading ? (
         <div className="dashboard-grid">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div

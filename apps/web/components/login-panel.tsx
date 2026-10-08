@@ -25,6 +25,7 @@ export function LoginPanel() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export function LoginPanel() {
 
   return (
     <form onSubmit={handleSubmit} className="stack stack-gap-4">
+      <h1 className="studio-auth-title">{isRegister ? t("login.modeRegister") : t("login.modeLogin")}</h1>
       {isRegister && (
         <div className="form-group">
           <label className="form-label" htmlFor="displayName">
@@ -71,6 +73,7 @@ export function LoginPanel() {
             id="displayName"
             className="input"
             type="text"
+            autoComplete="name"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
             placeholder={t("login.displayNamePlaceholder")}
@@ -90,6 +93,7 @@ export function LoginPanel() {
           onChange={(event) => setEmail(event.target.value)}
           placeholder={t("login.emailPlaceholder")}
           autoComplete="email"
+          required
         />
       </div>
 
@@ -97,15 +101,20 @@ export function LoginPanel() {
         <label className="form-label" htmlFor="password">
           {t("login.passwordLabel")}
         </label>
-        <input
+        <div className="studio-password-field"><input
           id="password"
           className="input"
-          type="password"
+          type={showPassword ? "text" : "password"}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder={t("login.passwordPlaceholder")}
           autoComplete={isRegister ? "new-password" : "current-password"}
+          required
         />
+          <button className="studio-password-toggle" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? t("ui.hidePassword") : t("ui.showPassword")} aria-pressed={showPassword}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" stroke="currentColor" strokeWidth="1.5" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />{showPassword && <path d="m4 3 16 18" stroke="currentColor" strokeWidth="1.5" />}</svg>
+          </button>
+        </div>
       </div>
 
       {message ? <p style={{ color: "var(--success-text)", fontSize: "13px" }} role="status">{message}</p> : null}
@@ -134,7 +143,8 @@ export function LoginPanel() {
         {isRegister ? t("login.hasAccountPrompt") : t("login.noAccountPrompt")}{" "}
         <button
           type="button"
-          onClick={() => setMode(isRegister ? "login" : "register")}
+          onClick={() => { setMode(isRegister ? "login" : "register"); setMessage(null); setError(null); }}
+          disabled={authMutation.isPending}
           style={{
             background: "none",
             border: "none",

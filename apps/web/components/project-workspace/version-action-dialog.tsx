@@ -5,8 +5,10 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../../lib/i18n";
+import { useWorkspaceDialog } from "./use-workspace-dialog";
 
 export type VersionActionType = "submit" | "approve" | "reject" | "adopt" | "restore" | "delete";
 
@@ -31,6 +33,9 @@ export function VersionActionDialog({
 }: Props) {
   const { t } = useI18n();
   const [comment, setComment] = useState("");
+  const dialogRef = useWorkspaceDialog(open, () => { if (!isPending) onCancel(); });
+
+  useEffect(() => { setComment(""); }, [open, action, versionNumber]);
 
   if (!open) return null;
 
@@ -46,26 +51,20 @@ export function VersionActionDialog({
     delete: t("projectWorkspace.versions.deleteAction"),
   };
 
-  return (
+  return createPortal(
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 50,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0, 0, 0, 0.5)",
-      }}
+      className="workspace-modal-overlay"
       onClick={(e) => { if (e.target === e.currentTarget && !isPending) onCancel(); }}
     >
       <div
-        className="glass-panel"
+        ref={dialogRef}
+        className="workspace-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={actionLabels[action]}
+        aria-busy={isPending}
+        tabIndex={-1}
         style={{
-          width: "100%",
-          maxWidth: 420,
-          margin: "var(--space-4)",
-          padding: "var(--space-6)",
           display: "flex",
           flexDirection: "column",
           gap: "var(--space-4)",
@@ -99,6 +98,8 @@ export function VersionActionDialog({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder={t("projectWorkspace.review.commentPlaceholder")}
+            aria-label={t("projectWorkspace.review.commentPlaceholder")}
+            disabled={isPending}
             style={{ minHeight: 72, resize: "none" }}
           />
         )}
@@ -117,6 +118,6 @@ export function VersionActionDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 }

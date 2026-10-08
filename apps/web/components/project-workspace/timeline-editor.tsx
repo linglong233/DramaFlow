@@ -351,6 +351,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             onClick={() => autoAssemble.mutate()}
             disabled={autoAssemble.isPending || !canEditTimeline}
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 10-12h-8l1-8Z" /></svg>
             {autoAssemble.isPending ? t("timeline.assembling") : t("timeline.autoAssemble")}
           </button>
           <button
@@ -366,6 +367,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             }}
             disabled={saveMutation.isPending || !timeline || !canEditTimeline}
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2ZM7 3v6h10V3M7 21v-8h10v8" /></svg>
             {saveMutation.isPending ? t("timeline.saving") : t("timeline.save")}
           </button>
         </div>
@@ -376,7 +378,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             onClick={() => { setPlayheadTime(0); setIsPlaying(false); }}
             title={t("timeline.backToStart")}
           >
-            ⏮
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true"><path d="M5 4v16M19 4 8 12l11 8V4Z" /></svg>
           </button>
           <button
             className="timeline-btn timeline-btn-play"
@@ -416,6 +418,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
             onClick={handleExportClick}
             disabled={exportMutation.isPending || totalDuration <= 0 || !canCreateExport}
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v6h16v-6" /></svg>
             {exportMutation.isPending ? t("timeline.exporting") : t("timeline.exportVideo")}
           </button>
         </div>
@@ -425,8 +428,10 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
 
       <section className="timeline-delivery" aria-label={t("timeline.deliveryTitle")}>
         <div>
-          <h3>{t("timeline.deliveryTitle")}</h3>
-          <p>{t("timeline.comicWorkflow")}</p>
+          <details className="timeline-delivery-guide">
+            <summary>{t("timeline.deliveryTitle")}</summary>
+            <p>{t("timeline.comicWorkflow")}</p>
+          </details>
           {delivery && <p role="status">{t("timeline.deliveryCounts", { visuals: delivery.visualClipCount, subtitles: delivery.subtitleCount, missing: delivery.missingAssetCount, gaps: delivery.uncoveredSeconds.toFixed(1) })}</p>}
           {delivery && !delivery.canExport && <p className="timeline-delivery-error">{t("timeline.deliveryBlocked")}</p>}
         </div>
@@ -457,7 +462,7 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
                 disabled={!canEditTimeline || saveMutation.isPending}
                 title={track.isMuted ? t("timeline.unmute") : t("timeline.mute")}
               >
-                {track.isMuted ? "🔇" : "🔊"}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 4 6 8H3v8h3l5 4V4Z" />{track.isMuted ? <path d="m16 9 5 6m0-6-5 6" /> : <><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14" /></>}</svg>
               </button>
             </div>
           ))}
@@ -501,12 +506,22 @@ export function TimelineEditor({ projectId, data, onRefresh, canEditTimeline = f
                   <div
                     key={clip.id}
                     className={`timeline-clip ${selectedClipId === clip.id ? "selected" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedClipId === clip.id}
+                    aria-label={clip.label ?? clip.subtitleText ?? clip.id}
                     style={{
                       left: clip.startTime * zoom,
                       width: Math.max(clip.duration * zoom, 4),
                       backgroundColor: TRACK_COLORS[track.type] ?? "#888",
                     }}
                     onClick={() => setSelectedClipId(clip.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedClipId(clip.id);
+                      }
+                    }}
                     title={clip.label ?? clip.id}
                   >
                     <span className="timeline-clip-label">

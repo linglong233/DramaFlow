@@ -447,7 +447,7 @@ export function TeamSettingsPanel() {
   }
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: "1400px", margin: "0 auto" }}>
+    <div className="team-page settings-page animate-fade-in">
       <div className="team-hero" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-6)", flexWrap: "wrap" }}>
         <div>
           <div className="team-hero-kicker">{t("settingsPages.teamSettings.kicker")}</div>
@@ -463,7 +463,6 @@ export function TeamSettingsPanel() {
             className="input"
             value={selectedTeamId}
             onChange={(event) => setSelectedTeamId(event.target.value)}
-            style={{ minWidth: 240 }}
           >
             {teams.map((team) => (
               <option key={team.id} value={team.id}>{team.name}</option>
@@ -743,13 +742,14 @@ export function TeamSettingsPanel() {
                   <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无图片 Provider 配置，点击下方按钮添加</p>
                 ) : (
                   imageDrafts.map((draft) => (
-                    <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingImageId === draft.id ? "var(--space-4)" : 0 }}>
+                    <div key={draft.id} className="settings-provider-entry">
+                      <div className="settings-provider-header" style={{ marginBottom: editingImageId === draft.id ? "var(--space-4)" : 0 }}>
                         <button
                           type="button"
                           onClick={() => setDefaultImageProvider(defaultImageProvider === draft.id ? "" : draft.id)}
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                          className="settings-provider-default"
                           title={defaultImageProvider === draft.id ? "取消默认" : "设为默认"}
+                        aria-pressed={defaultImageProvider === draft.id}
                         >
                           <StarIcon filled={defaultImageProvider === draft.id} />
                         </button>
@@ -804,13 +804,14 @@ export function TeamSettingsPanel() {
                   <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无视频 Provider 配置，点击下方按钮添加</p>
                 ) : (
                   videoDrafts.map((draft) => (
-                    <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingVideoId === draft.id ? "var(--space-4)" : 0 }}>
+                    <div key={draft.id} className="settings-provider-entry">
+                      <div className="settings-provider-header" style={{ marginBottom: editingVideoId === draft.id ? "var(--space-4)" : 0 }}>
                         <button
                           type="button"
                           onClick={() => setDefaultVideoProvider(defaultVideoProvider === draft.id ? "" : draft.id)}
-                          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                          className="settings-provider-default"
                           title={defaultVideoProvider === draft.id ? "取消默认" : "设为默认"}
+                        aria-pressed={defaultVideoProvider === draft.id}
                         >
                           <StarIcon filled={defaultVideoProvider === draft.id} />
                         </button>
@@ -849,7 +850,8 @@ export function TeamSettingsPanel() {
                   <select
                     className="input"
                     style={{ maxWidth: 220 }}
-                    value={selectedVideoProviderType}
+                    aria-label={t("ui.videoProviderType")}
+                  value={selectedVideoProviderType}
                     onChange={(event) => setSelectedVideoProviderType(event.target.value as VideoGenerationProvider)}
                   >
                     {Object.entries(VIDEO_PROVIDER_LABELS).map(([value, label]) => (

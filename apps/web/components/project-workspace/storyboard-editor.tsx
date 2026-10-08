@@ -27,6 +27,7 @@ export function StoryboardEditor({ initialContent, onSave, onCancel, isSaving, p
   const { t } = useI18n();
   const [title, setTitle] = useState(initialContent ? t("storyboardEditor.editVersionTitle") : t("storyboardEditor.newVersionTitle"));
   const [content, setContent] = useState<StoryboardContent>(() => normalizeStoryboardContent(initialContent ?? { overview: "", shots: [] }));
+  const [importFailed, setImportFailed] = useState(false);
 
   function handleUploadJson(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -34,13 +35,15 @@ export function StoryboardEditor({ initialContent, onSave, onCancel, isSaving, p
       return;
     }
 
+    setImportFailed(false);
     const reader = new FileReader();
+    reader.onerror = () => setImportFailed(true);
     reader.onload = (loadEvent) => {
       try {
         const parsed = JSON.parse(String(loadEvent.target?.result ?? "{}"));
         setContent(normalizeStoryboardContent(parsed));
       } catch {
-        // Ignore invalid JSON imports for now.
+        setImportFailed(true);
       }
     };
     reader.readAsText(file, "utf-8");
@@ -59,21 +62,22 @@ export function StoryboardEditor({ initialContent, onSave, onCancel, isSaving, p
           <div className="se-header__actions">
             <label className="se-upload-btn">
               {t("storyboardEditor.uploadJson")}
-              <input type="file" accept=".json" onChange={handleUploadJson} hidden />
+              <input className="workspace-file-input" type="file" accept=".json" aria-label={t("storyboardEditor.uploadJson")} onChange={handleUploadJson} disabled={isSaving} />
             </label>
           </div>
         </div>
         <div className="se-header__right">
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel}>{t("common.cancel")}</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel} disabled={isSaving}>{t("common.cancel")}</button>
           <button className="btn btn-primary btn-sm" type="button" onClick={handleSubmit} disabled={isSaving}>
             {isSaving ? t("storyboardEditor.saving") : t("storyboardEditor.saveAction")}
           </button>
         </div>
       </div>
 
+      {importFailed && <p className="workspace-import-error" role="alert">{t("projectWorkspace.workspace.importJsonError")}</p>}
       <div className="se-field">
         <label className="se-label">{t("storyboardEditor.versionTitleLabel")}</label>
-        <input className="input se-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("storyboardEditor.versionTitlePlaceholder")} />
+        <input className="input se-input" aria-label={t("storyboardEditor.versionTitleLabel")} value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("storyboardEditor.versionTitlePlaceholder")} />
       </div>
 
       <StoryboardWorkbench

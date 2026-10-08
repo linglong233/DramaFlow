@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectWorkspacePayload } from "@dramaflow/shared";
 import { useI18n } from "../../lib/i18n";
+import { useWorkspaceDialog } from "./use-workspace-dialog";
 
 interface MediaVersionContent {
   assetId?: string;
@@ -87,9 +88,9 @@ export function CandidateLightbox({
       onClose();
     }, 150);
   }
+  const dialogRef = useWorkspaceDialog(mounted, handleClose);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") { handleClose(); return; }
     if (e.key === "ArrowLeft" && hasPrev) { e.preventDefault(); onNavigate(currentIndex - 1); }
     if (e.key === "ArrowRight" && hasNext) { e.preventDefault(); onNavigate(currentIndex + 1); }
   }, [hasPrev, hasNext, currentIndex, onNavigate]);
@@ -106,9 +107,9 @@ export function CandidateLightbox({
       className={`sm-lightbox${closing ? " sm-lightbox--closing" : ""}`}
       onClick={handleClose}
     >
-      <div className="sm-lightbox__content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="sm-lightbox__content" role="dialog" aria-modal="true" aria-label={candidate.title || t("shotDetailDrawer.previewTitle")} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         {/* Close button */}
-        <button className="sm-lightbox__close" type="button" onClick={handleClose}>
+        <button className="sm-lightbox__close" type="button" aria-label={t("common.close")} onClick={handleClose}>
           <CloseIcon />
         </button>
 
@@ -116,6 +117,7 @@ export function CandidateLightbox({
         {hasPrev && (
           <button
             className="sm-lightbox__nav sm-lightbox__nav--prev"
+            aria-label={t("shotDetailDrawer.prev")}
             type="button"
             onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex - 1); }}
           >
@@ -125,6 +127,7 @@ export function CandidateLightbox({
         {hasNext && (
           <button
             className="sm-lightbox__nav sm-lightbox__nav--next"
+            aria-label={t("shotDetailDrawer.next")}
             type="button"
             onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex + 1); }}
           >

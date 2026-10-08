@@ -98,7 +98,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {mounted && typeof document !== "undefined"
         ? createPortal(
-            <div className="toast-portal" aria-live="polite" aria-atomic="false">
+            <div className="toast-portal">
               {toasts.map((toast) => (
                 <ToastItem
                   key={toast.id}

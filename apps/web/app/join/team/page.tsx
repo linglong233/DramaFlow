@@ -20,12 +20,13 @@ import { useSession } from "../../../lib/use-session";
 import { ErrorState } from "../../../components/error-state";
 import { InlineFeedback } from "../../../components/inline-feedback";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
+import { AuthShell } from "../../../components/auth-shell";
 
 function JoinTeamContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useI18n();
-  const { session } = useSession();
+  const { session, ready } = useSession();
   const token = searchParams.get("token") ?? "";
   const { feedback, setFeedback } = useFeedback();
   const [joined, setJoined] = useState(false);
@@ -53,16 +54,19 @@ function JoinTeamContent() {
   });
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !ready) return;
     if (!session) {
       const returnUrl = `/join/team?token=${token}`;
       router.push(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
     }
-  }, [token, session, router]);
+  }, [token, session, ready, router]);
+
+  if (!ready) return <LoadingSkeleton rows={4} />;
 
   if (!token) {
     return (
       <div className="join-team-page">
+        <h1 className="studio-auth-title">{t("joinTeam.title")}</h1>
         <ErrorState
           title={t("joinTeam.linkInvalid")}
           description=""
@@ -100,6 +104,7 @@ function JoinTeamContent() {
     return (
       <div className="join-team-page">
         <div className="join-team-card">
+          <h1 className="studio-auth-title">{t("joinTeam.title")}</h1>
           <ErrorState
             title={t("joinTeam.linkInvalid")}
             description={formatApiError(infoQuery.error, t, "joinTeam.linkInvalid")}
@@ -162,8 +167,6 @@ function JoinTeamContent() {
 
 export default function JoinTeamPage() {
   return (
-    <Suspense>
-      <JoinTeamContent />
-    </Suspense>
+    <AuthShell><Suspense fallback={<LoadingSkeleton rows={4} />}><JoinTeamContent /></Suspense></AuthShell>
   );
 }

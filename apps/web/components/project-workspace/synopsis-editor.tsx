@@ -43,6 +43,7 @@ export function SynopsisEditor({ initialContent, onSave, onCancel, isSaving }: P
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("synopsisEditor.titlePlaceholder")}
+          aria-label={t("synopsisEditor.titlePlaceholder")}
         />
       </div>
       <textarea
@@ -51,6 +52,7 @@ export function SynopsisEditor({ initialContent, onSave, onCancel, isSaving }: P
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder={t("synopsisEditor.contentPlaceholder")}
+        aria-label={t("synopsisEditor.contentPlaceholder")}
         style={{
           flex: 1,
           minHeight: 400,

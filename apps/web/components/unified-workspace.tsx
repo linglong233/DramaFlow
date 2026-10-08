@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import {
   normalizeScriptContent,
   normalizeStoryboardContent,
@@ -51,12 +52,19 @@ import { NovelImportWorkbench } from "./project-workspace/novel-import-workbench
 import { ProductionOverview } from "./project-workspace/production-overview";
 import type { ProductionNavigationTarget } from "../lib/hooks/use-production-overview";
 import { useToast } from "./toast-provider";
+import { useWorkspaceDialog } from "./project-workspace/use-workspace-dialog";
 
 // Workspace modes: document (with sub-tabs: view/edit/generate/versions), info, tasks, timeline
 type WorkspaceMode = "overview" | "document" | "info" | "tasks" | "timeline";
 
 // Sub-tabs within document mode
 type DocSubTab = "view" | "edit" | "generate" | "versions" | "novelImport";
+
+function readDocSubTab(mode: string, sub: string | null): DocSubTab {
+  if (sub === "edit" || sub === "generate" || sub === "versions" || sub === "novelImport") return sub;
+  if (!sub && (mode === "edit" || mode === "generate")) return mode;
+  return "view";
+}
 
 // Backward-compat mapping for old URL mode params
 const MODE_COMPAT_MAP: Record<string, WorkspaceMode> = {
@@ -192,11 +200,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   const [mode, setMode] = useState<WorkspaceMode>(initialMode);
   const [isEditing, setIsEditing] = useState(rawMode === "edit"); // If came from edit redirect
-  const [docSubTab, setDocSubTab] = useState<DocSubTab>(() => {
-    if (rawMode === "generate" || rawSub === "generate") return "generate";
-    if (rawMode === "edit" || rawSub === "edit") return "edit";
-    return "view";
-  });
+  const [docSubTab, setDocSubTab] = useState<DocSubTab>(() => readDocSubTab(rawMode, rawSub));
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   // Hydrate panel state from localStorage after mount
@@ -212,6 +216,19 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
+  const leftDrawerRef = useWorkspaceDialog(leftDrawerOpen && mode === "document", () => setLeftDrawerOpen(false));
+  const rightDrawerRef = useWorkspaceDialog(rightDrawerOpen && mode === "document", () => setRightDrawerOpen(false));
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1025px)");
+    const closeDrawers = () => {
+      if (desktop.matches) {
+        setLeftDrawerOpen(false);
+        setRightDrawerOpen(false);
+      }
+    };
+    desktop.addEventListener("change", closeDrawers);
+    return () => desktop.removeEventListener("change", closeDrawers);
+  }, []);
   const { feedback, setFeedback } = useFeedback();
   const [editorInitialContent, setEditorInitialContent] = useState<ScriptContent | null>(null);
   const [storyboardEditorInitialContent, setStoryboardEditorInitialContent] = useState<StoryboardContent | null>(null);
@@ -321,6 +338,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
 
   // Auto-select first document/version (skip virtual video entry)
   useEffect(() => {
+    if (!projectQuery.data || !versionsQuery.data) return;
     const contentDocs = documents.filter((d) => d.id !== VIRTUAL_VIDEO_DOC_ID);
     if (!contentDocs.length) return;
 
@@ -338,7 +356,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       return;
     }
     if (!selectedVersionId && activeDoc.versions[0]) setSelectedVersionId(activeDoc.currentVersionId ?? activeDoc.versions[0].id);
-  }, [documents, selectedDocId, selectedVersionId, searchParams]);
+  }, [documents, selectedDocId, selectedVersionId, searchParams, projectQuery.data, versionsQuery.data]);
 
   useEffect(() => {
     if (!selectedDocId || selectedDocId.startsWith("__")) return;
@@ -513,16 +531,21 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
     setDocSubTab("edit");
   }
 
-  function handleModeChange(newMode: string) {
+  function handleModeChange(newMode: string, sub?: DocSubTab) {
     const mapped = MODE_COMPAT_MAP[newMode] || (newMode as WorkspaceMode);
     setMode(mapped);
+    setLeftDrawerOpen(false);
+    setRightDrawerOpen(false);
     if (mapped !== "document") {
       setIsEditing(false);
       setDocSubTab("view");
+    } else {
+      setDocSubTab(sub ?? "view");
     }
     const params = new URLSearchParams(searchParams.toString());
     params.set("mode", mapped);
     params.delete("sub");
+    if (mapped === "document" && sub && sub !== "view") params.set("sub", sub);
     params.delete("doc");
     router.replace(`?${params.toString()}`, { scroll: false });
   }
@@ -588,31 +611,18 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         }
       }
     }
-    if (target.subTab) {
-      setDocSubTab(target.subTab);
-    }
-    handleModeChange(target.mode);
+    handleModeChange(target.mode, target.subTab);
   }
 
   // Sync URL -> state (for external navigation like sidebar links)
   useEffect(() => {
     const currentMode = searchParams.get("mode") || "overview";
-    const mapped = MODE_COMPAT_MAP[currentMode] || currentMode;
-    if (mapped !== mode) {
-      setMode(mapped as WorkspaceMode);
-    }
-    // Sync sub-tab from URL
+    const mapped = MODE_COMPAT_MAP[currentMode] || "overview";
+    setMode(mapped);
     if (mapped === "document") {
-      const subParam = searchParams.get("sub");
-      if (subParam === "generate") setDocSubTab("generate");
-      else if (subParam === "edit") setDocSubTab("edit");
-      else if (subParam === "novelImport") setDocSubTab("novelImport");
-      else if (subParam === "view" || !subParam) {
-        // Only reset if coming from external navigation
-        if (currentMode !== "document") setDocSubTab("view");
-      }
+      setDocSubTab(readDocSubTab(currentMode, searchParams.get("sub")));
     }
-  }, [mode, searchParams]);
+  }, [searchParams]);
 
   const modeConfig = [
     { key: "overview" as const, label: t("projectWorkspace.workspace.modeOverview"), icon: TimelineIcon },
@@ -681,8 +691,8 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
       <div className="uw-mode-bar">
         <div className="uw-mode-bar-left">
           {/* Breadcrumb */}
-          <nav className="uw-breadcrumb" aria-label="breadcrumb">
-            <Link href="/dashboard" className="uw-breadcrumb-link">
+          <nav className="uw-breadcrumb" aria-label={t("projectWorkspace.workspace.breadcrumbLabel")}>
+            <Link href="/dashboard/projects" className="uw-breadcrumb-link">
               {t("projectWorkspace.workspace.breadcrumbProjects")}
             </Link>
             <span className="uw-breadcrumb-sep"><ChevronRightIcon /></span>
@@ -701,6 +711,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               <button
                 key={m.key}
                 className={`uw-mode-tab${mode === m.key ? " uw-mode-tab--active" : ""}`}
+                aria-pressed={mode === m.key}
                 onClick={() => handleModeChange(m.key)}
                 type="button"
               >
@@ -710,20 +721,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
             ))}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          {/* Mobile drawer toggles (visible only <1024px) */}
-          {showThreeColumnLayout && !isDocumentMode && (
-            <div className="uw-mobile-toggles">
-              <button className="uw-panel-toggle" type="button" onClick={() => setLeftDrawerOpen(true)}>
-                <MenuIcon />
-                {t("projectWorkspace.workspace.modeDocument")}
-              </button>
-              <button className="uw-panel-toggle" type="button" onClick={() => setRightDrawerOpen(true)}>
-                <PanelIcon />
-                {t("projectWorkspace.workspace.reviewActions")}
-              </button>
-            </div>
-          )}
+        <div className="uw-mode-actions">
           {/* Editing state indicator */}
           {mode === "document" && docSubTab === "edit" && (
             <span className="uw-editing-badge">
@@ -859,13 +857,39 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
           <div className="uw-center">
             <div className={`uw-center-scroll${mode === "document" && docSubTab === "generate" ? " uw-center-scroll--fill" : ""}`}>
               <div className="uw-center-inner">
+                <div className="uw-document-heading">
+                  {isDocumentMode && (
+                    <button className="uw-panel-toggle uw-document-navigation" type="button" aria-label={t("projectWorkspace.workspace.documentNavigation")} title={t("projectWorkspace.workspace.documentNavigation")} aria-haspopup="dialog" aria-expanded={leftDrawerOpen} onClick={() => setLeftDrawerOpen(true)}>
+                      <MenuIcon />
+                    </button>
+                  )}
+                  <h1>{selectedDoc?.title || payload.project.name}</h1>
+                  {selectedVersion && <span className="uw-document-version">V{selectedVersion.versionNumber}</span>}
+                  {docSubTab === "view" && selectedDoc && selectedDoc.versions.length >= 2 && (
+                    <button className="btn btn-ghost btn-sm" type="button" aria-pressed={showDiff} onClick={() => setShowDiff(!showDiff)}>
+                      {t("versionDiff.compareVersions")}
+                    </button>
+                  )}
+                </div>
                 {/* Document sub-tab bar */}
                 {mode === "document" && (
-                  <div className="uw-sub-tabs" role="tablist">
+                  <div className="uw-sub-tabs" role="tablist" aria-label={t("projectWorkspace.workspace.modeDocument")} onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)'));
+                    const index = tabs.indexOf(event.target as HTMLButtonElement);
+                    if (index < 0 || tabs.length === 0) return;
+                    event.preventDefault();
+                    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                    tabs[nextIndex].focus();
+                    tabs[nextIndex].click();
+                  }}>
                     <button
                       className={`uw-sub-tab${docSubTab === "view" ? " uw-sub-tab--active" : ""}`}
                       role="tab"
                       aria-selected={docSubTab === "view"}
+                      id="workspace-tab-view"
+                      aria-controls="workspace-panel-view"
+                      tabIndex={docSubTab === "view" ? 0 : -1}
                       onClick={() => handleSubTabChange("view")}
                       type="button"
                     >
@@ -876,6 +900,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       className={`uw-sub-tab${docSubTab === "edit" ? " uw-sub-tab--active" : ""}`}
                       role="tab"
                       aria-selected={docSubTab === "edit"}
+                      id="workspace-tab-edit"
+                      aria-controls="workspace-panel-edit"
+                      tabIndex={docSubTab === "edit" ? 0 : -1}
                       onClick={() => handleSubTabChange("edit")}
                       type="button"
                     >
@@ -886,6 +913,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       className={`uw-sub-tab${docSubTab === "generate" ? " uw-sub-tab--active" : ""}`}
                       role="tab"
                       aria-selected={docSubTab === "generate"}
+                      id="workspace-tab-generate"
+                      aria-controls="workspace-panel-generate"
+                      tabIndex={docSubTab === "generate" ? 0 : -1}
                       onClick={() => handleSubTabChange("generate")}
                       type="button"
                     >
@@ -896,6 +926,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       className={`uw-sub-tab${docSubTab === "versions" ? " uw-sub-tab--active" : ""}`}
                       role="tab"
                       aria-selected={docSubTab === "versions"}
+                      id="workspace-tab-versions"
+                      aria-controls="workspace-panel-versions"
+                      tabIndex={docSubTab === "versions" ? 0 : -1}
                       onClick={() => handleSubTabChange("versions")}
                       type="button"
                     >
@@ -907,6 +940,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       className={`uw-sub-tab${docSubTab === "novelImport" ? " uw-sub-tab--active" : ""}`}
                       role="tab"
                       aria-selected={docSubTab === "novelImport"}
+                      id="workspace-tab-novel-import"
+                      aria-controls="workspace-panel-novel-import"
+                      tabIndex={docSubTab === "novelImport" ? 0 : -1}
                       onClick={() => handleSubTabChange("novelImport")}
                       type="button"
                     >
@@ -917,22 +953,9 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 )}
 
                 {/* View sub-tab */}
-                <div style={{ display: mode === "document" && docSubTab === "view" && !showDiff ? undefined : "none" }}>
+                <div id="workspace-panel-view" role="tabpanel" aria-labelledby="workspace-tab-view" tabIndex={0} hidden={docSubTab !== "view"}>
                   {mode === "document" && (
-                    <div>
-                      {/* Edit button for mobile (<1024px) where right panel is a drawer */}
-                      {selectedVersion && (isScriptDoc || isStoryboardDoc || isWorldBibleDoc) && (
-                        <div className="uw-edit-bar-mobile">
-                          <button className="btn btn-secondary btn-sm" type="button" onClick={() => { openEditor(selectedVersion); handleSubTabChange("edit"); }}>
-                            <EditIcon /> <span style={{ marginLeft: 4 }}>{t("projectWorkspace.workspace.startEditing")}</span>
-                          </button>
-                          {selectedDoc && selectedDoc.versions.length >= 2 && (
-                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowDiff(true)}>
-                              {t("versionDiff.compareVersions")}
-                            </button>
-                          )}
-                        </div>
-                      )}
+                    <div hidden={showDiff}>
                       {isVideoDoc && selectedDoc ? (
                         <VideoDocumentViewer
                           projectId={projectId}
@@ -960,8 +983,6 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                       )}
                     </div>
                   )}
-                </div>
-
                 {/* Diff view (only in view sub-tab) */}
                 {mode === "document" && docSubTab === "view" && showDiff && selectedDoc && (
                   <VersionDiffView
@@ -969,9 +990,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     onClose={() => setShowDiff(false)}
                   />
                 )}
+                </div>
 
                 {/* Edit sub-tab */}
-                <div style={{ display: mode === "document" && docSubTab === "edit" ? undefined : "none" }}>
+                <div id="workspace-panel-edit" role="tabpanel" aria-labelledby="workspace-tab-edit" tabIndex={0} hidden={docSubTab !== "edit"}>
                   {mode === "document" && (
                     isVideoDoc && selectedDoc ? (
                       <VideoDocumentViewer
@@ -983,7 +1005,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     ) : isStoryboardDoc ? (
                       <StoryboardEditor
                         key={`storyboard-${selectedVersionId || "new"}-${editorSessionKey}`}
-                        initialContent={storyboardEditorInitialContent}
+                        initialContent={storyboardEditorInitialContent ?? (selectedVersion ? normalizeStoryboardContent(selectedVersion.content) : null)}
                         onSave={handleEditorSave}
                         onCancel={() => handleSubTabChange("view")}
                         isSaving={versionMutations.create.isPending}
@@ -993,7 +1015,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     ) : isWorldBibleDoc ? (
                       <WorldBibleEditor
                         key={`worldbible-${selectedVersionId || "new"}-${editorSessionKey}`}
-                        initialContent={worldBibleEditorInitialContent}
+                        initialContent={worldBibleEditorInitialContent ?? (selectedVersion ? normalizeWorldBibleContent(selectedVersion.content) : null)}
                         onSave={handleEditorSave}
                         onCancel={() => handleSubTabChange("view")}
                         isSaving={versionMutations.create.isPending}
@@ -1002,7 +1024,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     ) : isScriptDoc ? (
                       <RichScriptEditor
                         key={`script-${selectedVersionId || "new"}-${editorSessionKey}`}
-                        initialContent={editorInitialContent}
+                        initialContent={editorInitialContent ?? (selectedVersion ? normalizeScriptContent(selectedVersion.content) : null)}
                         onSave={handleEditorSave}
                         onCancel={() => handleSubTabChange("view")}
                         isSaving={versionMutations.create.isPending}
@@ -1010,7 +1032,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     ) : isSynopsisDoc ? (
                       <SynopsisEditor
                         key={`synopsis-${selectedVersionId || "new"}-${editorSessionKey}`}
-                        initialContent={synopsisEditorInitialContent}
+                        initialContent={synopsisEditorInitialContent ?? (selectedVersion ? String(selectedVersion.content ?? "") : null)}
                         onSave={handleSynopsisEditorSave}
                         onCancel={() => handleSubTabChange("view")}
                         isSaving={versionMutations.create.isPending}
@@ -1022,6 +1044,10 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 {/* Generate sub-tab */}
                 <div
                   className="uw-generate-panel"
+                  id="workspace-panel-generate"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-generate"
+                  tabIndex={0}
                   style={{ display: mode === "document" && docSubTab === "generate" ? undefined : "none" }}
                 >
                   {mode === "document" && docSubTab === "generate" && (() => {
@@ -1052,7 +1078,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 </div>
 
                 {/* Versions management sub-tab */}
-                <div style={{ display: mode === "document" && docSubTab === "versions" ? undefined : "none" }}>
+                <div id="workspace-panel-versions" role="tabpanel" aria-labelledby="workspace-tab-versions" tabIndex={0} hidden={docSubTab !== "versions"}>
                   {mode === "document" && selectedDoc && (
                     <VersionManagementPanel
                       key={selectedDoc.id}
@@ -1069,7 +1095,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                 </div>
 
                 {/* 小说导入子标签页 */}
-                <div style={{ display: mode === "document" && docSubTab === "novelImport" ? undefined : "none" }}>
+                <div id="workspace-panel-novel-import" role="tabpanel" aria-labelledby="workspace-tab-novel-import" tabIndex={0} hidden={docSubTab !== "novelImport"}>
                   {mode === "document" && (
                     <NovelImportWorkbench projectId={projectId} project={payload} />
                   )}
@@ -1101,12 +1127,12 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
         </div>
       )}
       {/* Mobile drawers (only rendered when open, visible <1024px) */}
-      {leftDrawerOpen && showThreeColumnLayout && (
+      {leftDrawerOpen && showThreeColumnLayout && createPortal(
         <div className="uw-drawer-overlay" onClick={() => setLeftDrawerOpen(false)}>
-          <div className="uw-drawer uw-drawer--left" onClick={(e) => e.stopPropagation()}>
+          <div ref={leftDrawerRef} className="uw-drawer uw-drawer--left" role="dialog" aria-modal="true" aria-label={t("projectWorkspace.workspace.documentNavigation")} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
             <div className="uw-drawer__header">
               <span className="uw-drawer__title">{t("projectWorkspace.workspace.modeDocument")}</span>
-              <button className="uw-drawer__close" type="button" onClick={() => setLeftDrawerOpen(false)}>&times;</button>
+              <button className="uw-drawer__close" type="button" aria-label={t("common.close")} onClick={() => setLeftDrawerOpen(false)}>&times;</button>
             </div>
             <div className="uw-left-scroll" style={{ flex: 1 }}>
               <VersionList
@@ -1119,6 +1145,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
                     return;
                   }
                   setSelectedDocId(id);
+                  if (docSubTab === "edit") handleSubTabChange("view");
                   if (isEditing) setIsEditing(false);
                   const doc = documents.find((d) => d.id === id);
                   if (doc) setSelectedVersionId(doc.currentVersionId ?? doc.versions[0]?.id ?? "");
@@ -1128,15 +1155,15 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
             </div>
             <JobStatusBar jobs={jobs} projectId={projectId} canManageJobs={canManageJobs} />
           </div>
-        </div>
+        </div>, document.body
       )}
 
-      {rightDrawerOpen && showThreeColumnLayout && (
+      {rightDrawerOpen && showThreeColumnLayout && createPortal(
         <div className="uw-drawer-overlay" onClick={() => setRightDrawerOpen(false)}>
-          <div className="uw-drawer uw-drawer--right" onClick={(e) => e.stopPropagation()}>
+          <div ref={rightDrawerRef} className="uw-drawer uw-drawer--right" role="dialog" aria-modal="true" aria-label={t("projectWorkspace.workspace.reviewActions")} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
             <div className="uw-drawer__header">
               <span className="uw-drawer__title">{t("projectWorkspace.workspace.reviewActions")}</span>
-              <button className="uw-drawer__close" type="button" onClick={() => setRightDrawerOpen(false)}>&times;</button>
+              <button className="uw-drawer__close" type="button" aria-label={t("common.close")} onClick={() => setRightDrawerOpen(false)}>&times;</button>
             </div>
             <RightContextPanel
               projectId={projectId}
@@ -1153,7 +1180,7 @@ export function UnifiedWorkspace({ projectId }: { projectId: string }) {
               permissions={currentUserPermissions}
             />
           </div>
-        </div>
+        </div>, document.body
       )}
     </div>
   );

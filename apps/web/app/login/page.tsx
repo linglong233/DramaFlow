@@ -1,36 +1,8 @@
-/**
- * @fileoverview 登录页
- * @module web/app
- *
- * 用户登录页面。
- */
-
-"use client";
-
-import { useI18n } from "../../lib/i18n";
+import { Suspense } from "react";
+import { AuthShell } from "../../components/auth-shell";
 import { LoginPanel } from "../../components/login-panel";
-import { LanguageSwitcher } from "../../components/language-switcher";
+import { LoadingSkeleton } from "../../components/loading-skeleton";
 
 export default function LoginPage() {
-  const { t } = useI18n();
-
-  return (
-    <div className="login-container" style={{ position: "relative", overflow: "hidden" }}>
-      {/* Background ambient light */}
-      <div style={{ position: "absolute", top: "-20%", left: "-10%", width: "50%", height: "50%", background: "radial-gradient(circle, rgba(56,189,248,0.15), transparent 70%)", filter: "blur(60px)", zIndex: 0 }} />
-      <div style={{ position: "absolute", bottom: "-20%", right: "-10%", width: "50%", height: "50%", background: "radial-gradient(circle, rgba(168,85,247,0.15), transparent 70%)", filter: "blur(60px)", zIndex: 0 }} />
-      
-      <div style={{ position: "absolute", top: 16, right: 16, zIndex: 10 }}>
-        <LanguageSwitcher style={{ width: "auto" }} />
-      </div>
-      
-      <div className="login-card glass-panel animate-fade-in" style={{ position: "relative", zIndex: 10, padding: "var(--space-8)" }}>
-        <div style={{ textAlign: "center", marginBottom: "var(--space-6)" }}>
-          <h1 className="login-title" style={{ margin: 0 }}>DramaFlow</h1>
-          <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginTop: "4px" }}>{t("login.brandSubtitle")}</p>
-        </div>
-        <LoginPanel />
-      </div>
-    </div>
-  );
+  return <AuthShell><Suspense fallback={<LoadingSkeleton rows={4} />}><LoginPanel /></Suspense></AuthShell>;
 }

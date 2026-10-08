@@ -101,6 +101,8 @@ export function VersionList({
             onClick={onToggleCollapse}
             style={{ padding: '0 4px', margin: isCollapsed ? '0 auto' : '0' }}
             title={isCollapsed ? t("projectWorkspace.generate.expandSettings") : t("projectWorkspace.generate.collapseSettings")}
+            aria-label={isCollapsed ? t("projectWorkspace.generate.expandSettings") : t("projectWorkspace.generate.collapseSettings")}
+            aria-expanded={!isCollapsed}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               {isCollapsed ? (
@@ -127,6 +129,8 @@ export function VersionList({
               <div key={doc.id} className="vl-doc">
                 <button
                   className={`vl-doc-header ${isSelectedDoc ? "vl-doc-header--active" : ""}`}
+                  type="button"
+                  aria-current={isSelectedDoc ? "page" : undefined}
                   onClick={() => onSelectDoc(doc.id)}
                 >
                   <div className="vl-doc-header-left">

@@ -249,13 +249,12 @@ export function TeamAdminDashboard() {
   }
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: "1400px", margin: "0 auto" }}>
+    <div className="team-page team-admin-page animate-fade-in">
       {/* Hero */}
       <div className="team-hero" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-6)" }}>
         <div>
           <div className="team-hero-kicker">{t("teamAdmin.kicker")}</div>
           <h1 className="team-hero-title">{t("teamAdmin.title")}</h1>
-          <p className="team-hero-desc">{t("teamAdmin.description")}</p>
         </div>
         <div className="team-switcher">
           <label className="team-switcher-label" htmlFor="team-switcher">
@@ -309,9 +308,6 @@ export function TeamAdminDashboard() {
               <h2 className="team-section-title">
                 {t("teamAdmin.members.title", { name: overviewQuery.data.team.name })}
               </h2>
-              <p className="team-section-desc">
-                {t("teamAdmin.members.description")}
-              </p>
             </div>
 
             {/* Review Policy + Add Member */}
@@ -387,6 +383,7 @@ export function TeamAdminDashboard() {
                 <input
                   className="input"
                   placeholder={t("teamAdmin.members.searchPlaceholder")}
+                  aria-label={t("teamAdmin.members.searchPlaceholder")}
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
                 />
@@ -424,6 +421,7 @@ export function TeamAdminDashboard() {
                       <div className="team-member-actions">
                         <select
                           className="team-member-role-select"
+                          aria-label={`${member.displayName || member.email} — ${t("teamAdmin.members.roleLabel")}`}
                           value={member.role}
                           onChange={(e) => changeRoleMutation.mutate({ memberId: member.id, role: e.target.value as TeamRole })}
                           disabled={changeRoleMutation.isPending || isSelf}
@@ -594,7 +592,6 @@ export function TeamAdminDashboard() {
           <section className="team-section">
             <div className="team-section-header">
               <h2 className="team-section-title">{t("teamAdmin.projects.title")}</h2>
-              <p className="team-section-desc">{t("teamAdmin.projects.description")}</p>
             </div>
 
             <div className="team-section-divider">
@@ -609,6 +606,7 @@ export function TeamAdminDashboard() {
                 <input
                   className="input"
                   placeholder={t("teamAdmin.projects.searchPlaceholder")}
+                  aria-label={t("teamAdmin.projects.searchPlaceholder")}
                   value={projectSearch}
                   onChange={(e) => setProjectSearch(e.target.value)}
                 />
@@ -668,7 +666,6 @@ export function TeamAdminDashboard() {
           <section className="team-section">
             <div className="team-section-header">
               <h2 className="team-section-title">{t("teamAdmin.queue.title")}</h2>
-              <p className="team-section-desc">{t("teamAdmin.queue.description")}</p>
             </div>
 
             <div className="team-queue-grid">

@@ -53,6 +53,7 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving, world
   const [charInput, setCharInput] = useState({ name: "", profile: "" });
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({ name: "", profile: "" });
+  const [importFailed, setImportFailed] = useState(false);
 
   function updateContent(patch: Partial<ScriptContent>) {
     setContent((prev) => ({ ...prev, ...patch }));
@@ -154,7 +155,9 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving, world
   function handleUploadJson(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImportFailed(false);
     const reader = new FileReader();
+    reader.onerror = () => setImportFailed(true);
     reader.onload = (evt) => {
       try {
         const parsed = JSON.parse(evt.target?.result as string);
@@ -165,7 +168,7 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving, world
         setContent(nextContent);
         setExpandedScenes(new Set(nextContent.scenes.map((s: ScriptScene) => s.id)));
       } catch {
-        // silently ignore invalid JSON
+        setImportFailed(true);
       }
     };
     reader.readAsText(file);
@@ -196,18 +199,19 @@ export function ScriptEditor({ initialContent, onSave, onCancel, isSaving, world
           <div className="se-header__actions">
             <label className="se-upload-btn">
               {t("scriptEditor.uploadJson")}
-              <input type="file" accept=".json" onChange={handleUploadJson} hidden />
+              <input className="workspace-file-input" type="file" accept=".json" aria-label={t("scriptEditor.uploadJson")} onChange={handleUploadJson} disabled={isSaving} />
             </label>
           </div>
         </div>
         <div className="se-header__right">
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel}>{t("scriptEditor.cancel")}</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel} disabled={isSaving}>{t("scriptEditor.cancel")}</button>
           <button className="btn btn-primary btn-sm" type="button" onClick={handleSubmit} disabled={isSaving}>
             {isSaving ? t("scriptEditor.saving") : t("scriptEditor.saveAsNewVersion")}
           </button>
         </div>
       </div>
 
+      {importFailed && <p className="workspace-import-error" role="alert">{t("projectWorkspace.workspace.importJsonError")}</p>}
       {/* Version title */}
       <div className="se-field">
         <label className="se-label">{t("scriptEditor.versionTitle")}</label>

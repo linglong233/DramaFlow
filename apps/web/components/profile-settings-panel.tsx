@@ -345,22 +345,22 @@ export function ProfileSettingsPanel() {
   }
 
   return (
-    <div className="sp-root animate-fade-in">
+    <div className="sp-root settings-page animate-fade-in">
       <header className="sp-header">
         <span className="sp-kicker">{t("settingsPages.profileSettings.kicker")}</span>
-        <h1 className="sp-title">{t("nav.settings")}</h1>
+        <h1 className="sp-title">{t("nav.profileSettings")}</h1>
         <p className="sp-desc">{t("settingsPages.profileSettings.description")}</p>
       </header>
 
-      {profileQuery.isPending || !profileQuery.data ? (
+      {profileQuery.isPending ? (
         <LoadingSkeleton rows={6} />
       ) : profileQuery.error ? (
         <ErrorState
-          title="Failed to load profile"
+          title={t("ui.loadFailed")}
           description={formatApiError(profileQuery.error, t)}
           action={<button className="btn btn-secondary" type="button" onClick={() => void profileQuery.refetch()}>{t("common.reload")}</button>}
         />
-      ) : (
+      ) : !profileQuery.data ? <LoadingSkeleton rows={6} /> : (
         <div className="sp-body">
           {/* --- 个人信息 --- */}
           <section className="sp-card animate-slide-up" style={{ animationDelay: "0.06s" }}>
@@ -371,7 +371,7 @@ export function ProfileSettingsPanel() {
                 <p className="sp-card-desc">{t("settingsPages.profileSettings.formDescription")}</p>
               </div>
             </div>
-            <div className="stack stack-gap-5">
+            <div className="stack stack-gap-4">
               <div className="form-group">
                 <label className="form-label text-sm" htmlFor="profile-display-name">{t("settingsPages.profileSettings.displayNameLabel")}</label>
                 <input id="profile-display-name" className="input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
@@ -388,7 +388,7 @@ export function ProfileSettingsPanel() {
                 <p className="sp-card-desc">{t("settingsPages.profileSettings.llmDescription")}</p>
               </div>
             </div>
-            <div className="stack stack-gap-5">
+            <div className="stack stack-gap-4">
               <div className="form-group">
                 <label className="form-label text-sm" htmlFor="profile-llm-provider">{t("settingsPages.profileSettings.llmProviderLabel")}</label>
                 <select id="profile-llm-provider" className="input" value={llmProvider} onChange={(event) => setLlmProvider(event.target.value as "openai-completions")}>
@@ -470,13 +470,14 @@ export function ProfileSettingsPanel() {
                 <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无图片 Provider 配置，点击下方按钮添加</p>
               ) : (
                 imageDrafts.map((draft) => (
-                  <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingImageId === draft.id ? "var(--space-4)" : 0 }}>
+                  <div key={draft.id} className="settings-provider-entry">
+                    <div className="settings-provider-header" style={{ marginBottom: editingImageId === draft.id ? "var(--space-4)" : 0 }}>
                       <button
                         type="button"
                         onClick={() => setDefaultImageProvider(defaultImageProvider === draft.id ? "" : draft.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        className="settings-provider-default"
                         title={defaultImageProvider === draft.id ? "取消默认" : "设为默认"}
+                        aria-pressed={defaultImageProvider === draft.id}
                       >
                         <StarIcon filled={defaultImageProvider === draft.id} />
                       </button>
@@ -530,13 +531,14 @@ export function ProfileSettingsPanel() {
                 <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>暂无视频 Provider 配置，点击下方按钮添加</p>
               ) : (
                 videoDrafts.map((draft) => (
-                  <div key={draft.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: editingVideoId === draft.id ? "var(--space-4)" : 0 }}>
+                  <div key={draft.id} className="settings-provider-entry">
+                    <div className="settings-provider-header" style={{ marginBottom: editingVideoId === draft.id ? "var(--space-4)" : 0 }}>
                       <button
                         type="button"
                         onClick={() => setDefaultVideoProvider(defaultVideoProvider === draft.id ? "" : draft.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        className="settings-provider-default"
                         title={defaultVideoProvider === draft.id ? "取消默认" : "设为默认"}
+                        aria-pressed={defaultVideoProvider === draft.id}
                       >
                         <StarIcon filled={defaultVideoProvider === draft.id} />
                       </button>
@@ -574,6 +576,7 @@ export function ProfileSettingsPanel() {
                 <select
                   className="input"
                   style={{ maxWidth: 220 }}
+                  aria-label={t("ui.videoProviderType")}
                   value={selectedVideoProviderType}
                   onChange={(event) => setSelectedVideoProviderType(event.target.value as VideoGenerationProvider)}
                 >

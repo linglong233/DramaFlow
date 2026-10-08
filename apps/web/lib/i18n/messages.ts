@@ -6,6 +6,14 @@
  */
 
 export const zhCNMessages = {
+  ui: {
+    viewGrid: "网格视图",
+    viewList: "列表视图",
+    loadFailed: "加载失败",
+    showPassword: "显示密码",
+    hidePassword: "隐藏密码",
+    videoProviderType: "视频服务类型",
+  },
   common: {
     language: "语言",
     signIn: "登录",
@@ -69,8 +77,21 @@ export const zhCNMessages = {
   },
   home: {
     kicker: "导演工作流 x AI 协作台",
-    title: "把剧本、分镜、素材和审批放进同一个创作引擎。",
-    description: "DramaFlow 面向导演与工作室，把短剧从想法到分镜、从讨论到版本、从镜头到素材产出的全过程沉到一个可协作、可审阅、可追溯的平台里。",
+    workflowLabel: "从想法，到镜头",
+    workflowDescription: "在同一个工作空间里，组织创作、协作与审核。",
+    workflowStory: "故事与剧本",
+    workflowStoryDescription: "整理创意，打磨每一场戏。",
+    workflowVisual: "分镜与画面",
+    workflowVisualDescription: "让文字走向可视化的镜头表达。",
+    workflowTeam: "团队与审核",
+    workflowTeamDescription: "共享版本，让每一次决策有迹可循。",
+    title: "从一个想法，",
+    titleSecondLine: "到每一个镜头。",
+    description: "为导演与工作室打造的短剧创作空间。连接剧本、分镜与素材，让团队在同一处创作、讨论和审核。",
+    previewLabel: "创作流程示意",
+    previewScriptMeta: "角色 · 场景 · 对白",
+    previewStoryboardMeta: "把文字变成画面",
+    previewReviewMeta: "版本、评论与决策，始终在一起。",
     primaryAction: "进入平台",
     secondaryAction: "查看工作台",
     scriptTitle: "AI 剧本",
@@ -95,7 +116,7 @@ export const zhCNMessages = {
     emailLabel: "邮箱",
     emailPlaceholder: "director@dramaflow.ai",
     passwordLabel: "密码",
-    passwordPlaceholder: "当前阶段可使用任意开发密码",
+    passwordPlaceholder: "请输入密码",
     loginSubmit: "进入工作台",
     registerSubmit: "创建账号",
     loginSuccess: "登录成功，正在跳转到工作台...",
@@ -162,7 +183,7 @@ export const zhCNMessages = {
     },
     recentProjects: {
       title: "最近项目",
-      description: "优先让你回到正在推进的项目，而不是从列表里重新寻找入口。",
+      description: "继续创作，让下一个故事成形。",
       emptyTitle: "还没有项目",
       emptyDescription: "创建第一个项目后，剧本、分镜、评论、审核和素材任务都会围绕这个项目展开。",
       emptyProjectDescription: "还没有项目说明，建议补一句背景。"
@@ -379,6 +400,9 @@ export const zhCNMessages = {
     },
     workspace: {
       title: "统一工作区",
+      breadcrumbLabel: "项目路径",
+      importJsonError: "无法读取 JSON 文件，请检查文件内容后重试。",
+      documentNavigation: "文档导航",
       modeView: "查看",
       modeEdit: "编辑",
       modeDocument: "文档",
@@ -1507,6 +1531,8 @@ export const zhCNMessages = {
   },
   notifications: {
     title: "通知",
+    loadError: "通知加载失败，请重试。",
+    updateError: "未能更新通知状态，请重试。",
     emptyTitle: "暂无通知",
     emptyDescription: "当有新的任务完成、审核动态或评论回复时，通知会出现在这里。",
     markAllRead: "全部已读",
@@ -1534,7 +1560,7 @@ export const zhCNMessages = {
     loadingMore: "加载中..."
   },
   timeline: {
-    autoAssemble: "⚡ 自动装配",
+    autoAssemble: "自动装配",
     deliveryTitle: "制作与交付检查",
     comicWorkflow: "图片漫剧：采纳分镜图片 → 准备配音与字幕 → 自动装配 → 导出成片，无需视频 API。有已采纳视频时优先使用视频；缺少画面的镜头会保留位置并阻止交付。自动装配会替换当前剪辑，请先下载时间线备份。",
     deliveryCounts: "画面 {visuals} 段 · 字幕 {subtitles} 条 · 缺失素材 {missing} 项 · 无画面区间 {gaps} 秒",
@@ -1543,14 +1569,14 @@ export const zhCNMessages = {
     downloadTimeline: "下载剪辑清单",
     incompatibleAsset: "素材与轨道不匹配：图片/视频放入画面轨，音频放入声音轨，字幕放入字幕轨。",
     assembling: "装配中...",
-    save: "💾 保存",
+    save: "保存",
     saving: "保存中...",
     backToStart: "回到起点",
     zoomIn: "放大",
     zoomOut: "缩小",
     hideMedia: "隐藏媒体库",
     showMedia: "显示媒体库",
-    exportVideo: "🎬 导出视频",
+    exportVideo: "导出视频",
     exporting: "导出中...",
     unmute: "取消静音",
     mute: "静音",
@@ -1976,6 +2002,14 @@ type DeepStringShape<T> = {
 };
 
 export const enMessages: DeepStringShape<typeof zhCNMessages> = {
+  ui: {
+    viewGrid: "Grid view",
+    viewList: "List view",
+    loadFailed: "Unable to load",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    videoProviderType: "Video provider type",
+  },
   common: {
     language: "Language",
     signIn: "Sign in",
@@ -2039,8 +2073,21 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
   },
   home: {
     kicker: "Director workflow x AI studio",
-    title: "Put scripts, storyboards, assets, and approvals in one creative engine.",
-    description: "DramaFlow is built for directors and studios. It turns the full short-drama workflow, from idea to storyboard, from discussion to versioning, and from shots to asset output, into one collaborative and reviewable platform.",
+    workflowLabel: "From story to screen",
+    workflowDescription: "Bring creation, collaboration, and review into one workspace.",
+    workflowStory: "Story & script",
+    workflowStoryDescription: "Shape your ideas and refine every scene.",
+    workflowVisual: "Storyboards & visuals",
+    workflowVisualDescription: "Turn the script into a visual story.",
+    workflowTeam: "Team & review",
+    workflowTeamDescription: "Share versions and keep creative decisions in context.",
+    title: "From first idea.",
+    titleSecondLine: "To final frame.",
+    description: "A creative workspace for directors and studios. Connect scripts, storyboards, and assets, with your team creating, discussing, and reviewing in one place.",
+    previewLabel: "Workflow preview",
+    previewScriptMeta: "Characters · Scenes · Dialogue",
+    previewStoryboardMeta: "Words into images",
+    previewReviewMeta: "Versions, feedback, and decisions together.",
     primaryAction: "Enter platform",
     secondaryAction: "Open workspace",
     scriptTitle: "AI Script",
@@ -2065,7 +2112,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     emailLabel: "Email",
     emailPlaceholder: "director@dramaflow.ai",
     passwordLabel: "Password",
-    passwordPlaceholder: "Use any development password for now",
+    passwordPlaceholder: "Enter your password",
     loginSubmit: "Enter workspace",
     registerSubmit: "Create account",
     loginSuccess: "Signed in. Redirecting to the workspace...",
@@ -2132,7 +2179,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     },
     recentProjects: {
       title: "Recent projects",
-      description: "Return to the project already in motion instead of searching the list again.",
+      description: "Pick up your next story where you left off.",
       emptyTitle: "No projects yet",
       emptyDescription: "Once the first project exists, versions, comments, approvals, and asset jobs will all orbit it.",
       emptyProjectDescription: "No project brief yet."
@@ -2349,6 +2396,9 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     },
     workspace: {
       title: "Unified Workspace",
+      breadcrumbLabel: "Project path",
+      importJsonError: "Unable to read the JSON file. Check its contents and try again.",
+      documentNavigation: "Document navigation",
       modeView: "View",
       modeEdit: "Edit",
       modeDocument: "Document",
@@ -3477,6 +3527,8 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
   },
   notifications: {
     title: "Notifications",
+    loadError: "Unable to load notifications. Please try again.",
+    updateError: "Unable to update notification status. Please try again.",
     emptyTitle: "No notifications",
     emptyDescription: "Notifications will appear here when tasks complete, reviews update, or comments are posted.",
     markAllRead: "Mark all read",
@@ -3504,7 +3556,7 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     loadingMore: "Loading..."
   },
   timeline: {
-    autoAssemble: "⚡ Auto-assemble",
+    autoAssemble: "Auto-assemble",
     deliveryTitle: "Production and delivery checks",
     comicWorkflow: "Comic workflow: adopt storyboard images → prepare dialogue and subtitles → auto-assemble → export. No video API required. Adopted video takes precedence; shots without visuals keep their positions and block delivery. Auto-assembly replaces the current edit; download the timeline first to keep a backup.",
     deliveryCounts: "{visuals} visual clips · {subtitles} subtitles · {missing} missing assets · {gaps}s without visuals",
@@ -3513,14 +3565,14 @@ export const enMessages: DeepStringShape<typeof zhCNMessages> = {
     downloadTimeline: "Download edit manifest",
     incompatibleAsset: "Place images/videos on visual tracks, audio on sound tracks, and subtitles on subtitle tracks.",
     assembling: "Assembling...",
-    save: "💾 Save",
+    save: "Save",
     saving: "Saving...",
     backToStart: "Back to start",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
     hideMedia: "Hide media library",
     showMedia: "Show media library",
-    exportVideo: "🎬 Export video",
+    exportVideo: "Export video",
     exporting: "Exporting...",
     unmute: "Unmute",
     mute: "Mute",

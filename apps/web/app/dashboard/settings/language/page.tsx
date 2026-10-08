@@ -14,12 +14,12 @@ import { LanguageSwitcher } from "../../../../components/language-switcher";
 export default function DashboardLanguageSettingsPage() {
   const { t } = useI18n();
   return (
-    <>
+    <div className="settings-page language-settings-page">
       <PageHeader kicker={t("settingsPages.language.kicker")} title={t("nav.language")} description={t("settingsPages.language.description")} />
       <div className="card card-sm">
-        <h3 className="heading-6" style={{ marginBottom: "16px" }}>{t("settingsPages.language.selectorTitle")}</h3>
+        <h2 className="heading-6" style={{ marginBottom: "16px" }}>{t("settingsPages.language.selectorTitle")}</h2>
         <LanguageSwitcher />
       </div>
-    </>
+    </div>
   );
 }

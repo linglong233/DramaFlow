@@ -21,12 +21,6 @@ export interface ToastItemProps {
   onDismiss: (id: string) => void;
 }
 
-const ICONS: Record<ToastVariant, string> = {
-  success: "✓",
-  error: "!",
-  info: "i",
-};
-
 export function ToastItem({
   id,
   variant,
@@ -40,6 +34,8 @@ export function ToastItem({
   const remainingRef = useRef(durationMs);
   const startedAtRef = useRef(Date.now());
   const timerRef = useRef<number | null>(null);
+  const hoveredRef = useRef(false);
+  const focusedRef = useRef(false);
 
   useEffect(() => {
     startedAtRef.current = Date.now();
@@ -47,6 +43,7 @@ export function ToastItem({
     return () => {
       if (timerRef.current != null) {
         window.clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
     };
     // 仅在挂载时启停定时器；onDismiss 由 Provider 保持稳定引用
@@ -66,7 +63,7 @@ export function ToastItem({
   }
 
   function resume() {
-    if (timerRef.current != null) {
+    if (timerRef.current != null || hoveredRef.current || focusedRef.current) {
       return;
     }
     startedAtRef.current = Date.now();
@@ -77,13 +74,32 @@ export function ToastItem({
     <div
       className={`toast toast--${variant}`}
       role={variant === "error" ? "alert" : "status"}
-      onMouseEnter={pause}
-      onMouseLeave={resume}
-      onFocus={pause}
-      onBlur={resume}
+      aria-atomic="true"
+      onMouseEnter={() => {
+        hoveredRef.current = true;
+        pause();
+      }}
+      onMouseLeave={() => {
+        hoveredRef.current = false;
+        resume();
+      }}
+      onFocus={() => {
+        focusedRef.current = true;
+        pause();
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          focusedRef.current = false;
+          resume();
+        }
+      }}
     >
       <span className={`toast__icon toast__icon--${variant}`} aria-hidden="true">
-        {ICONS[variant]}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          {variant === "success" ? <path d="m5 12 4 4L19 6" /> : null}
+          {variant === "error" ? <path d="M12 5v9m0 4h.01" /> : null}
+          {variant === "info" ? <path d="M12 10v8m0-12h.01" /> : null}
+        </svg>
       </span>
       <div className="toast__body">
         <div className="toast__title">{title}</div>

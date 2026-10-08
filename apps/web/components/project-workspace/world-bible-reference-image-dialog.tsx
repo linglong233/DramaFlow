@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type {
   EnhanceReferencePromptRequest,
   EnhanceReferencePromptResponse,
@@ -11,6 +12,7 @@ import type {
 import { apiFetch } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
 import { ProviderSelector, useProviderEntries } from "./provider-selector";
+import { useWorkspaceDialog } from "./use-workspace-dialog";
 
 type DialogStatus =
   | "editing"
@@ -80,6 +82,7 @@ export function WorldBibleReferenceImageDialog({
 
   const activeRound = rounds.find((r) => r.id === activeRoundId);
   const isBusy = status === "generating" || status === "enhancing";
+  const dialogRef = useWorkspaceDialog(true, () => { if (!isBusy) onClose(); });
 
   const handleEnhancePrompt = useCallback(async () => {
     if (!prompt.trim()) return;
@@ -209,17 +212,17 @@ export function WorldBibleReferenceImageDialog({
     setPromptInitialized(false);
   }, [initialPrompt]);
 
-  return (
+  return createPortal(
     <div
       className="dialog-overlay"
       onClick={(e) => e.target === e.currentTarget && !isBusy && onClose()}
     >
-      <div className="dialog-content dialog-content--ref-gen">
+      <div ref={dialogRef} className="dialog-content dialog-content--ref-gen" role="dialog" aria-modal="true" aria-label={t("worldBible.generateRefImageTitle")} aria-busy={isBusy} tabIndex={-1}>
         {/* Header */}
         <div className="dialog-header">
           <h3 className="dialog-title">{t("worldBible.generateRefImageTitle")}</h3>
           {!isBusy && (
-            <button className="dialog-close" onClick={onClose}>
+            <button className="dialog-close" type="button" aria-label={t("common.close")} onClick={onClose}>
               ×
             </button>
           )}
@@ -490,6 +493,6 @@ export function WorldBibleReferenceImageDialog({
           )}
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 }

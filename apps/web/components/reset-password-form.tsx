@@ -50,7 +50,7 @@ export function ResetPasswordForm() {
   });
 
   return (
-    <div className="stack stack-gap-4">
+    <form className="stack stack-gap-4" onSubmit={(event) => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(); }}>
       <div className="stack stack-gap-2">
         <span className="kicker">{t("authRecovery.reset.kicker")}</span>
         <h1 className="page-title">{t("authRecovery.reset.title")}</h1>
@@ -61,6 +61,7 @@ export function ResetPasswordForm() {
         <label className="form-label" htmlFor="reset-token">{t("authRecovery.reset.tokenLabel")}</label>
         <textarea
           id="reset-token"
+          required
           className="input"
           style={{ minHeight: 96 }}
           value={token}
@@ -76,6 +77,7 @@ export function ResetPasswordForm() {
           className="input"
           type="password"
           autoComplete="new-password"
+          required
           value={nextPassword}
           onChange={(event) => setNextPassword(event.target.value)}
           placeholder={t("authRecovery.reset.passwordPlaceholder")}
@@ -85,13 +87,13 @@ export function ResetPasswordForm() {
       {message ? <div className="notice" role="status">{message}</div> : null}
       {error ? <div className="notice notice--error" role="alert">{error}</div> : null}
 
-      <button className="btn btn-primary" type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending || !token.trim() || !nextPassword.trim()}>
+      <button className="btn btn-primary" type="submit" disabled={mutation.isPending || !token.trim() || !nextPassword.trim()}>
         {mutation.isPending ? t("common.submitting") : t("authRecovery.reset.submit")}
       </button>
 
       <Link href="/login" style={{ textAlign: "center", fontSize: 13 }}>
         {t("authRecovery.backToLogin")}
       </Link>
-    </div>
+    </form>
   );
 }

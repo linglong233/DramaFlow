@@ -40,8 +40,10 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
   const [charInput, setCharInput] = useState({ name: "", profile: "" });
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({ name: "", profile: "" });
+  const [importFailed, setImportFailed] = useState(false);
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: false, // We use our own scene heading
@@ -57,6 +59,9 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
     editorProps: {
       attributes: {
         class: "tiptap-editor",
+        "aria-label": t("scriptEditor.heading"),
+        role: "textbox",
+        "aria-multiline": "true",
       },
     },
   });
@@ -99,7 +104,9 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      setImportFailed(false);
       const reader = new FileReader();
+      reader.onerror = () => setImportFailed(true);
       reader.onload = (evt) => {
         try {
           const parsed = normalizeScriptContent(JSON.parse(evt.target?.result as string));
@@ -110,7 +117,7 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
             editor.commands.setContent(scriptContentToTiptap(parsed));
           }
         } catch {
-          // silently ignore invalid JSON
+          setImportFailed(true);
         }
       };
       reader.readAsText(file);
@@ -137,12 +144,12 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
           <div className="se-header__actions">
             <label className="se-upload-btn">
               {t("scriptEditor.uploadJson")}
-              <input type="file" accept=".json" onChange={handleUploadJson} hidden />
+              <input className="workspace-file-input" type="file" accept=".json" aria-label={t("scriptEditor.uploadJson")} onChange={handleUploadJson} disabled={isSaving} />
             </label>
           </div>
         </div>
         <div className="se-header__right">
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel}>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel} disabled={isSaving}>
             {t("scriptEditor.cancel")}
           </button>
           <button className="btn btn-primary btn-sm" type="button" onClick={handleSubmit} disabled={isSaving}>
@@ -151,11 +158,13 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
         </div>
       </div>
 
+      {importFailed && <p className="workspace-import-error" role="alert">{t("projectWorkspace.workspace.importJsonError")}</p>}
       {/* Version title */}
       <div className="se-field">
         <label className="se-label">{t("scriptEditor.versionTitle")}</label>
         <input
           className="input se-input"
+          aria-label={t("scriptEditor.versionTitle")}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("scriptEditor.versionTitlePlaceholder")}
@@ -170,6 +179,7 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
             className="input se-textarea"
             rows={2}
             value={logline}
+            aria-label={t("scriptEditor.logline")}
             onChange={(e) => setLogline(e.target.value)}
             placeholder={t("scriptEditor.loglinePlaceholder")}
           />
@@ -180,6 +190,7 @@ export function RichScriptEditor({ initialContent, onSave, onCancel, isSaving }:
             className="input se-textarea"
             rows={2}
             value={premise}
+            aria-label={t("scriptEditor.premise")}
             onChange={(e) => setPremise(e.target.value)}
             placeholder={t("scriptEditor.premisePlaceholder")}
           />

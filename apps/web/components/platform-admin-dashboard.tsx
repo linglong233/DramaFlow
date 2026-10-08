@@ -118,7 +118,7 @@ export function PlatformAdminDashboard() {
     );
   }
 
-  if (overviewQuery.isPending || !overviewQuery.data) {
+  if (overviewQuery.isPending) {
     return <LoadingSkeleton variant="hero" rows={8} />;
   }
 
@@ -131,6 +131,8 @@ export function PlatformAdminDashboard() {
       />
     );
   }
+
+  if (!overviewQuery.data) return <LoadingSkeleton variant="hero" rows={8} />;
 
   const overview = overviewQuery.data;
 
@@ -148,7 +150,6 @@ export function PlatformAdminDashboard() {
       <header className="pa-header">
         <span className="pa-kicker">{t("platformAdmin.kicker")}</span>
         <h1 className="pa-title">{t("platformAdmin.title")}</h1>
-        <p className="pa-desc">{t("platformAdmin.description")}</p>
       </header>
 
       {/* Stats ribbon */}
@@ -175,10 +176,9 @@ export function PlatformAdminDashboard() {
           </div>
 
           {overview.recentJobs.length === 0 ? (
-            <div className="projects-empty">
+            <div className="projects-empty pa-empty">
               <div className="projects-empty-icon"><QueueIcon /></div>
               <div className="projects-empty-title">{t("platformAdmin.recentJobs.emptyTitle")}</div>
-              <div className="projects-empty-desc">{t("platformAdmin.recentJobs.emptyDescription")}</div>
             </div>
           ) : (
             <div className="pa-list">
@@ -209,7 +209,6 @@ export function PlatformAdminDashboard() {
         <section className="pa-section">
           <div className="pa-section-head">
             <h2 className="pa-section-title">{t("platformAdmin.tenants.title")}</h2>
-            <p className="pa-section-desc">{t("platformAdmin.tenants.description")}</p>
           </div>
 
           {/* Storage driver badge */}
@@ -223,7 +222,7 @@ export function PlatformAdminDashboard() {
           </div>
 
           {/* Tenant list */}
-          <div className="pa-subsection-label">租户列表</div>
+          <div className="pa-subsection-label">{t("platformAdmin.tenants.title")}</div>
           {overview.tenants.length === 0 ? (
             <div className="projects-empty">
               <div className="projects-empty-icon"><TenantIcon /></div>

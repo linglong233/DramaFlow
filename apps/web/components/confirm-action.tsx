@@ -1,8 +1,8 @@
 /**
- * @fileoverview 确认操作对话框
+ * @fileoverview 二次确认操作按钮
  * @module web/components
  *
- * 通用的操作确认弹窗组件。
+ * 同一按钮内二次确认，离开焦点或按 Escape 取消确认。
  */
 
 "use client";
@@ -27,13 +27,10 @@ export function ConfirmAction({
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    if (!confirming) {
-      return;
+    if (disabled) {
+      setConfirming(false);
     }
-
-    const timer = window.setTimeout(() => setConfirming(false), 3500);
-    return () => window.clearTimeout(timer);
-  }, [confirming]);
+  }, [disabled]);
 
   const className = tone === "danger" ? "secondary-btn secondary-btn--danger" : "secondary-btn";
 
@@ -42,6 +39,16 @@ export function ConfirmAction({
       type="button"
       className={confirming ? `${className} is-confirming` : className}
       disabled={disabled}
+      aria-live="polite"
+      aria-atomic="true"
+      onBlur={() => setConfirming(false)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && confirming) {
+          event.preventDefault();
+          event.stopPropagation();
+          setConfirming(false);
+        }
+      }}
       onClick={() => {
         if (!confirming) {
           setConfirming(true);
